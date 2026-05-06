@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Calendar status colors */
+  --cal-publicado: #4F6B4A;
+  --cal-publicado-soft: #EBEFE9;
+  --cal-agendado: #3B6789;
+  --cal-agendado-soft: #E6EDF2;
+  --cal-aprovacao: #B68A2E;
+  --cal-aprovacao-soft: #F5EFD9;
+  --cal-alteracao: #6E2A2C;
+  --cal-alteracao-soft: #F3E7E7;
+  --cal-aguardando: #BB6B3A;
+  --cal-aguardando-soft: #F4E8DD;
+  --cal-rascunho: #9A9AA6;
+  --cal-rascunho-soft: #EEF0F4;
+
+  /* Prazo / urgência (timing) — semântica de tempo */
+  --prazo-atrasado: #C04737;        /* vermelho */
+  --prazo-atrasado-soft: #F8E5E1;
+  --prazo-hoje: #D97A35;            /* laranja vivo */
+  --prazo-hoje-soft: #FBEADB;
+  --prazo-chegando: #C7A12E;        /* amarelo/mostarda */
+  --prazo-chegando-soft: #F8F1D9;
+  --prazo-em-dia: #4F6B4A;          /* verde */
+  --prazo-em-dia-soft: #EBEFE9;
+  --prazo-tranquilo: #6F6F7E;       /* cinza neutro */
+  --prazo-tranquilo-soft: #EEF0F4;
+}
+
+@layer base {
+  html, body { height: 100%; }
+  body {
+    font-family: Inter, system-ui, sans-serif;
+    background: #F0F0F2;
+    color: #151521;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-[10px] bg-ink text-white px-4 py-3 text-sm font-semibold transition hover:bg-navy disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 rounded-[10px] border border-[rgba(21,21,33,0.1)] bg-white text-ink px-4 py-3 text-sm font-medium transition hover:bg-[rgba(21,21,33,0.04)];
+  }
+  .card {
+    @apply rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white;
+  }
+  .label {
+    @apply block text-[11px] font-semibold uppercase tracking-[0.07em] text-navy mb-1;
+  }
+  .input {
+    @apply w-full rounded-[10px] border-[1.5px] border-[rgba(21,21,33,0.1)] bg-white px-3 py-3 text-sm text-ink outline-none transition focus:border-navy focus:ring-4 focus:ring-navy/10;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold;
+  }
+
+  /* === Entrega cards (estrutura do mockup) === */
+  .entrega-card {
+    @apply relative rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-5 transition;
+  }
+  .entrega-card::before {
+    content: '';
+    @apply absolute top-0 left-0 right-0 h-1 rounded-t-2xl bg-[#c8c8d0];
+  }
+  .entrega-card.atrasada::before { background: var(--cal-alteracao); }
+  .entrega-card.hoje::before { background: var(--cal-aprovacao); }
+  .entrega-card.em-dia::before { background: var(--cal-publicado); }
+  .entrega-card.aguardando::before { background: #c8c8d0; }
+  .entrega-card.disponivel:hover {
+    @apply border-[rgba(21,21,33,0.16)] shadow-[0_4px_20px_rgba(21,21,33,0.05)];
+    transform: translateY(-1px);
+  }
+  .entrega-head {
+    @apply flex items-center gap-3 mb-4;
+  }
+  .entrega-icon {
+    @apply w-9 h-9 rounded-lg bg-bgSoft flex items-center justify-center text-t2 shrink-0;
+  }
+  .entrega-title {
+    @apply flex-1 text-[14px] font-semibold tracking-[-0.01em] text-ink;
+  }
+  .entrega-status-pill {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em];
+  }
+  .entrega-status-pill.atrasada { background: var(--cal-alteracao-soft); color: var(--cal-alteracao); }
+  .entrega-status-pill.hoje { background: var(--cal-aprovacao-soft); color: var(--cal-aprovacao); }
+  .entrega-status-pill.em-dia { background: var(--cal-publicado-soft); color: var(--cal-publicado); }
+  .entrega-status-pill.aguardando { background: var(--cal-rascunho-soft); color: var(--cal-rascunho); }
+  .entrega-meta {
+    @apply grid grid-cols-2 gap-x-4 gap-y-3;
+  }
+  .entrega-meta-item {
+    @apply flex items-center gap-2;
+  }
+  .entrega-meta-icon {
+    @apply w-7 h-7 rounded-lg bg-bgSoft flex items-center justify-center text-t3 shrink-0;
+  }
+  .entrega-meta-icon.danger { background: var(--cal-alteracao-soft); color: var(--cal-alteracao); }
+  .entrega-meta-icon.warning { background: var(--cal-aprovacao-soft); color: var(--cal-aprovacao); }
+  .entrega-meta-icon.info { background: var(--cal-agendado-soft); color: var(--cal-agendado); }
+  .entrega-meta-icon.success { background: var(--cal-publicado-soft); color: var(--cal-publicado); }
+  .entrega-meta-label {
+    @apply text-[10px] uppercase tracking-[0.06em] text-t3 leading-tight;
+  }
+  .entrega-meta-value {
+    @apply text-[12px] text-t1 font-medium leading-tight mt-0.5;
+  }
+  .entrega-meta-value.danger { color: var(--cal-alteracao); }
+  .entrega-meta-value.warning { color: var(--cal-aprovacao); }
+  .entrega-meta-value.muted { color: var(--cal-rascunho); }
+
+  /* === Hub layout (mockup) === */
+  .hub-section-title {
+    @apply text-[18px] font-semibold tracking-[-0.01em] text-ink;
+  }
+  .hub-section-sub {
+    @apply text-[13px] text-t2 mt-0.5;
+  }
+  .hub-banner {
+    @apply rounded-2xl bg-bgSoft border border-[rgba(21,21,33,0.06)] p-4 sm:p-6 flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-4 sm:gap-6;
+  }
+  .hub-task-card {
+    @apply relative card p-5 transition cursor-pointer hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)] hover:border-[rgba(21,21,33,0.16)];
+  }
+  .hub-task-card.atrasada { @apply border-[rgba(110,42,44,0.25)]; }
+  .hub-task-card.hoje { @apply border-[rgba(182,138,46,0.35)]; }
+  .hub-task-count {
+    @apply text-[36px] font-semibold tracking-[-0.03em] leading-none text-ink;
+  }
+  .hub-task-count.danger { @apply text-hubRed; }
+  .hub-task-count.warning { color: var(--cal-aprovacao); }
+  .hub-cal {
+    @apply rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white overflow-hidden;
+  }
+  .hub-cal-head {
+    @apply flex items-center justify-between gap-4 px-4 py-3 border-b border-[rgba(21,21,33,0.06)] flex-wrap;
+  }
+  .hub-cal-month {
+    @apply text-[14px] font-semibold tracking-[-0.01em] text-ink;
+  }
+  .hub-cal-weekdays {
+    @apply grid grid-cols-7 text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.08em] text-t3 px-1;
+  }
+  .hub-cal-weekdays > div { @apply px-1 sm:px-2 py-1.5 sm:py-2; }
+  .hub-cal-grid {
+    @apply grid grid-cols-7 gap-px bg-[rgba(21,21,33,0.06)] border-t border-[rgba(21,21,33,0.06)];
+  }
+  .hub-cal-day {
+    @apply min-h-[60px] sm:min-h-[88px] bg-white p-1 sm:p-2 flex flex-col gap-1;
+  }
+  .hub-cal-day.muted { @apply bg-bgSoft; }
+  .hub-cal-day.today { @apply ring-1 ring-inset ring-navy/30; }
+  .hub-cal-day-num {
+    @apply text-[10px] sm:text-[11px] font-mono text-t2;
+  }
+  .hub-cal-day.muted .hub-cal-day-num { @apply text-t3; }
+  .cal-post {
+    @apply text-[10.5px] leading-tight px-1.5 py-0.5 rounded font-medium truncate;
+  }
+  .cal-post.publicado { background: var(--cal-publicado-soft); color: var(--cal-publicado); }
+  .cal-post.agendado { background: var(--cal-agendado-soft); color: var(--cal-agendado); }
+  .cal-post.aprovacao { background: var(--cal-aprovacao-soft); color: var(--cal-aprovacao); }
+  .cal-post.alteracao { background: var(--cal-alteracao-soft); color: var(--cal-alteracao); }
+  .cal-post.aguardando { background: var(--cal-aguardando-soft); color: var(--cal-aguardando); }
+  .cal-post.rascunho { background: var(--cal-rascunho-soft); color: var(--cal-rascunho); }
+  .legend-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+  .legend-dot.publicado { background: var(--cal-publicado); }
+  .legend-dot.agendado { background: var(--cal-agendado); }
+  .legend-dot.aprovacao { background: var(--cal-aprovacao); }
+  .legend-dot.alteracao { background: var(--cal-alteracao); }
+  .legend-dot.aguardando { background: var(--cal-aguardando); }
+  .legend-dot.rascunho { background: var(--cal-rascunho); }
+
+  /* Pill semântica de prazo — usa em qualquer label de urgência */
+  .prazo-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.04em];
+  }
+  .prazo-pill .prazo-dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full bg-current;
+  }
+  .prazo-pill.atrasado { background: var(--prazo-atrasado-soft); color: var(--prazo-atrasado); }
+  .prazo-pill.hoje { background: var(--prazo-hoje-soft); color: var(--prazo-hoje); }
+  .prazo-pill.chegando { background: var(--prazo-chegando-soft); color: var(--prazo-chegando); }
+  .prazo-pill.em-dia { background: var(--prazo-em-dia-soft); color: var(--prazo-em-dia); }
+  .prazo-pill.tranquilo { background: var(--prazo-tranquilo-soft); color: var(--prazo-tranquilo); }
+}
