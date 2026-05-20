@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { aprovarTarefa, getTarefaComPost } from '@/lib/notion';
+import { aprovarTarefa, getTarefaComPost, invalidarCachesAposMudanca } from '@/lib/notion';
+import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
 
@@ -11,12 +12,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     const data = await getTarefaComPost(params.id);
     if (!data) return NextResponse.json({ error: 'tarefa não encontrada' }, { status: 404 });
-    if (!data.tarefa.projetoId || !session.projetoIds.includes(data.tarefa.projetoId)) {
+    const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+    if (
+      !ehAdmin &&
+      (!data.tarefa.projetoId || !session.projetoIds.includes(data.tarefa.projetoId))
+    ) {
       return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
     }
 
     const body = (await req.json().catch(() => ({}))) as { comentario?: string };
     await aprovarTarefa(params.id, body.comentario);
+    invalidarCachesAposMudanca();
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     console.error('[aprovar] erro:', err);

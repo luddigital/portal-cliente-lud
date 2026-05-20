@@ -6,6 +6,7 @@ import {
   comentarPost,
   concluirTarefa,
   getTarefaComPost,
+  invalidarCachesAposMudanca,
 } from '@/lib/notion';
 import { ensurePostFolder, uploadFile } from '@/lib/drive';
 
@@ -85,6 +86,7 @@ async function handle(req: Request, tarefaId: string) {
   await comentarPost(t.postId, partes.join('\n'));
 
   await concluirTarefa(t.tarefaId);
+  invalidarCachesAposMudanca();
 
   return NextResponse.json({ ok: true, driveLink, arquivos: totalArquivos });
 }

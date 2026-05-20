@@ -12,6 +12,17 @@ function optSoft(name: string): string {
   return process.env[name] ?? '';
 }
 
+function parseAccountsMap(raw: string): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') return parsed as Record<string, string>;
+  } catch {
+    // ignora JSON inválido — o painel mostra estado "não configurado"
+  }
+  return {};
+}
+
 export const env = {
   notion: {
     token: must('NOTION_TOKEN'),
@@ -61,10 +72,37 @@ export const env = {
   app: {
     url: opt('NEXT_PUBLIC_APP_URL', 'http://localhost:3000'),
   },
+  push: {
+    vapidPublic: optSoft('NEXT_PUBLIC_VAPID_PUBLIC_KEY'),
+    vapidPrivate: optSoft('VAPID_PRIVATE_KEY'),
+    vapidSubject: opt('VAPID_SUBJECT', 'mailto:oi@lud.digital'),
+  },
+  instagram: {
+    // Token long-lived do System User do Business Manager da Lud.
+    graphToken: optSoft('IG_GRAPH_TOKEN'),
+    graphVersion: opt('IG_GRAPH_VERSION', 'v22.0'),
+    // Mapa projetoId (Notion) -> ig-user-id. JSON: {"<projetoId>":"<igUserId>"}
+    accounts: parseAccountsMap(optSoft('IG_ACCOUNTS')),
+  },
   test: {
     projetoNomesAllowlist: opt('PORTAL_TEST_PROJETO_NOMES', '')
       .split(',')
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
+  },
+  whatsapp: {
+    // Evolution API (VPS próprio) — espelha WhatsApp Web da Lud.
+    apiUrl: optSoft('EVOLUTION_API_URL'),         // ex: https://evolution.lud.digital
+    apiKey: optSoft('EVOLUTION_API_KEY'),
+    instance: opt('EVOLUTION_INSTANCE_NAME', 'lud-principal'),
+    // Segredo compartilhado entre Evolution e Portal pra validar webhook
+    webhookSecret: optSoft('EVOLUTION_WEBHOOK_SECRET'),
+  },
+  supabase: {
+    url: optSoft('SUPABASE_URL'),
+    serviceRoleKey: optSoft('SUPABASE_SERVICE_ROLE_KEY'),
+    // Usadas no client (frontend) pra Realtime
+    publicUrl: optSoft('NEXT_PUBLIC_SUPABASE_URL'),
+    anonKey: optSoft('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
   },
 };

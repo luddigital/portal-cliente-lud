@@ -34,7 +34,7 @@ export default async function EtapaPage({ params }: { params: { stage: string } 
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-3xl lg:max-w-4xl items-center justify-between px-6 py-4">
           <Link
             href="/"
             className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink"
@@ -47,7 +47,7 @@ export default async function EtapaPage({ params }: { params: { stage: string } 
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-6 py-8 space-y-6">
+      <main className="mx-auto max-w-3xl lg:max-w-4xl px-6 py-8 space-y-6">
         <div>
           <h1 className="text-[24px] font-semibold tracking-[-0.03em] text-ink">{meta.label}</h1>
           <p className="mt-1 text-[14px] text-t2">{COPY_INTRO[stage]}</p>

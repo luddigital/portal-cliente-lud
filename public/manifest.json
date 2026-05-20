@@ -1,0 +1,19 @@
+{
+  "name": "Portal da Lud.",
+  "short_name": "Lud.",
+  "description": "Sua central de conteúdos com a Lud.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F0F0F2",
+  "theme_color": "#151521",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

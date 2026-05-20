@@ -2,7 +2,13 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getSession } from '@/lib/auth';
-import { getTarefaComPost, type RelacaoItem } from '@/lib/notion';
+import {
+  getTarefaComPost,
+  lerBodyDePagina,
+  lerSecaoEntre,
+  type RelacaoItem,
+} from '@/lib/notion';
+import { env } from '@/lib/env';
 import { TarefaForm } from './form';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +42,25 @@ export default async function TarefaPage({
   const data = await getTarefaComPost(params.id);
   if (!data) notFound();
   const t = data.tarefa;
-  if (!t.projetoId || !session.projetoIds.includes(t.projetoId)) notFound();
+  const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+  if (!t.projetoId || (!ehAdmin && !session.projetoIds.includes(t.projetoId))) {
+    notFound();
+  }
+
+  // Pra "Materiais para Produção" o briefing fica entre os marcadores no card
+  // do Notion. Pra outras categorias mostra o body inteiro como fallback.
+  const ehMateriais = t.tarefaTitulo === 'Materiais para Produção';
+  const ehPrevias = t.tarefaTitulo === 'Envio de Conteúdos Prévios';
+  const bodyPost = ehMateriais
+    ? await lerSecaoEntre(
+        t.postId,
+        'Materiais que precisamos para o post',
+        ['Briefing'],
+      )
+    : ehPrevias
+      ? await lerSecaoEntre(t.postId, 'Informações prévias', ['Briefing'])
+      : await lerBodyDePagina(t.postId);
+  const bodyTarefa = await lerBodyDePagina(t.tarefaId);
 
   const etapa = ETAPA_INFO[t.tarefaTitulo] ?? {
     label: t.tarefaTitulo,
@@ -48,7 +72,7 @@ export default async function TarefaPage({
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-3xl lg:max-w-4xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink">
             ← Voltar
           </Link>
@@ -56,7 +80,7 @@ export default async function TarefaPage({
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-6 py-10">
+      <main className="mx-auto max-w-3xl lg:max-w-4xl px-6 py-10">
         <span
           className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] ${etapa.bg} ${etapa.text}`}
         >
@@ -98,6 +122,28 @@ export default async function TarefaPage({
         <p className="mt-6 whitespace-pre-line text-[14px] leading-[1.6] text-mauve">
           {copyDaTarefa(t.tarefaTitulo)}
         </p>
+
+        {bodyTarefa && (
+          <div className="mt-6 card p-5">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+              O que a equipe precisa de você
+            </div>
+            <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
+              {bodyTarefa}
+            </p>
+          </div>
+        )}
+
+        {bodyPost && (
+          <div className="mt-4 card p-5">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+              Sobre esse post
+            </div>
+            <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
+              {bodyPost}
+            </p>
+          </div>
+        )}
 
         <div className="mt-8">
           <TarefaForm

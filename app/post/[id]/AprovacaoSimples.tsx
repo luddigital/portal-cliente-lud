@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type Modo = 'idle' | 'aprovando' | 'pedindoAlteracao';
 
@@ -25,6 +25,44 @@ export function AprovacaoSimples({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<'aprovado' | 'alteracao' | null>(null);
 
+  // Persiste o rascunho — se o cliente sai e volta, o comentário continua aqui.
+  const storageKey = `lud:coment:${tarefaId}`;
+  const rascunhoCarregado = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.comentario === 'string') setComentario(parsed.comentario);
+      }
+    } catch {
+      /* ignora rascunho corrompido */
+    }
+    rascunhoCarregado.current = true;
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!rascunhoCarregado.current) return;
+    try {
+      if (comentario.trim() === '') {
+        window.localStorage.removeItem(storageKey);
+      } else {
+        window.localStorage.setItem(storageKey, JSON.stringify({ comentario }));
+      }
+    } catch {
+      /* localStorage indisponível */
+    }
+  }, [storageKey, comentario]);
+
+  function limparRascunho() {
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      /* ok */
+    }
+  }
+
   const temComentario = comentario.trim() !== '';
 
   async function aprovar() {
@@ -39,6 +77,7 @@ export function AprovacaoSimples({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      limparRascunho();
       setDone('aprovado');
       setTimeout(() => router.push(voltarPara), 1800);
     } catch (e: any) {
@@ -65,6 +104,7 @@ export function AprovacaoSimples({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      limparRascunho();
       setDone('alteracao');
       setTimeout(() => router.push(voltarPara), 1800);
     } catch (e: any) {
@@ -131,36 +171,33 @@ export function AprovacaoSimples({
             )}
           </div>
 
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <span className="hidden sm:inline text-[11px] text-t3">{tarefaTitulo}</span>
-            <div className="flex flex-col-reverse gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={aprovar}
-                disabled={loading}
-                className={`${temComentario ? 'btn-ghost' : 'btn-primary'} w-full sm:w-auto justify-center`}
-                style={
-                  temComentario ? undefined : { background: 'var(--prazo-em-dia)' }
-                }
-              >
-                {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar'}
-              </button>
-              <button
-                type="button"
-                onClick={pedirAlteracao}
-                disabled={loading}
-                className={`${temComentario ? 'btn-primary' : 'btn-ghost'} w-full sm:w-auto justify-center`}
-                style={
-                  temComentario ? { background: 'var(--prazo-hoje)' } : undefined
-                }
-              >
-                {modo === 'pedindoAlteracao'
-                  ? 'Enviando…'
-                  : temComentario
-                    ? '✏️ Enviar pedido de alteração'
-                    : 'Pedir alteração'}
-              </button>
-            </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={aprovar}
+              disabled={loading}
+              className={`${temComentario ? 'btn-ghost' : 'btn-primary'} w-full justify-center whitespace-nowrap`}
+              style={
+                temComentario ? undefined : { background: 'var(--prazo-em-dia)' }
+              }
+            >
+              {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar'}
+            </button>
+            <button
+              type="button"
+              onClick={pedirAlteracao}
+              disabled={loading}
+              className={`${temComentario ? 'btn-primary' : 'btn-ghost'} w-full justify-center whitespace-nowrap`}
+              style={
+                temComentario ? { background: 'var(--prazo-hoje)' } : undefined
+              }
+            >
+              {modo === 'pedindoAlteracao'
+                ? 'Enviando…'
+                : temComentario
+                  ? '✏️ Enviar alteração'
+                  : 'Pedir alteração'}
+            </button>
           </div>
         </div>
       )}

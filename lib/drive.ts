@@ -81,6 +81,24 @@ export async function ensurePostFolder(opts: {
   return { folderId: dataFolder, webViewLink: meta.data.webViewLink! };
 }
 
+/**
+ * Pasta de materiais gerais do cliente (envios livres, fora de um post).
+ * `[Cliente]/Materiais do cliente/`
+ */
+export async function ensureMateriaisFolder(
+  cliente: string,
+): Promise<{ folderId: string; webViewLink: string }> {
+  const drive = driveClient();
+  const clienteFolder = await ensureFolder(env.drive.rootFolderId, sanitize(cliente));
+  const matFolder = await ensureFolder(clienteFolder, 'Materiais do cliente');
+  const meta = await drive.files.get({
+    fileId: matFolder,
+    fields: 'webViewLink',
+    supportsAllDrives: true,
+  });
+  return { folderId: matFolder, webViewLink: meta.data.webViewLink! };
+}
+
 export async function uploadFile(opts: {
   folderId: string;
   name: string;
@@ -126,6 +144,43 @@ export function extractDriveFileId(url: string): string | null {
   if (m1) return m1[1];
   const m2 = url.match(/[?&]id=([^&#]+)/);
   return m2 ? m2[1] : null;
+}
+
+export type MaterialBanco = {
+  cliente: string;
+  arquivos: DriveFileResumido[];
+};
+
+/**
+ * Varre as pastas "Materiais do cliente" de cada cliente no Drive e devolve
+ * os arquivos enviados — alimenta a seção Banco de materiais do admin.
+ */
+export async function listMateriaisDoBanco(): Promise<MaterialBanco[]> {
+  const raiz = await listFolderFiles(env.drive.rootFolderId);
+  const clienteFolders = raiz.filter((f) => f.isFolder);
+
+  const resultados = await Promise.all(
+    clienteFolders.map(async (cf): Promise<MaterialBanco | null> => {
+      try {
+        const dentro = await listFolderFiles(cf.id);
+        const matFolder = dentro.find(
+          (x) => x.isFolder && x.name === 'Materiais do cliente',
+        );
+        if (!matFolder) return null;
+        const arquivos = (await listFolderFiles(matFolder.id)).filter(
+          (x) => !x.isFolder,
+        );
+        if (arquivos.length === 0) return null;
+        return { cliente: cf.name, arquivos };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return resultados
+    .filter((r): r is MaterialBanco => r !== null)
+    .sort((a, b) => a.cliente.localeCompare(b.cliente, 'pt-BR'));
 }
 
 export async function listFolderFiles(folderId: string): Promise<DriveFileResumido[]> {

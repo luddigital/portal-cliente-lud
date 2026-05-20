@@ -1,9 +1,29 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import { Suspense } from 'react';
 import './globals.css';
+import { ServiceWorkerRegistration } from './_components/ServiceWorkerRegistration';
+import { AdminViewingBanner } from './_components/AdminViewingBanner';
 
 export const metadata: Metadata = {
   title: 'Lud. — Portal do Cliente',
-  description: 'Envie materiais e informações dos seus posts',
+  description: 'Sua central de conteúdos com a Lud.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Lud.',
+  },
+  icons: {
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+    apple: '/icon.svg',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#151521',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -15,7 +35,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <Suspense fallback={null}>
+          <AdminViewingBanner />
+        </Suspense>
+        {children}
+        <ServiceWorkerRegistration />
+      </body>
     </html>
   );
 }

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import {
   listTarefasPendentesPorCategoria,
@@ -9,6 +10,16 @@ import {
 import { EtapaBanner } from './_components/EtapaBanner';
 import { TaskCategoryCard } from './_components/TaskCategoryCard';
 import { CalendarNavigator } from './_components/CalendarNavigator';
+import {
+  CardsSkeleton,
+  CalendarSkeleton,
+  StatsSkeleton,
+} from './_components/Skeletons';
+import { AvisosToggle } from './_components/AvisosToggle';
+import { NotificacoesBell, type NotificacaoItem } from './_components/NotificacoesBell';
+import { EnviarMateriais } from './_components/EnviarMateriais';
+import Link from 'next/link';
+import { listarGruposDoUsuario } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,11 +30,6 @@ const MESES_PT = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ];
 
-function avancarMes(year: number, month: number, delta: number): { year: number; month: number } {
-  const idx = (year * 12 + (month - 1)) + delta;
-  return { year: Math.floor(idx / 12), month: (idx % 12) + 1 };
-}
-
 export default async function Dashboard() {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -31,30 +37,12 @@ export default async function Dashboard() {
   const hoje = new Date();
   const year = hoje.getFullYear();
   const month = hoje.getMonth() + 1;
-  const proxA = avancarMes(year, month, 1);
-  const proxB = avancarMes(year, month, 2);
-
-  const [tarefasPorCat, postsAtual, postsProxA, postsProxB, nomeCliente] = await Promise.all([
-    listTarefasPendentesPorCategoria(session.projetoIds),
-    listPostsDoMes(session.projetoIds, year, month),
-    listPostsDoMes(session.projetoIds, proxA.year, proxA.month),
-    listPostsDoMes(session.projetoIds, proxB.year, proxB.month),
-    getNomeDoCliente(session.email),
-  ]);
-
-  const totalPendencias = ORDEM_CATEGORIAS.reduce(
-    (acc, cat) => acc + tarefasPorCat[cat].length,
-    0,
-  );
-
-  const primeiroNome = (nomeCliente ?? '').split(/\s+/)[0] || 'cliente';
-  const saudacao = `Olá, ${primeiroNome} 👋`;
   const mesAtualLabel = MESES_PT[month - 1];
 
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl xl:max-w-7xl items-center justify-between px-6 py-4">
           <div>
             <div className="text-[20px] font-bold tracking-[-0.02em] text-ink">
               Lud<span className="font-light text-mauve">.</span>
@@ -63,41 +51,48 @@ export default async function Dashboard() {
               Portal do cliente
             </div>
           </div>
-          <form action="/api/auth/logout" method="post">
-            <button className="text-[12px] text-mauve transition hover:text-ink">Sair</button>
-          </form>
+          <div className="flex items-center gap-3">
+            <Suspense
+              fallback={
+                <div className="h-9 w-9 rounded-full bg-bgSoft animate-pulse" />
+              }
+            >
+              <Sino projetoIds={session.projetoIds} />
+            </Suspense>
+            <form action="/api/auth/logout" method="post">
+              <button className="text-[12px] text-mauve transition hover:text-ink">Sair</button>
+            </form>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-8 space-y-8">
-        <EtapaBanner
-          saudacao={saudacao}
-          pendencias={totalPendencias}
-          postsNoMes={postsAtual.length}
-          mesLabel={mesAtualLabel}
-        />
+      <main className="mx-auto max-w-6xl xl:max-w-7xl px-6 py-8 space-y-8">
+        <Suspense fallback={<StatsSkeleton />}>
+          <BannerStats
+            email={session.email}
+            projetoIds={session.projetoIds}
+            year={year}
+            month={month}
+            mesAtualLabel={mesAtualLabel}
+          />
+        </Suspense>
+
+        <AvisosToggle />
+
+        <Suspense fallback={null}>
+          <ConversasShortcut email={session.email} />
+        </Suspense>
 
         <section>
           <div className="mb-3 flex items-end justify-between">
             <div>
               <h2 className="hub-section-title">Tarefas pendentes</h2>
-              <p className="hub-section-sub">
-                {totalPendencias === 0
-                  ? 'Tudo em dia. Quando precisarmos de algo, aparece aqui.'
-                  : 'Clique nos cards para acessar suas tarefas.'}
-              </p>
+              <p className="hub-section-sub">Clique nos cards para acessar suas tarefas.</p>
             </div>
           </div>
-          <div className="grid gap-2.5 grid-cols-2 md:grid-cols-2 xl:grid-cols-4">
-            {ORDEM_CATEGORIAS.map((cat) => (
-              <TaskCategoryCard
-                key={cat}
-                categoria={cat}
-                tarefas={tarefasPorCat[cat]}
-                href={`/etapa/${cat}`}
-              />
-            ))}
-          </div>
+          <Suspense fallback={<CardsSkeleton />}>
+            <TarefasCards projetoIds={session.projetoIds} />
+          </Suspense>
         </section>
 
         <section className="space-y-6">
@@ -109,15 +104,142 @@ export default async function Dashboard() {
               </p>
             </div>
           </div>
-          <CalendarNavigator
-            meses={[
-              { year, month, posts: postsAtual },
-              { year: proxA.year, month: proxA.month, posts: postsProxA },
-              { year: proxB.year, month: proxB.month, posts: postsProxB },
-            ]}
-          />
+          <Suspense fallback={<CalendarSkeleton />}>
+            <CalendarioMes projetoIds={session.projetoIds} year={year} month={month} />
+          </Suspense>
+        </section>
+
+        <section>
+          <div className="mb-3">
+            <h2 className="hub-section-title">Materiais</h2>
+            <p className="hub-section-sub">
+              Mande fotos, vídeos e arquivos pra equipe quando quiser.
+            </p>
+          </div>
+          <EnviarMateriais />
         </section>
       </main>
     </div>
   );
+}
+
+async function BannerStats({
+  email,
+  projetoIds,
+  year,
+  month,
+  mesAtualLabel,
+}: {
+  email: string;
+  projetoIds: string[];
+  year: number;
+  month: number;
+  mesAtualLabel: string;
+}) {
+  const [nomeCliente, postsAtual, tarefasPorCat] = await Promise.all([
+    getNomeDoCliente(email),
+    listPostsDoMes(projetoIds, year, month),
+    listTarefasPendentesPorCategoria(projetoIds),
+  ]);
+  const primeiroNome = (nomeCliente ?? '').split(/\s+/)[0] || 'cliente';
+  const saudacao = `Olá, ${primeiroNome} 👋`;
+  const totalPendencias = ORDEM_CATEGORIAS.reduce(
+    (acc, cat) => acc + tarefasPorCat[cat].length,
+    0,
+  );
+  return (
+    <EtapaBanner
+      saudacao={saudacao}
+      pendencias={totalPendencias}
+      postsNoMes={postsAtual.length}
+      mesLabel={mesAtualLabel}
+    />
+  );
+}
+
+async function TarefasCards({ projetoIds }: { projetoIds: string[] }) {
+  const tarefasPorCat = await listTarefasPendentesPorCategoria(projetoIds);
+  return (
+    <div className="grid gap-2.5 grid-cols-2 md:grid-cols-2 xl:grid-cols-4">
+      {ORDEM_CATEGORIAS.map((cat) => (
+        <TaskCategoryCard
+          key={cat}
+          categoria={cat}
+          tarefas={tarefasPorCat[cat]}
+          href={`/etapa/${cat}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+async function CalendarioMes({
+  projetoIds,
+  year,
+  month,
+}: {
+  projetoIds: string[];
+  year: number;
+  month: number;
+}) {
+  const postsAtual = await listPostsDoMes(projetoIds, year, month);
+  return (
+    <CalendarNavigator
+      mesInicial={{ year, month, posts: postsAtual }}
+      totalMesesAFrente={2}
+    />
+  );
+}
+
+async function ConversasShortcut({ email }: { email: string }) {
+  // Mostra só se o usuário tem grupos do WhatsApp liberados.
+  let totalGrupos = 0;
+  try {
+    const grupos = await listarGruposDoUsuario(email);
+    totalGrupos = grupos.length;
+  } catch {
+    // Supabase pode não estar configurado ainda — silencioso.
+    return null;
+  }
+  if (totalGrupos === 0) return null;
+
+  return (
+    <Link
+      href="/chat"
+      className="flex items-center gap-3 rounded-lg border border-[rgba(21,21,33,0.08)] bg-white px-4 py-3 transition hover:border-navy/30 hover:bg-bgSoft"
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-navy text-white">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-5.4A8 8 0 1 1 21 12z" />
+        </svg>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-medium text-ink">Conversas com a Lud.</div>
+        <div className="text-[11px] text-t3">
+          {totalGrupos === 1 ? '1 conversa disponível' : `${totalGrupos} conversas disponíveis`}
+        </div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-t3">
+        <path d="M9 6l6 6-6 6" />
+      </svg>
+    </Link>
+  );
+}
+
+async function Sino({ projetoIds }: { projetoIds: string[] }) {
+  const tarefasPorCat = await listTarefasPendentesPorCategoria(projetoIds);
+  const items: NotificacaoItem[] = [];
+  const categorias: CategoriaTarefa[] = ['pauta', 'previas', 'materiais', 'post', 'stories'];
+  for (const cat of categorias) {
+    for (const t of tarefasPorCat[cat]) {
+      items.push({
+        tarefaId: t.tarefaId,
+        postId: t.postId,
+        postTitulo: t.postTitulo,
+        categoria: cat,
+        prazo: t.tarefaPrazo,
+      });
+    }
+  }
+  return <NotificacoesBell items={items} />;
 }

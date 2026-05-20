@@ -47,17 +47,20 @@ function buildGrid(year: number, month: number, posts: PostCalendario[]): CalDay
 }
 
 function PostIcon({ icon, fallback }: { icon: string | null; fallback: string }) {
-  if (!icon) return <span className="shrink-0 leading-none">{fallback}</span>;
-  if (icon.startsWith('http')) {
+  if (icon && icon.startsWith('http')) {
     return (
       <img
         src={icon}
         alt=""
-        className="h-3.5 w-3.5 shrink-0 rounded-sm object-contain"
+        className="mt-px h-2.5 w-2.5 shrink-0 rounded-sm object-contain"
       />
     );
   }
-  return <span className="shrink-0 leading-none">{icon}</span>;
+  return (
+    <span className="inline-flex h-3 w-2.5 shrink-0 items-center justify-center text-[9px] leading-none">
+      {icon || fallback}
+    </span>
+  );
 }
 
 function fallbackEmoji(p: PostCalendario): string {
@@ -96,8 +99,7 @@ export function CalendarMes({
           >
             <div className="hub-cal-day-num">{d.num}</div>
             {d.posts.slice(0, 4).map((p) => {
-              const isPostado = p.status === 'Postado';
-              const labelStatus = p.statusGeral ?? p.tarefaAtualTitulo ?? p.etapaLabel;
+              const labelStatus = p.statusGeral ?? p.etapaLabel;
               return (
                 <Link
                   key={p.id}
@@ -109,15 +111,15 @@ export function CalendarMes({
                     <PostIcon icon={p.icon} fallback={fallbackEmoji(p)} />
                     <span className="line-clamp-2 font-medium">{p.titulo}</span>
                   </div>
-                  {isPostado ? (
-                    <span className="hidden sm:inline-flex items-center gap-1 rounded bg-[var(--prazo-em-dia-soft)] px-1.5 py-0.5 text-[9.5px] font-semibold text-[var(--prazo-em-dia)]">
-                      ✓ Postado
-                    </span>
-                  ) : (
-                    <span className="hidden sm:inline-block max-w-full truncate rounded bg-[rgba(21,21,33,0.06)] px-1.5 py-0.5 text-[9.5px] font-medium text-t2">
-                      {labelStatus}
-                    </span>
-                  )}
+                  <span
+                    className="hidden sm:inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[9.5px] font-semibold"
+                    style={{
+                      background: `var(--cal-${p.cor}-soft)`,
+                      color: `var(--cal-${p.cor})`,
+                    }}
+                  >
+                    {labelStatus}
+                  </span>
                 </Link>
               );
             })}

@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getSession } from '@/lib/auth';
@@ -6,6 +7,7 @@ import {
   getPostComDetalhes,
   getTarefaComPost,
   findTarefaClienteProntaDoPost,
+  lerComentariosDoPost,
   type RelacaoItem,
 } from '@/lib/notion';
 import {
@@ -14,15 +16,43 @@ import {
   listFolderFiles,
   type DriveFileResumido,
 } from '@/lib/drive';
+import { env } from '@/lib/env';
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
+import { TarefaForm } from '../../tarefa/[id]/form';
+import { HistoricoBox } from '../../_components/HistoricoBox';
 
 export const dynamic = 'force-dynamic';
+
+/** Define o que o cliente pode fazer no post conforme a tarefa atual. */
+function modoDoPost(titulo: string | null): 'aprovacao' | 'material' | 'leitura' {
+  if (!titulo) return 'leitura';
+  const t = titulo.toLowerCase();
+  if (t.startsWith('aprovação') || t.startsWith('aprovacao')) return 'aprovacao';
+  if (
+    t.includes('materia') ||
+    t.includes('conteúdo') ||
+    t.includes('conteudo') ||
+    t.includes('stories') ||
+    t.includes('direcionamento') ||
+    t.includes('prévi') ||
+    t.includes('previa')
+  ) {
+    return 'material';
+  }
+  return 'aprovacao';
+}
 
 function fmtData(iso: string | null): string {
   if (!iso) return '—';
   const [y, m, d] = iso.split('T')[0].split('-');
   return `${d}/${m}/${y}`;
+}
+
+/** Histórico de comentários do post — discreto, no fim da página. */
+async function HistoricoComentarios({ postId }: { postId: string }) {
+  const comentarios = await lerComentariosDoPost(postId);
+  return <HistoricoBox comentarios={comentarios} />;
 }
 
 function diffDias(iso: string | null): number | null {
@@ -45,7 +75,13 @@ export default async function PostDetalhePage({
 
   const post = await getPostComDetalhes(params.id);
   if (!post) notFound();
-  if (!post.projetoId || !session.projetoIds.includes(post.projetoId)) notFound();
+  const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+  if (
+    !post.projetoId ||
+    (!ehAdmin && !session.projetoIds.includes(post.projetoId))
+  ) {
+    notFound();
+  }
 
   // Carrega a tarefa específica que originou esse fluxo (se vier no query).
   // Se não vier, tenta auto-detectar a tarefa cliente pendente desse post
@@ -61,7 +97,12 @@ export default async function PostDetalhePage({
       tarefaPrazo = t.tarefa.tarefaPrazo;
     }
   } else {
-    const auto = await findTarefaClienteProntaDoPost(post.id);
+    // Auto-detecta a tarefa cliente do post. Pro admin, se não houver tarefa
+    // "pronta", aceita qualquer tarefa cliente aberta (pra sempre conseguir agir).
+    let auto = await findTarefaClienteProntaDoPost(post.id);
+    if (!auto && ehAdmin) {
+      auto = await findTarefaClienteProntaDoPost(post.id, { exigirPronto: false });
+    }
     if (auto) {
       const t = await getTarefaComPost(auto.tarefaId);
       if (t && t.tarefa.postId === post.id) {
@@ -74,6 +115,8 @@ export default async function PostDetalhePage({
 
   const isStory = post.formatoTipo === 'story';
   const etapaLabel = tarefaTitulo ?? (isStory ? 'Direcionamento de Stories' : 'Aprovação');
+  const modo = modoDoPost(tarefaTitulo);
+  const voltarPara = searchParams.from ? `/etapa/${searchParams.from}` : '/';
 
   // Resolve arquivos do Drive: se for pasta, lista o conteúdo; se for arquivo, monta um item.
   const arquivos: PreviewArquivo[] = [];
@@ -143,7 +186,7 @@ export default async function PostDetalhePage({
   return (
     <div className="min-h-screen pb-32">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-3xl lg:max-w-6xl items-center justify-between px-6 py-4">
           <Link
             href="/"
             className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink"
@@ -156,7 +199,7 @@ export default async function PostDetalhePage({
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-6 py-8 space-y-6">
+      <main className="mx-auto max-w-3xl lg:max-w-6xl px-6 py-8 space-y-6">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
@@ -186,7 +229,8 @@ export default async function PostDetalhePage({
           </dl>
         )}
 
-        {arquivos.length > 0 && (
+        {/* conteúdo do post */}
+        {arquivos.length > 0 ? (
           <div>
             <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
               Pré-visualização
@@ -194,32 +238,43 @@ export default async function PostDetalhePage({
             <PostPreview
               arquivos={arquivos}
               formatoTipo={formatoTipoDetectado}
-              tarefaId={tarefaId}
+              postId={post.id}
+              tarefaId={modo === 'aprovacao' ? tarefaId : null}
               tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
               legenda={post.legenda}
-              voltarPara={searchParams.from ? `/etapa/${searchParams.from}` : '/'}
+              voltarPara={voltarPara}
             />
           </div>
-        )}
-
-        {arquivos.length === 0 && (post.bodyCompleto || post.legenda) && (
-          <div className="card p-5">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-              Ideia do post
+        ) : (
+          (post.ideiaDoPost || post.bodyCompleto || post.legenda) && (
+            <div className="card p-5">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                Ideia do post
+              </div>
+              <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
+                {post.ideiaDoPost ?? post.bodyCompleto ?? post.legenda}
+              </p>
             </div>
-            <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
-              {post.bodyCompleto ?? post.legenda}
-            </p>
-          </div>
+          )
         )}
 
-        {arquivos.length === 0 && tarefaId && (
+        {/* ação conforme a etapa do post */}
+        {modo === 'aprovacao' && arquivos.length === 0 && tarefaId && (
           <AprovacaoSimples
             tarefaId={tarefaId}
             tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
-            voltarPara={searchParams.from ? `/etapa/${searchParams.from}` : '/'}
+            voltarPara={voltarPara}
           />
         )}
+
+        {modo === 'material' && tarefaId && (
+          <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} />
+        )}
+
+        {/* histórico de comentários — discreto, no fim da página */}
+        <Suspense fallback={null}>
+          <HistoricoComentarios postId={post.id} />
+        </Suspense>
       </main>
     </div>
   );

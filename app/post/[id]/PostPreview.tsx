@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { LegendaEditavel } from './LegendaEditavel';
 
 export type PreviewArquivo = {
   id: string;
@@ -71,6 +72,7 @@ const FORMATO_INFO: Record<
 export function PostPreview({
   arquivos,
   formatoTipo,
+  postId,
   tarefaId,
   tarefaTitulo,
   legenda,
@@ -78,6 +80,7 @@ export function PostPreview({
 }: {
   arquivos: PreviewArquivo[];
   formatoTipo: FormatoTipo;
+  postId: string;
   tarefaId: string | null;
   tarefaTitulo: string;
   legenda?: string | null;
@@ -100,6 +103,58 @@ export function PostPreview({
   const [done, setDone] = useState<'aprovado' | 'alteracao' | null>(null);
 
   const ativoArq = arquivos[ativo];
+
+  // Persistência do rascunho de comentário — se o cliente sai da página e
+  // volta, o que ele escreveu continua aqui (não some).
+  const storageKey = tarefaId ? `lud:coment:${tarefaId}` : null;
+  const rascunhoCarregado = useRef(false);
+
+  useEffect(() => {
+    if (!storageKey) {
+      rascunhoCarregado.current = true;
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.comentarioGeral === 'string') {
+          setComentarioGeral(parsed.comentarioGeral);
+        }
+        if (Array.isArray(parsed.marcacoes)) {
+          setMarcacoes(parsed.marcacoes);
+        }
+      }
+    } catch {
+      /* ignora rascunho corrompido */
+    }
+    rascunhoCarregado.current = true;
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageKey || !rascunhoCarregado.current) return;
+    try {
+      if (comentarioGeral.trim() === '' && marcacoes.length === 0) {
+        window.localStorage.removeItem(storageKey);
+      } else {
+        window.localStorage.setItem(
+          storageKey,
+          JSON.stringify({ comentarioGeral, marcacoes }),
+        );
+      }
+    } catch {
+      /* localStorage indisponível — segue sem persistir */
+    }
+  }, [storageKey, comentarioGeral, marcacoes]);
+
+  function limparRascunho() {
+    if (!storageKey) return;
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      /* ok */
+    }
+  }
 
   // Limpa estado de pausa ao trocar de slide
   useEffect(() => {
@@ -158,6 +213,7 @@ export function PostPreview({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      limparRascunho();
       setDone('aprovado');
       setTimeout(() => router.push(voltarPara), 1800);
     } catch (e: any) {
@@ -185,6 +241,7 @@ export function PostPreview({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      limparRascunho();
       setDone('alteracao');
       setTimeout(() => router.push(voltarPara), 1800);
     } catch (e: any) {
@@ -204,7 +261,14 @@ export function PostPreview({
   }
 
   return (
-    <div className="space-y-6">
+    <div
+      className={
+        tarefaId
+          ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_clamp(340px,32%,420px)] lg:gap-6 lg:items-start'
+          : ''
+      }
+    >
+      <div className="space-y-6">
       <Carousel
         arquivos={arquivos}
         ativo={ativo}
@@ -216,14 +280,7 @@ export function PostPreview({
       />
 
       {legenda && (
-        <div className="card p-5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-            Legenda
-          </div>
-          <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
-            {legenda}
-          </p>
-        </div>
+        <LegendaEditavel postId={postId} legendaInicial={legenda} />
       )}
 
       {ativoArq && (
@@ -239,9 +296,11 @@ export function PostPreview({
           </a>
         </div>
       )}
+      </div>
 
       {tarefaId && (
-        <div className="card sticky bottom-2 sm:bottom-6 z-20 space-y-3 border border-[rgba(21,21,33,0.08)] bg-white p-4 sm:p-5 shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
+        <div className="mt-6 lg:mt-0">
+        <div className="card sticky bottom-2 sm:bottom-6 lg:bottom-auto lg:top-6 z-20 space-y-3 border border-[rgba(21,21,33,0.08)] bg-white p-4 sm:p-5 shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
           {marcacoes.length > 0 && (
             <ul className="flex flex-wrap gap-1.5">
               {marcacoes.map((m, i) => (
@@ -367,14 +426,13 @@ export function PostPreview({
                     )}
                   </div>
 
-                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="hidden sm:inline text-[11px] text-t3">{tarefaTitulo}</span>
-                    <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                  <div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <button
                         type="button"
                         onClick={aprovar}
                         disabled={loading}
-                        className={`${temComentario ? 'btn-ghost' : 'btn-primary'} w-full sm:w-auto justify-center`}
+                        className={`${temComentario ? 'btn-ghost' : 'btn-primary'} w-full justify-center whitespace-nowrap`}
                         style={
                           temComentario
                             ? undefined
@@ -387,7 +445,7 @@ export function PostPreview({
                         type="button"
                         onClick={pedirAlteracao}
                         disabled={loading}
-                        className={`${temComentario ? 'btn-primary' : 'btn-ghost'} w-full sm:w-auto justify-center`}
+                        className={`${temComentario ? 'btn-primary' : 'btn-ghost'} w-full justify-center whitespace-nowrap`}
                         style={
                           temComentario
                             ? { background: 'var(--prazo-hoje)' }
@@ -397,7 +455,7 @@ export function PostPreview({
                         {modo === 'pedindoAlteracao'
                           ? 'Enviando…'
                           : temComentario
-                            ? '✏️ Enviar pedido de alteração'
+                            ? '✏️ Enviar alteração'
                             : 'Pedir alteração'}
                       </button>
                     </div>
@@ -406,6 +464,7 @@ export function PostPreview({
               );
             })()
           )}
+        </div>
         </div>
       )}
     </div>

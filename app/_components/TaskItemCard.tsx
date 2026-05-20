@@ -34,12 +34,8 @@ function diffDias(iso: string | null): number | null {
 }
 
 function hrefDaCategoria(categoria: CategoriaTarefa, t: TarefaPendente): string {
-  // Pauta e Post abrem detalhe do post (aprovação)
-  if (categoria === 'pauta' || categoria === 'post') {
-    return `/post/${t.postId}?tarefa=${t.tarefaId}&from=${categoria}`;
-  }
-  // Materiais, Conteúdos Prévios, Stories abrem o form de envio
-  return `/tarefa/${t.tarefaId}?from=${categoria}`;
+  // Tudo abre a página única do post — ela se adapta à etapa (aprovação/material).
+  return `/post/${t.postId}?tarefa=${t.tarefaId}&from=${categoria}`;
 }
 
 function statusPrazo(iso: string | null): {

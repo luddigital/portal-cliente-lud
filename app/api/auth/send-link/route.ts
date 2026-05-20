@@ -12,8 +12,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Email inválido' }, { status: 400 });
   }
 
+  const ehAdmin = env.auth.adminEmails.includes(email.trim().toLowerCase());
   const projetos = await findProjetosByEmail(email);
-  if (projetos.length === 0) {
+  if (projetos.length === 0 && !ehAdmin) {
     return NextResponse.json({ error: 'Email não encontrado nos nossos clientes. Fala com a gente no oi@lud.digital.' }, { status: 404 });
   }
 
