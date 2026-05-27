@@ -22,6 +22,7 @@ const PRINCIPAL: Item[] = [
 
 const GESTAO: Item[] = [
   { label: 'Banco de materiais', href: '/admin/banco-de-materiais', icon: 'banco' },
+  { label: 'Tráfego pago', href: '/admin/trafego-pago', icon: 'trafego' },
   { label: 'WhatsApp', href: '/admin/whatsapp', icon: 'chat' },
   { label: 'Notificações', href: '/admin/notificacoes', icon: 'sino', badge: 3 },
 ];
@@ -36,6 +37,7 @@ const ICONES = {
   grafico: 'M3 3v18h18 M7 14l4-4 3 3 5-6',
   cliente: 'M12 8a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M5 21c0-4 3-6 7-6s7 2 7 6',
   banco: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  trafego: 'M3 21h18 M7 21V11 M12 21V6 M17 21V14',
   chat: 'M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-5.4A8 8 0 1 1 21 12z',
   sino: 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9 M13.7 21a2 2 0 0 1-3.4 0',
 };

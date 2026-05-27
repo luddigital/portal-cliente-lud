@@ -516,6 +516,7 @@ export type ProjetoListItem = {
   id: string;
   nome: string;
   status: string | null;
+  clienteId: string;
   clienteNome: string;
 };
 
@@ -525,12 +526,12 @@ export async function listAllProjetos(): Promise<ProjetoListItem[]> {
   const porCliente = await Promise.all(
     clientes.map(async (c) => {
       const ids = await getProjetosDoCliente(c.id);
-      return { cliente: c.nome, ids };
+      return { clienteId: c.id, clienteNome: c.nome, ids };
     }),
   );
   const vistos = new Set<string>();
   const out: ProjetoListItem[] = [];
-  for (const { cliente, ids } of porCliente) {
+  for (const { clienteId, clienteNome, ids } of porCliente) {
     for (const id of ids) {
       if (vistos.has(id)) continue;
       vistos.add(id);
@@ -544,7 +545,13 @@ export async function listAllProjetos(): Promise<ProjetoListItem[]> {
           getProp(proj, 'Status Manual')?.select?.name ??
           getProp(proj, 'Status')?.status?.name ??
           null;
-        out.push({ id, nome: txt(tp?.title) || 'Projeto', status, clienteNome: cliente });
+        out.push({
+          id,
+          nome: txt(tp?.title) || 'Projeto',
+          status,
+          clienteId,
+          clienteNome,
+        });
       } catch {}
     }
   }

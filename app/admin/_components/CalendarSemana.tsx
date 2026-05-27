@@ -9,19 +9,9 @@ export type DiaSemana = {
   posts: PostCalendario[];
 };
 
-function ehPostado(status: string | null): boolean {
-  return (
-    (status ?? '')
-      .normalize('NFD')
-      .replace(/[^a-zA-Z]/g, '')
-      .toLowerCase() === 'postado'
-  );
-}
-
 function PostCard({ p }: { p: PostCalendario }) {
-  const postado = ehPostado(p.status);
-  const cor = postado ? 'publicado' : p.cor;
-  const label = postado ? '✓ Postado' : p.etapaLabel;
+  // Mostra o "Status Geral" do Notion. Cai pro etapaLabel se estiver vazio.
+  const label = p.statusGeral ?? p.etapaLabel;
   return (
     <div className="rounded-md border border-[rgba(21,21,33,0.1)] bg-white px-1.5 py-1 sm:px-2 sm:py-1.5">
       <div className="truncate text-[9px] font-semibold uppercase tracking-[0.06em] text-t3">
@@ -33,8 +23,8 @@ function PostCard({ p }: { p: PostCalendario }) {
       <span
         className="mt-1 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[9.5px] font-semibold"
         style={{
-          background: `var(--cal-${cor}-soft)`,
-          color: `var(--cal-${cor})`,
+          background: `var(--cal-${p.cor}-soft)`,
+          color: `var(--cal-${p.cor})`,
         }}
       >
         {label}
