@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
+import { env } from '@/lib/env';
 import {
   listTarefasPendentesPorCategoria,
   listPostsDoMes,
@@ -33,6 +34,10 @@ const MESES_PT = [
 export default async function Dashboard() {
   const session = await getSession();
   if (!session) redirect('/login');
+
+  // Admin sem projetos vinculados não tem o que ver na área do cliente — manda pro admin.
+  const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+  if (ehAdmin && session.projetoIds.length === 0) redirect('/admin');
 
   const hoje = new Date();
   const year = hoje.getFullYear();

@@ -20,5 +20,8 @@ export async function GET(req: Request) {
   }
 
   await createSession({ email: payload.email, projetoIds: projetos.map((p) => p.id) });
-  return NextResponse.redirect(new URL('/', url));
+  // Admin sem projetos vinculados vai direto pra /admin.
+  // Admin com projetos ou cliente comum cai em / (área do cliente).
+  const destino = ehAdmin && projetos.length === 0 ? '/admin' : '/';
+  return NextResponse.redirect(new URL(destino, url));
 }
