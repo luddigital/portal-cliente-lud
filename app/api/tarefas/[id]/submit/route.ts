@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import {
-  anexarTextoAoPost,
   atualizarLinkDriveDoPost,
   comentarPost,
   concluirTarefa,
@@ -70,19 +69,16 @@ async function handle(req: Request, tarefaId: string) {
     await atualizarLinkDriveDoPost(t.postId, `Materiais — ${t.postTitulo}`, driveLink);
   }
 
-  if (texto) {
-    await anexarTextoAoPost(
-      t.postId,
-      `Informações enviadas pelo cliente — ${t.tarefaTitulo}`,
-      texto,
-    );
-  }
-
+  // O texto vem só como comentário no Notion — não escrevemos no corpo do post.
   const partes: string[] = [`✅ Tarefa "${t.tarefaTitulo}" — recebida do cliente.`];
   if (totalArquivos > 0 && driveLink) {
     partes.push(`📎 ${totalArquivos} arquivo${totalArquivos > 1 ? 's' : ''} no Drive: ${driveLink}`);
   }
-  if (texto) partes.push('📝 Informações enviadas pelo cliente (ver página do post).');
+  if (texto) {
+    partes.push('');
+    partes.push(`📝 Informações enviadas pelo cliente:`);
+    partes.push(texto);
+  }
   await comentarPost(t.postId, partes.join('\n'));
 
   await concluirTarefa(t.tarefaId);

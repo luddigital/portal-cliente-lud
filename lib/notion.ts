@@ -2368,9 +2368,21 @@ export async function concluirTarefa(tarefaId: string): Promise<void> {
 }
 
 export async function comentarPost(postId: string, texto: string): Promise<void> {
+  // Notion limita cada rich_text item em 2000 chars — quebramos em pedaços.
+  const LIMITE = 1900;
+  const pedacos: string[] = [];
+  let resto = texto;
+  while (resto.length > LIMITE) {
+    let corte = resto.lastIndexOf('\n', LIMITE);
+    if (corte < LIMITE / 2) corte = LIMITE;
+    pedacos.push(resto.slice(0, corte));
+    resto = resto.slice(corte);
+  }
+  if (resto.length > 0) pedacos.push(resto);
+
   await notion.comments.create({
     parent: { page_id: postId },
-    rich_text: [{ type: 'text', text: { content: texto } }],
+    rich_text: pedacos.map((p) => ({ type: 'text', text: { content: p } })),
   });
 }
 
