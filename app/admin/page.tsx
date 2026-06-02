@@ -21,7 +21,7 @@ import { AdminAvisarPanel } from './AdminAvisarPanel';
 import { EntregaCard } from './EntregaCard';
 import { BotaoCopiarLink } from './BotaoCopiarLink';
 import { CalendarSemana, type DiaSemana } from './_components/CalendarSemana';
-import { AtualizacoesRecentes } from './_components/AtualizacoesRecentes';
+import { AtualizacoesCompacto } from './_components/AtualizacoesCompacto';
 
 const DIAS_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -114,28 +114,22 @@ export default async function AdminPage({
           </Suspense>
         </section>
 
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
-              Atualizações recentes
-            </h2>
-            <p className="mt-1 text-[14px] text-t2">
-              Mudanças de status e novos comentários nos posts. Cliente clicar pra abrir o card.
-            </p>
-          </div>
+        <section>
           <Suspense
             fallback={
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
+              <div className="overflow-hidden rounded-xl border border-[rgba(21,21,33,0.06)] bg-white">
+                {Array.from({ length: 5 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-[78px] rounded-xl border border-[rgba(21,21,33,0.06)] bg-bgSoft animate-pulse"
+                    className={`h-[42px] bg-bgSoft/40 animate-pulse ${
+                      i > 0 ? 'border-t border-[rgba(21,21,33,0.05)]' : ''
+                    }`}
                   />
                 ))}
               </div>
             }
           >
-            <AtualizacoesRecentes />
+            <AtualizacoesCompacto />
           </Suspense>
         </section>
 
