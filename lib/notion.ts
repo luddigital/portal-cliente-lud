@@ -2464,3 +2464,155 @@ export async function atualizarLinkDriveDoPost(postId: string, nome: string, url
     },
   });
 }
+
+// ===== Atualizações recentes (admin home) =====
+
+export type AtualizacaoRecente = {
+  id: string; // chave única (post:tipo:hash)
+  tipo: 'edicao' | 'comentario';
+  postId: string;
+  postTitulo: string;
+  projetoId: string | null;
+  projetoNome: string | null;
+  status: string | null;
+  statusGeral: string | null;
+  quando: string; // ISO
+  resumo: string; // texto curto do evento
+};
+
+/**
+ * Lista as atualizações recentes de posts (edições + comentários) consolidadas.
+ * Usado na home do admin pra mostrar o feed de "o que mudou agora há pouco".
+ *
+ * Estratégia: pega os N posts mais recentemente editados, lê os comentários de
+ * cada um e mescla edições + comentários num feed único ordenado por data.
+ */
+async function _listAtualizacoesRecentesUncached(
+  limit: number,
+): Promise<AtualizacaoRecente[]> {
+  // 1) Posts mais recentemente editados
+  const res = await notion.databases.query({
+    database_id: env.notion.postagensDbId,
+    page_size: Math.max(15, Math.min(40, limit * 2)),
+    sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+  });
+
+  // 2) Resolve nomes de projetos (uma pancada só)
+  const projetoIdsUnicos = new Set<string>();
+  for (const page of res.results as any[]) {
+    const projetoRel =
+      getProp(page, env.notion.postProps.projeto)?.relation ?? [];
+    if (projetoRel[0]?.id) projetoIdsUnicos.add(projetoRel[0].id);
+  }
+  const projetoNomes = new Map<string, string>();
+  await Promise.all(
+    [...projetoIdsUnicos].map(async (id) => {
+      try {
+        const page: any = await cachedPageRetrieve(id);
+        const tp = Object.values(page.properties).find(
+          (p: any) => p.type === 'title',
+        ) as any;
+        projetoNomes.set(id, txt(tp?.title) || 'Projeto');
+      } catch {
+        projetoNomes.set(id, 'Projeto');
+      }
+    }),
+  );
+
+  // 3) Pra cada post, busca comentários em paralelo (em lotes pra não estourar rate-limit)
+  const eventos: AtualizacaoRecente[] = [];
+  const pages = res.results as any[];
+  const lote = 5;
+  for (let i = 0; i < pages.length; i += lote) {
+    const fatia = pages.slice(i, i + lote);
+    await Promise.all(
+      fatia.map(async (page) => {
+        const projetoRel =
+          getProp(page, env.notion.postProps.projeto)?.relation ?? [];
+        const projetoId = projetoRel[0]?.id ?? null;
+        const projetoNome = projetoId ? projetoNomes.get(projetoId) ?? null : null;
+        const tp = Object.values(page.properties).find(
+          (p: any) => p.type === 'title',
+        ) as any;
+        const titulo = txt(tp?.title) || 'Post sem título';
+        const status =
+          getProp(page, env.notion.postProps.status)?.status?.name ?? null;
+        const statusGeralProp = getProp(page, 'Status Geral');
+        const statusGeral =
+          statusGeralProp?.formula?.type === 'string'
+            ? (statusGeralProp.formula.string ?? null)
+            : null;
+        const lastEdited = page.last_edited_time as string;
+
+        // 3a) Evento de edição/status atual
+        eventos.push({
+          id: `${page.id}:edicao:${lastEdited}`,
+          tipo: 'edicao',
+          postId: page.id,
+          postTitulo: titulo,
+          projetoId,
+          projetoNome,
+          status,
+          statusGeral,
+          quando: lastEdited,
+          resumo: statusGeral
+            ? `Status atual: ${statusGeral}`
+            : status
+              ? `Status atual: ${status}`
+              : 'Post atualizado',
+        });
+
+        // 3b) Eventos de comentários (top 3 mais recentes)
+        try {
+          const comResp = await notion.comments.list({ block_id: page.id });
+          const comentarios = (comResp.results as any[])
+            .map((c) => ({
+              id: c.id,
+              texto: (c.rich_text ?? [])
+                .map((r: any) => r.plain_text)
+                .join('')
+                .trim(),
+              criadoEm: c.created_time as string,
+            }))
+            .filter((c) => c.texto.length > 0)
+            .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))
+            .slice(0, 3);
+          for (const c of comentarios) {
+            const trecho =
+              c.texto.length > 140 ? c.texto.slice(0, 140) + '…' : c.texto;
+            eventos.push({
+              id: `${page.id}:com:${c.id}`,
+              tipo: 'comentario',
+              postId: page.id,
+              postTitulo: titulo,
+              projetoId,
+              projetoNome,
+              status,
+              statusGeral,
+              quando: c.criadoEm,
+              resumo: trecho,
+            });
+          }
+        } catch {
+          // sem permissão de ler comentários — ignora
+        }
+      }),
+    );
+  }
+
+  // 4) Ordena por data desc e retorna top N
+  eventos.sort((a, b) => b.quando.localeCompare(a.quando));
+  return eventos.slice(0, limit);
+}
+
+const _listAtualizacoesRecentesCached = unstable_cache(
+  _listAtualizacoesRecentesUncached,
+  ['list-atualizacoes-recentes-v1'],
+  { revalidate: 120, tags: [TAG_POSTS] }, // 2 min
+);
+
+export async function listAtualizacoesRecentes(
+  limit = 20,
+): Promise<AtualizacaoRecente[]> {
+  return _listAtualizacoesRecentesCached(limit);
+}
