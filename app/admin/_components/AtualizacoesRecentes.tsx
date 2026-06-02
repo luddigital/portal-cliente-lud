@@ -153,8 +153,8 @@ function LinhaAtualizacao({ a }: { a: AtualizacaoRecente }) {
   );
 }
 
-export async function AtualizacoesRecentes() {
-  const itens = await listAtualizacoesRecentes(15);
+export async function AtualizacoesRecentes({ limit = 15 }: { limit?: number } = {}) {
+  const itens = await listAtualizacoesRecentes(limit);
   if (itens.length === 0) {
     return (
       <p className="text-[13px] text-t3">
