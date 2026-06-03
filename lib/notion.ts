@@ -2484,22 +2484,47 @@ export type AtualizacaoRecente = {
  * Lista as atualizações recentes de posts (edições + comentários) consolidadas.
  * Usado na home do admin pra mostrar o feed de "o que mudou agora há pouco".
  *
- * Estratégia: pega os N posts mais recentemente editados, lê os comentários de
- * cada um e mescla edições + comentários num feed único ordenado por data.
+ * Estratégia: o sort `last_edited_time` da API do Notion não é confiável em
+ * databases grandes (2k+ posts) — ele retorna resultados fora de ordem. Então
+ * a gente filtra por Data Postagem nos últimos 90 dias (reduz drasticamente o
+ * universo) e ordena LOCAL pelo last_edited_time antes de pegar os top N.
  */
 async function _listAtualizacoesRecentesUncached(
   limit: number,
 ): Promise<AtualizacaoRecente[]> {
-  // 1) Posts mais recentemente editados
-  const res = await notion.databases.query({
-    database_id: env.notion.postagensDbId,
-    page_size: Math.max(15, Math.min(40, limit * 2)),
-    sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
-  });
+  // 1) Janela de 90 dias atrás (do dia de hoje pro lado de cá da história — captura
+  //    posts agendados pra futuro também porque "Data Postagem" >= hoje-90)
+  const hoje = new Date();
+  const janelaDias = 90;
+  const desde = new Date(hoje);
+  desde.setDate(desde.getDate() - janelaDias);
+  const desdeISO = desde.toISOString().split('T')[0];
 
-  // 2) Resolve nomes de projetos (uma pancada só)
+  // 2) Busca todos os posts dentro da janela (com paginação)
+  const pages: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: env.notion.postagensDbId,
+      page_size: 100,
+      start_cursor: cursor,
+      filter: {
+        property: env.notion.postProps.data,
+        date: { on_or_after: desdeISO },
+      },
+    });
+    pages.push(...(res.results as any[]));
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+
+  // 3) Ordena LOCAL pelo last_edited_time desc e pega o top (limit * 2) pra ter
+  //    margem — depois adicionamos comentários que podem ser mais recentes
+  pages.sort((a, b) => (b.last_edited_time as string).localeCompare(a.last_edited_time as string));
+  const topPages = pages.slice(0, Math.max(15, Math.min(60, limit * 3)));
+
+  // 4) Resolve nomes de projetos (uma pancada só)
   const projetoIdsUnicos = new Set<string>();
-  for (const page of res.results as any[]) {
+  for (const page of topPages) {
     const projetoRel =
       getProp(page, env.notion.postProps.projeto)?.relation ?? [];
     if (projetoRel[0]?.id) projetoIdsUnicos.add(projetoRel[0].id);
@@ -2519,12 +2544,11 @@ async function _listAtualizacoesRecentesUncached(
     }),
   );
 
-  // 3) Pra cada post, busca comentários em paralelo (em lotes pra não estourar rate-limit)
+  // 5) Pra cada post do top, busca comentários em paralelo (em lotes pra não estourar rate-limit)
   const eventos: AtualizacaoRecente[] = [];
-  const pages = res.results as any[];
   const lote = 5;
-  for (let i = 0; i < pages.length; i += lote) {
-    const fatia = pages.slice(i, i + lote);
+  for (let i = 0; i < topPages.length; i += lote) {
+    const fatia = topPages.slice(i, i + lote);
     await Promise.all(
       fatia.map(async (page) => {
         const projetoRel =
@@ -2607,7 +2631,7 @@ async function _listAtualizacoesRecentesUncached(
 
 const _listAtualizacoesRecentesCached = unstable_cache(
   _listAtualizacoesRecentesUncached,
-  ['list-atualizacoes-recentes-v2'],
+  ['list-atualizacoes-recentes-v3-janela'],
   { revalidate: 30, tags: [TAG_POSTS] }, // 30s — feed precisa ser responsivo
 );
 
