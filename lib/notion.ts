@@ -2548,28 +2548,33 @@ async function _listAtualizacoesRecentesUncached(
     });
   }
 
-  // 2) Tarefas — busca um lote recente e ordena local. Como o sort do Notion
-  //    pode falhar, fazemos paginação limitada e ordenamos no nó.
+  // 2) Tarefas FINALIZADAS nos últimos 14 dias — sort por "Finalizada em" desc
+  //    funciona bem mesmo em banco grande (o sort por last_edited_time não).
+  //    Esse é o sinal MAIS importante: quando o cliente aprova arte, conclui
+  //    materiais, etc., o "Finalizada em" da tarefa é preenchido.
+  const desdeTarefas = new Date(hoje);
+  desdeTarefas.setDate(desdeTarefas.getDate() - 14);
+  const desdeTarefasISO = desdeTarefas.toISOString().split('T')[0];
   const tarefasBruto: any[] = [];
   let curT: string | undefined;
-  let paginas = 0;
   do {
-    const res = await notion.databases.query({
+    const resT = await notion.databases.query({
       database_id: env.notion.tarefasDbId,
       page_size: 100,
       start_cursor: curT,
+      filter: {
+        property: env.notion.taskProps.finalizada,
+        date: { on_or_after: desdeTarefasISO },
+      },
+      sorts: [
+        { property: env.notion.taskProps.finalizada, direction: 'descending' },
+      ],
     });
-    tarefasBruto.push(...(res.results as any[]));
-    curT = res.has_more ? res.next_cursor ?? undefined : undefined;
-    paginas++;
-    // cap em 8 páginas (800 tarefas) — suficiente pra cobrir alguns dias
-    if (paginas >= 8) break;
+    tarefasBruto.push(...(resT.results as any[]));
+    curT = resT.has_more ? resT.next_cursor ?? undefined : undefined;
+    if (tarefasBruto.length >= 120) break; // suficiente pro feed
   } while (curT);
-  tarefasBruto.sort((a, b) =>
-    (b.last_edited_time as string).localeCompare(a.last_edited_time as string),
-  );
-  // Tarefas top — pega umas 80 mais recentes pra ter material pro feed
-  const tarefasTop = tarefasBruto.slice(0, 80);
+  const tarefasTop = tarefasBruto;
 
   // 3) Posts top (pelo last_edited_time do próprio post)
   const postsOrdenados = [...postsBruto].sort((a, b) =>
@@ -2598,7 +2603,9 @@ async function _listAtualizacoesRecentesUncached(
 
   const eventos: AtualizacaoRecente[] = [];
 
-  // 5) Eventos de TAREFA — fonte principal de "o que mudou"
+  // 5) Eventos de TAREFA — fonte principal de "o que mudou".
+  //    quando = data em que foi marcada como Finalizada (mais semântico que
+  //    last_edited_time, que pode oscilar por edições incidentais).
   for (const t of tarefasTop) {
     const postRel = getProp(t, env.notion.taskProps.post)?.relation ?? [];
     const postId = postRel[0]?.id ?? null;
@@ -2611,9 +2618,14 @@ async function _listAtualizacoesRecentesUncached(
     const tarefaTitulo = txt(tp?.title) || 'Tarefa';
     const tarefaStatus =
       getProp(t, env.notion.taskProps.status)?.status?.name ?? null;
-    const quando = t.last_edited_time as string;
+    const finalizadaEm =
+      getProp(t, env.notion.taskProps.finalizada)?.date?.start ?? null;
+    if (!finalizadaEm) continue;
+    // Normaliza pra UTC (vem com timezone tipo -03:00) pra ordenar junto com
+    // os outros eventos que vêm em UTC
+    const quando = new Date(finalizadaEm).toISOString();
     eventos.push({
-      id: `${postId}:tarefa:${t.id}:${quando}`,
+      id: `${postId}:tarefa:${t.id}`,
       tipo: 'tarefa',
       postId,
       postTitulo: meta.titulo,
@@ -2717,7 +2729,7 @@ async function _listAtualizacoesRecentesUncached(
 
 const _listAtualizacoesRecentesCached = unstable_cache(
   _listAtualizacoesRecentesUncached,
-  ['list-atualizacoes-recentes-v4-tarefas'],
+  ['list-atualizacoes-recentes-v5-finalizadas'],
   { revalidate: 30, tags: [TAG_POSTS, TAG_TAREFAS] }, // 30s
 );
 
