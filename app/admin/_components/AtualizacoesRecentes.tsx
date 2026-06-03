@@ -83,6 +83,21 @@ function IconeComentario() {
   );
 }
 
+function IconeTarefa() {
+  return (
+    <span
+      className="mt-[1px] flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full"
+      style={{ background: 'var(--prazo-em-dia-soft)', color: 'var(--prazo-em-dia)' }}
+      aria-hidden
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 5h13M3 12h13M3 19h9" />
+        <path d="M18 17l2 2 4-4" />
+      </svg>
+    </span>
+  );
+}
+
 function StatusPill({ status }: { status: string | null }) {
   if (!status) return null;
   const cor = corDoStatus(status);
@@ -101,7 +116,12 @@ function StatusPill({ status }: { status: string | null }) {
 }
 
 function LinhaAtualizacao({ a }: { a: AtualizacaoRecente }) {
-  const ehComentario = a.tipo === 'comentario';
+  const corBarra =
+    a.tipo === 'comentario'
+      ? 'var(--cal-alteracao-soft)'
+      : a.tipo === 'tarefa'
+        ? 'var(--prazo-em-dia-soft)'
+        : 'var(--cal-agendado-soft)';
   return (
     <Link
       href={`/post/${a.postId}`}
@@ -120,14 +140,16 @@ function LinhaAtualizacao({ a }: { a: AtualizacaoRecente }) {
       {/* Barra vertical separadora */}
       <div
         className="w-[3px] self-stretch rounded-full"
-        style={{
-          background: ehComentario
-            ? 'var(--cal-alteracao-soft)'
-            : 'var(--cal-agendado-soft)',
-        }}
+        style={{ background: corBarra }}
       />
 
-      {ehComentario ? <IconeComentario /> : <IconeEdicao />}
+      {a.tipo === 'comentario' ? (
+        <IconeComentario />
+      ) : a.tipo === 'tarefa' ? (
+        <IconeTarefa />
+      ) : (
+        <IconeEdicao />
+      )}
 
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-semibold text-ink">
@@ -139,8 +161,20 @@ function LinhaAtualizacao({ a }: { a: AtualizacaoRecente }) {
           </div>
         )}
         <div className="mt-1.5 text-[13px] leading-snug">
-          {ehComentario ? (
+          {a.tipo === 'comentario' ? (
             <span className="text-ink">💬 {a.resumo}</span>
+          ) : a.tipo === 'tarefa' ? (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span className="text-[12px] font-medium text-ink">
+                {a.tarefaTitulo}
+              </span>
+              {a.tarefaStatus && (
+                <>
+                  <span className="text-t3">→</span>
+                  <StatusPill status={a.tarefaStatus} />
+                </>
+              )}
+            </span>
           ) : (
             <span className="inline-flex flex-wrap items-center gap-2">
               <StatusPill status={a.statusGeral ?? a.status} />

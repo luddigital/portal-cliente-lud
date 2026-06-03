@@ -2469,7 +2469,7 @@ export async function atualizarLinkDriveDoPost(postId: string, nome: string, url
 
 export type AtualizacaoRecente = {
   id: string; // chave única (post:tipo:hash)
-  tipo: 'edicao' | 'comentario';
+  tipo: 'edicao' | 'comentario' | 'tarefa';
   postId: string;
   postTitulo: string;
   projetoId: string | null;
@@ -2478,30 +2478,32 @@ export type AtualizacaoRecente = {
   statusGeral: string | null;
   quando: string; // ISO
   resumo: string; // texto curto do evento
+  tarefaTitulo?: string | null;
+  tarefaStatus?: string | null;
 };
 
 /**
- * Lista as atualizações recentes de posts (edições + comentários) consolidadas.
- * Usado na home do admin pra mostrar o feed de "o que mudou agora há pouco".
+ * Lista as atualizações recentes consolidadas em 3 fontes:
+ *   - edição do POST (last_edited_time da página de postagem)
+ *   - edição de TAREFA ligada ao post (quando alguém aprova/conclui uma tarefa,
+ *     o post em si não muda, mas a tarefa sim — esse é o sinal mais comum)
+ *   - COMENTÁRIO novo no card do post
  *
- * Estratégia: o sort `last_edited_time` da API do Notion não é confiável em
- * databases grandes (2k+ posts) — ele retorna resultados fora de ordem. Então
- * a gente filtra por Data Postagem nos últimos 90 dias (reduz drasticamente o
- * universo) e ordena LOCAL pelo last_edited_time antes de pegar os top N.
+ * O sort `last_edited_time` da API do Notion não é confiável em databases
+ * grandes (2k+ itens) — retorna resultados fora de ordem. Então pegamos uma
+ * janela razoável de cada banco e ordenamos LOCAL.
  */
 async function _listAtualizacoesRecentesUncached(
   limit: number,
 ): Promise<AtualizacaoRecente[]> {
-  // 1) Janela de 90 dias atrás (do dia de hoje pro lado de cá da história — captura
-  //    posts agendados pra futuro também porque "Data Postagem" >= hoje-90)
   const hoje = new Date();
   const janelaDias = 90;
   const desde = new Date(hoje);
   desde.setDate(desde.getDate() - janelaDias);
   const desdeISO = desde.toISOString().split('T')[0];
 
-  // 2) Busca todos os posts dentro da janela (com paginação)
-  const pages: any[] = [];
+  // 1) Posts da janela
+  const postsBruto: any[] = [];
   let cursor: string | undefined;
   do {
     const res = await notion.databases.query({
@@ -2513,22 +2515,72 @@ async function _listAtualizacoesRecentesUncached(
         date: { on_or_after: desdeISO },
       },
     });
-    pages.push(...(res.results as any[]));
+    postsBruto.push(...(res.results as any[]));
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
   } while (cursor);
 
-  // 3) Ordena LOCAL pelo last_edited_time desc e pega o top (limit * 2) pra ter
-  //    margem — depois adicionamos comentários que podem ser mais recentes
-  pages.sort((a, b) => (b.last_edited_time as string).localeCompare(a.last_edited_time as string));
-  const topPages = pages.slice(0, Math.max(15, Math.min(60, limit * 3)));
-
-  // 4) Resolve nomes de projetos (uma pancada só)
-  const projetoIdsUnicos = new Set<string>();
-  for (const page of topPages) {
+  // Mapa rápido de postId → metadata (titulo, projeto, status)
+  const postMeta = new Map<
+    string,
+    {
+      titulo: string;
+      projetoId: string | null;
+      status: string | null;
+      statusGeral: string | null;
+    }
+  >();
+  for (const page of postsBruto) {
+    const tp = Object.values(page.properties).find(
+      (p: any) => p.type === 'title',
+    ) as any;
     const projetoRel =
       getProp(page, env.notion.postProps.projeto)?.relation ?? [];
-    if (projetoRel[0]?.id) projetoIdsUnicos.add(projetoRel[0].id);
+    const statusGeralProp = getProp(page, 'Status Geral');
+    postMeta.set(page.id, {
+      titulo: txt(tp?.title) || 'Post sem título',
+      projetoId: projetoRel[0]?.id ?? null,
+      status:
+        getProp(page, env.notion.postProps.status)?.status?.name ?? null,
+      statusGeral:
+        statusGeralProp?.formula?.type === 'string'
+          ? (statusGeralProp.formula.string ?? null)
+          : null,
+    });
   }
+
+  // 2) Tarefas — busca um lote recente e ordena local. Como o sort do Notion
+  //    pode falhar, fazemos paginação limitada e ordenamos no nó.
+  const tarefasBruto: any[] = [];
+  let curT: string | undefined;
+  let paginas = 0;
+  do {
+    const res = await notion.databases.query({
+      database_id: env.notion.tarefasDbId,
+      page_size: 100,
+      start_cursor: curT,
+    });
+    tarefasBruto.push(...(res.results as any[]));
+    curT = res.has_more ? res.next_cursor ?? undefined : undefined;
+    paginas++;
+    // cap em 8 páginas (800 tarefas) — suficiente pra cobrir alguns dias
+    if (paginas >= 8) break;
+  } while (curT);
+  tarefasBruto.sort((a, b) =>
+    (b.last_edited_time as string).localeCompare(a.last_edited_time as string),
+  );
+  // Tarefas top — pega umas 80 mais recentes pra ter material pro feed
+  const tarefasTop = tarefasBruto.slice(0, 80);
+
+  // 3) Posts top (pelo last_edited_time do próprio post)
+  const postsOrdenados = [...postsBruto].sort((a, b) =>
+    (b.last_edited_time as string).localeCompare(a.last_edited_time as string),
+  );
+  const topPosts = postsOrdenados.slice(0, Math.max(15, Math.min(40, limit * 2)));
+
+  // 4) Resolve nomes de projetos (uma pancada só) — junta os projetos
+  //    referenciados em qualquer fonte
+  const projetoIdsUnicos = new Set<string>();
+  for (const m of postMeta.values()) if (m.projetoId) projetoIdsUnicos.add(m.projetoId);
   const projetoNomes = new Map<string, string>();
   await Promise.all(
     [...projetoIdsUnicos].map(async (id) => {
@@ -2544,49 +2596,71 @@ async function _listAtualizacoesRecentesUncached(
     }),
   );
 
-  // 5) Pra cada post do top, busca comentários em paralelo (em lotes pra não estourar rate-limit)
   const eventos: AtualizacaoRecente[] = [];
+
+  // 5) Eventos de TAREFA — fonte principal de "o que mudou"
+  for (const t of tarefasTop) {
+    const postRel = getProp(t, env.notion.taskProps.post)?.relation ?? [];
+    const postId = postRel[0]?.id ?? null;
+    if (!postId) continue;
+    const meta = postMeta.get(postId);
+    if (!meta) continue; // post fora da janela — ignora
+    const tp = Object.values(t.properties).find(
+      (p: any) => p.type === 'title',
+    ) as any;
+    const tarefaTitulo = txt(tp?.title) || 'Tarefa';
+    const tarefaStatus =
+      getProp(t, env.notion.taskProps.status)?.status?.name ?? null;
+    const quando = t.last_edited_time as string;
+    eventos.push({
+      id: `${postId}:tarefa:${t.id}:${quando}`,
+      tipo: 'tarefa',
+      postId,
+      postTitulo: meta.titulo,
+      projetoId: meta.projetoId,
+      projetoNome: meta.projetoId
+        ? projetoNomes.get(meta.projetoId) ?? null
+        : null,
+      status: meta.status,
+      statusGeral: meta.statusGeral,
+      quando,
+      resumo: tarefaStatus
+        ? `${tarefaTitulo} → ${tarefaStatus}`
+        : tarefaTitulo,
+      tarefaTitulo,
+      tarefaStatus,
+    });
+  }
+
+  // 6) Eventos de EDIÇÃO direta do post + COMENTÁRIOS (em paralelo, em lotes)
   const lote = 5;
-  for (let i = 0; i < topPages.length; i += lote) {
-    const fatia = topPages.slice(i, i + lote);
+  for (let i = 0; i < topPosts.length; i += lote) {
+    const fatia = topPosts.slice(i, i + lote);
     await Promise.all(
       fatia.map(async (page) => {
-        const projetoRel =
-          getProp(page, env.notion.postProps.projeto)?.relation ?? [];
-        const projetoId = projetoRel[0]?.id ?? null;
-        const projetoNome = projetoId ? projetoNomes.get(projetoId) ?? null : null;
-        const tp = Object.values(page.properties).find(
-          (p: any) => p.type === 'title',
-        ) as any;
-        const titulo = txt(tp?.title) || 'Post sem título';
-        const status =
-          getProp(page, env.notion.postProps.status)?.status?.name ?? null;
-        const statusGeralProp = getProp(page, 'Status Geral');
-        const statusGeral =
-          statusGeralProp?.formula?.type === 'string'
-            ? (statusGeralProp.formula.string ?? null)
-            : null;
+        const meta = postMeta.get(page.id);
+        if (!meta) return;
         const lastEdited = page.last_edited_time as string;
 
-        // 3a) Evento de edição/status atual
+        // 6a) Edição do próprio post
         eventos.push({
           id: `${page.id}:edicao:${lastEdited}`,
           tipo: 'edicao',
           postId: page.id,
-          postTitulo: titulo,
-          projetoId,
-          projetoNome,
-          status,
-          statusGeral,
+          postTitulo: meta.titulo,
+          projetoId: meta.projetoId,
+          projetoNome: meta.projetoId
+            ? projetoNomes.get(meta.projetoId) ?? null
+            : null,
+          status: meta.status,
+          statusGeral: meta.statusGeral,
           quando: lastEdited,
-          resumo: statusGeral
-            ? `Status atual: ${statusGeral}`
-            : status
-              ? `Status atual: ${status}`
-              : 'Post atualizado',
+          resumo: meta.statusGeral
+            ? meta.statusGeral
+            : meta.status ?? 'Post atualizado',
         });
 
-        // 3b) Eventos de comentários (top 3 mais recentes)
+        // 6b) Comentários (top 3 mais recentes)
         try {
           const comResp = await notion.comments.list({ block_id: page.id });
           const comentarios = (comResp.results as any[])
@@ -2608,31 +2682,43 @@ async function _listAtualizacoesRecentesUncached(
               id: `${page.id}:com:${c.id}`,
               tipo: 'comentario',
               postId: page.id,
-              postTitulo: titulo,
-              projetoId,
-              projetoNome,
-              status,
-              statusGeral,
+              postTitulo: meta.titulo,
+              projetoId: meta.projetoId,
+              projetoNome: meta.projetoId
+                ? projetoNomes.get(meta.projetoId) ?? null
+                : null,
+              status: meta.status,
+              statusGeral: meta.statusGeral,
               quando: c.criadoEm,
               resumo: trecho,
             });
           }
         } catch {
-          // sem permissão de ler comentários — ignora
+          /* sem permissão de comentários — ignora */
         }
       }),
     );
   }
 
-  // 4) Ordena por data desc e retorna top N
+  // 7) Ordena tudo por data desc, dedup por (postId+tipo+resumo+quando) pra
+  //    evitar barulho, e retorna top N
   eventos.sort((a, b) => b.quando.localeCompare(a.quando));
-  return eventos.slice(0, limit);
+  const vistos = new Set<string>();
+  const final: AtualizacaoRecente[] = [];
+  for (const ev of eventos) {
+    const chave = `${ev.postId}:${ev.tipo}:${ev.resumo}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    final.push(ev);
+    if (final.length >= limit) break;
+  }
+  return final;
 }
 
 const _listAtualizacoesRecentesCached = unstable_cache(
   _listAtualizacoesRecentesUncached,
-  ['list-atualizacoes-recentes-v3-janela'],
-  { revalidate: 30, tags: [TAG_POSTS] }, // 30s — feed precisa ser responsivo
+  ['list-atualizacoes-recentes-v4-tarefas'],
+  { revalidate: 30, tags: [TAG_POSTS, TAG_TAREFAS] }, // 30s
 );
 
 export async function listAtualizacoesRecentes(

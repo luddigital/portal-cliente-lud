@@ -41,19 +41,26 @@ function corDoStatus(status: string | null): { bg: string; txt: string } {
 }
 
 function IconeMini({ tipo }: { tipo: AtualizacaoRecente['tipo'] }) {
-  const ehCom = tipo === 'comentario';
+  const cor =
+    tipo === 'comentario'
+      ? { bg: 'var(--cal-alteracao-soft)', fg: 'var(--cal-alteracao)' }
+      : tipo === 'tarefa'
+        ? { bg: 'var(--prazo-em-dia-soft)', fg: 'var(--prazo-em-dia)' }
+        : { bg: 'var(--cal-agendado-soft)', fg: 'var(--cal-agendado)' };
   return (
     <span
       className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full"
-      style={{
-        background: ehCom ? 'var(--cal-alteracao-soft)' : 'var(--cal-agendado-soft)',
-        color: ehCom ? 'var(--cal-alteracao)' : 'var(--cal-agendado)',
-      }}
+      style={{ background: cor.bg, color: cor.fg }}
       aria-hidden
     >
-      {ehCom ? (
+      {tipo === 'comentario' ? (
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-5.4A8 8 0 1 1 21 12z" />
+        </svg>
+      ) : tipo === 'tarefa' ? (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 5h13M3 12h13M3 19h9" />
+          <path d="M18 17l2 2 4-4" />
         </svg>
       ) : (
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -104,6 +111,16 @@ function LinhaCompacto({ a }: { a: AtualizacaoRecente }) {
         {a.tipo === 'comentario' ? (
           <span className="hidden min-w-0 shrink truncate text-[12px] text-t2 sm:inline">
             — {a.resumo}
+          </span>
+        ) : a.tipo === 'tarefa' ? (
+          <span className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] text-t2 sm:inline-flex">
+            {a.tarefaTitulo}
+            {a.tarefaStatus && (
+              <>
+                <span className="text-t3">→</span>
+                <StatusPillMini status={a.tarefaStatus} />
+              </>
+            )}
           </span>
         ) : (
           <StatusPillMini status={a.statusGeral ?? a.status} />
