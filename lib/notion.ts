@@ -2607,8 +2607,8 @@ async function _listAtualizacoesRecentesUncached(
 
 const _listAtualizacoesRecentesCached = unstable_cache(
   _listAtualizacoesRecentesUncached,
-  ['list-atualizacoes-recentes-v1'],
-  { revalidate: 120, tags: [TAG_POSTS] }, // 2 min
+  ['list-atualizacoes-recentes-v2'],
+  { revalidate: 30, tags: [TAG_POSTS] }, // 30s — feed precisa ser responsivo
 );
 
 export async function listAtualizacoesRecentes(
