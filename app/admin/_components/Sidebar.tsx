@@ -21,6 +21,7 @@ const PRINCIPAL: Item[] = [
 ];
 
 const GESTAO: Item[] = [
+  { label: 'Equipe', href: '/admin/equipe', icon: 'equipe' },
   { label: 'Banco de materiais', href: '/admin/banco-de-materiais', icon: 'banco' },
   { label: 'Tráfego pago', href: '/admin/trafego-pago', icon: 'trafego' },
   { label: 'WhatsApp', href: '/admin/whatsapp', icon: 'chat' },
@@ -36,6 +37,7 @@ const ICONES = {
   aprovacao: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8 12l3 3 5-6',
   grafico: 'M3 3v18h18 M7 14l4-4 3 3 5-6',
   cliente: 'M12 8a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M5 21c0-4 3-6 7-6s7 2 7 6',
+  equipe: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M3 21c0-3 2.5-5 6-5s6 2 6 5 M16 7a3 3 0 1 0 0 6 M17 21c.5-2.5 2.5-4 5-4',
   banco: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   trafego: 'M3 21h18 M7 21V11 M12 21V6 M17 21V14',
   chat: 'M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-5.4A8 8 0 1 1 21 12z',

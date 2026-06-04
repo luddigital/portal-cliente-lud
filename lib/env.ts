@@ -51,6 +51,13 @@ export const env = {
       email: opt('NOTION_CLIENTE_PROP_EMAIL', 'E-mail da empresa'),
       projetos: opt('NOTION_CLIENTE_PROP_PROJETOS', 'Projetos'),
     },
+    prestadoresDbId: opt('NOTION_PRESTADORES_DB_ID', '15fd04d23b4a8034b164f578349737ca'),
+    prestadorProps: {
+      pessoa: opt('NOTION_PRESTADOR_PROP_PESSOA', 'Pessoa'),
+      funcao: opt('NOTION_PRESTADOR_PROP_FUNCAO', 'Função'),
+      email: opt('NOTION_PRESTADOR_PROP_EMAIL', 'E-mail'),
+      whatsapp: opt('NOTION_PRESTADOR_PROP_WHATSAPP', 'Whatsapp'),
+    },
   },
   drive: {
     clientId: must('GOOGLE_OAUTH_CLIENT_ID'),

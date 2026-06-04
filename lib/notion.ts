@@ -7,6 +7,7 @@ const TAG_TAREFAS = 'tarefas-pendentes';
 const TAG_POSTS = 'posts-do-mes';
 const TAG_RESUMO = 'resumo-clientes';
 const TAG_CLIENTES = 'clientes';
+const TAG_EQUIPE = 'equipe-prestadores';
 
 /**
  * Invalida os caches do Next.js relacionados a dados que mudaram.
@@ -30,6 +31,7 @@ export function invalidarTudo() {
   revalidateTag(TAG_POSTS);
   revalidateTag(TAG_RESUMO);
   revalidateTag(TAG_CLIENTES);
+  revalidateTag(TAG_EQUIPE);
   tarefasPorCategoriaCache.invalidate();
   postsDoMesCache.invalidate();
   projetosByEmailCache.invalidate();
@@ -2737,4 +2739,251 @@ export async function listAtualizacoesRecentes(
   limit = 20,
 ): Promise<AtualizacaoRecente[]> {
   return _listAtualizacoesRecentesCached(limit);
+}
+
+// ============================================================================
+// EQUIPE / PRESTADORES — páginas de produção dos colaboradores
+// ============================================================================
+
+export type ColaboradorResumo = {
+  id: string;
+  nome: string;
+  funcao: string | null;
+  email: string | null;
+  whatsapp: string | null;
+  pessoaUserId: string | null; // Notion User id pra filtrar tarefas
+  pessoaNome: string | null;
+};
+
+async function _listColaboradoresUncached(): Promise<ColaboradorResumo[]> {
+  const out: ColaboradorResumo[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: env.notion.prestadoresDbId,
+      page_size: 100,
+      start_cursor: cursor,
+    });
+    for (const page of res.results as any[]) {
+      if (page.archived) continue;
+      const tp = Object.values(page.properties).find(
+        (p: any) => p.type === 'title',
+      ) as any;
+      const nome = txt(tp?.title) || '(sem nome)';
+      const funcao =
+        getProp(page, env.notion.prestadorProps.funcao)?.select?.name ?? null;
+      const emailProp = getProp(page, env.notion.prestadorProps.email);
+      // O campo "E-mail" às vezes é phone_number, às vezes email; cobre os 2
+      const email =
+        emailProp?.email ?? emailProp?.phone_number ?? null;
+      const waProp = getProp(page, env.notion.prestadorProps.whatsapp);
+      const whatsapp = waProp?.phone_number ?? waProp?.email ?? null;
+      const pessoaRaw = getProp(page, env.notion.prestadorProps.pessoa)?.people ?? [];
+      const pessoaUserId = pessoaRaw[0]?.id ?? null;
+      const pessoaNome = pessoaRaw[0]?.name ?? null;
+      out.push({
+        id: page.id,
+        nome,
+        funcao,
+        email,
+        whatsapp,
+        pessoaUserId,
+        pessoaNome,
+      });
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  return out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+const _listColaboradoresCached = unstable_cache(
+  _listColaboradoresUncached,
+  ['list-colaboradores-v1'],
+  { revalidate: 300, tags: [TAG_EQUIPE] }, // 5 min
+);
+
+export async function listColaboradores(): Promise<ColaboradorResumo[]> {
+  return _listColaboradoresCached();
+}
+
+export async function getColaboradorById(
+  id: string,
+): Promise<ColaboradorResumo | null> {
+  const lista = await _listColaboradoresCached();
+  return lista.find((c) => c.id === id || c.id.replace(/-/g, '') === id.replace(/-/g, '')) ?? null;
+}
+
+// ---------- Tarefas de um colaborador ----------
+
+export type TarefaColaborador = {
+  tarefaId: string;
+  tarefaTitulo: string;
+  status: string | null;
+  dataEntrega: string | null; // ISO date
+  finalizadaEm: string | null; // ISO
+  postId: string | null;
+  postTitulo: string;
+  projetoNome: string | null;
+};
+
+type ResumoProducao = {
+  pendentes: TarefaColaborador[];
+  concluidas: TarefaColaborador[];
+};
+
+async function _listProducaoDoColaboradorUncached(
+  pessoaUserId: string,
+): Promise<ResumoProducao> {
+  const hoje = new Date();
+  const desdeFinalizadas = new Date(hoje);
+  desdeFinalizadas.setDate(desdeFinalizadas.getDate() - 14);
+  const desdeFinalizadasISO = desdeFinalizadas.toISOString().split('T')[0];
+
+  // 1) Pendentes: Pessoa = X AND Status != Concluído
+  const pendentesBruto: any[] = [];
+  let cur: string | undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: env.notion.tarefasDbId,
+      page_size: 100,
+      start_cursor: cur,
+      filter: {
+        and: [
+          { property: 'Pessoa', people: { contains: pessoaUserId } },
+          { property: env.notion.taskProps.status, status: { does_not_equal: 'Concluído' } },
+        ],
+      },
+    });
+    pendentesBruto.push(...(res.results as any[]));
+    cur = res.has_more ? res.next_cursor ?? undefined : undefined;
+    if (pendentesBruto.length >= 300) break;
+  } while (cur);
+
+  // 2) Concluídas nos últimos 14 dias
+  const concluidasBruto: any[] = [];
+  let cur2: string | undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: env.notion.tarefasDbId,
+      page_size: 100,
+      start_cursor: cur2,
+      filter: {
+        and: [
+          { property: 'Pessoa', people: { contains: pessoaUserId } },
+          { property: env.notion.taskProps.finalizada, date: { on_or_after: desdeFinalizadasISO } },
+        ],
+      },
+      sorts: [
+        { property: env.notion.taskProps.finalizada, direction: 'descending' },
+      ],
+    });
+    concluidasBruto.push(...(res.results as any[]));
+    cur2 = res.has_more ? res.next_cursor ?? undefined : undefined;
+    if (concluidasBruto.length >= 100) break;
+  } while (cur2);
+
+  // 3) Coleta IDs dos posts pra fazer lookup do título + projeto em batch
+  const postIds = new Set<string>();
+  for (const t of [...pendentesBruto, ...concluidasBruto]) {
+    const postRel = getProp(t, env.notion.taskProps.post)?.relation ?? [];
+    if (postRel[0]?.id) postIds.add(postRel[0].id);
+  }
+  type PostInfo = { titulo: string; projetoId: string | null };
+  const postInfo = new Map<string, PostInfo>();
+  await Promise.all(
+    [...postIds].map(async (pid) => {
+      try {
+        const p: any = await cachedPageRetrieve(pid);
+        const tp = Object.values(p.properties).find(
+          (x: any) => x.type === 'title',
+        ) as any;
+        const projetoRel =
+          getProp(p, env.notion.postProps.projeto)?.relation ?? [];
+        postInfo.set(pid, {
+          titulo: txt(tp?.title) || 'Post sem título',
+          projetoId: projetoRel[0]?.id ?? null,
+        });
+      } catch {
+        postInfo.set(pid, { titulo: 'Post', projetoId: null });
+      }
+    }),
+  );
+
+  // 4) Coleta nomes dos projetos
+  const projetoIds = new Set<string>();
+  for (const info of postInfo.values()) if (info.projetoId) projetoIds.add(info.projetoId);
+  const projetoNomes = new Map<string, string>();
+  await Promise.all(
+    [...projetoIds].map(async (pid) => {
+      try {
+        const p: any = await cachedPageRetrieve(pid);
+        const tp = Object.values(p.properties).find(
+          (x: any) => x.type === 'title',
+        ) as any;
+        projetoNomes.set(pid, txt(tp?.title) || 'Projeto');
+      } catch {
+        projetoNomes.set(pid, 'Projeto');
+      }
+    }),
+  );
+
+  const monta = (t: any): TarefaColaborador => {
+    const tp = Object.values(t.properties).find(
+      (x: any) => x.type === 'title',
+    ) as any;
+    const tarefaTitulo = txt(tp?.title) || 'Tarefa';
+    const status =
+      getProp(t, env.notion.taskProps.status)?.status?.name ?? null;
+    const dataEntrega =
+      getProp(t, 'Data Entrega')?.date?.start ??
+      getProp(t, 'Data Inicial')?.date?.start ??
+      null;
+    const finalizadaEm =
+      getProp(t, env.notion.taskProps.finalizada)?.date?.start ?? null;
+    const postRel = getProp(t, env.notion.taskProps.post)?.relation ?? [];
+    const postId = postRel[0]?.id ?? null;
+    const pInfo = postId ? postInfo.get(postId) : null;
+    return {
+      tarefaId: t.id,
+      tarefaTitulo,
+      status,
+      dataEntrega,
+      finalizadaEm,
+      postId,
+      postTitulo: pInfo?.titulo ?? '',
+      projetoNome: pInfo?.projetoId
+        ? projetoNomes.get(pInfo.projetoId) ?? null
+        : null,
+    };
+  };
+
+  const pendentes = pendentesBruto
+    .map(monta)
+    .filter((t) => t.postId) // só tarefas ligadas a um post
+    .sort((a, b) => {
+      // Sem data vai pro fim
+      if (!a.dataEntrega && !b.dataEntrega) return 0;
+      if (!a.dataEntrega) return 1;
+      if (!b.dataEntrega) return -1;
+      return a.dataEntrega.localeCompare(b.dataEntrega);
+    });
+
+  const concluidas = concluidasBruto
+    .map(monta)
+    .filter((t) => t.postId)
+    .sort((a, b) => (b.finalizadaEm ?? '').localeCompare(a.finalizadaEm ?? ''));
+
+  return { pendentes, concluidas };
+}
+
+const _listProducaoDoColaboradorCached = unstable_cache(
+  _listProducaoDoColaboradorUncached,
+  ['list-producao-colaborador-v1'],
+  { revalidate: 60, tags: [TAG_EQUIPE, TAG_TAREFAS] }, // 1 min
+);
+
+export async function listProducaoDoColaborador(
+  pessoaUserId: string,
+): Promise<ResumoProducao> {
+  return _listProducaoDoColaboradorCached(pessoaUserId);
 }
