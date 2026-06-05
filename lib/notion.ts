@@ -1656,9 +1656,12 @@ export type PostDetalhado = {
   legenda: string | null;
   bodyCompleto: string | null;
   ideiaDoPost: string | null;
-  /** Texto do bloco "Materiais que precisamos para o post" — usado quando o
-   *  cliente está no fluxo de envio de materiais ou de conteúdos prévios. */
+  /** "Materiais que precisamos para o post" — usado na etapa de Envio de
+   *  Materiais (fotos, vídeos, voice over). */
   materiaisNecessarios: MaterialBloco[] | null;
+  /** "Informações que precisamos para o post" — usado na etapa de Envio de
+   *  Conteúdos Prévios (questões pro cliente responder antes da produção). */
+  informacoesNecessarias: MaterialBloco[] | null;
   tarefaIds: string[];
 };
 
@@ -1795,20 +1798,34 @@ export async function lerSecaoEntre(
 }
 
 /**
- * Lê a seção "Materiais que precisamos para o post" do card no Notion,
- * preservando a estrutura de callouts/asides. Cada callout vira um
- * MaterialBloco com cabeçalho (o texto da própria callout) + detalhes
- * (parágrafos filhos dentro dela).
+ * Lê uma seção do card do Notion identificada por seu heading, preservando
+ * a estrutura de callouts/asides. Cada callout vira um MaterialBloco com
+ * cabeçalho (texto da callout) + detalhes (parágrafos e bullets filhos).
  *
  * Busca recursiva pelo heading porque ele pode estar aninhado dentro de
- * tabs/colunas/sub-paragrafos do template do Notion.
+ * tabs/colunas/sub-parágrafos do template do Notion.
  */
-async function lerMateriaisNecessarios(
+async function lerSecaoComCallouts(
   postId: string,
+  trechoHeading: string,
 ): Promise<MaterialBloco[] | null> {
   const normalize = (s: string) =>
     s.toLowerCase().replace(/[:.\s]+/g, ' ').trim();
-  const alvo = normalize('Materiais que precisamos');
+  const alvo = normalize(trechoHeading);
+
+  // Formata o texto de um bloco filho preservando o sinal de lista quando
+  // for um bullet/numbered_list_item.
+  function formatarDetalhe(b: any): string {
+    const t = rtTexto(b);
+    if (!t) return '';
+    if (b.type === 'bulleted_list_item') return `• ${t}`;
+    if (b.type === 'numbered_list_item') return `– ${t}`;
+    if (b.type === 'to_do') {
+      const marcado = !!b.to_do?.checked;
+      return `${marcado ? '☑' : '☐'} ${t}`;
+    }
+    return t;
+  }
 
   async function extrairDeContainer(
     parentId: string,
@@ -1845,16 +1862,26 @@ async function lerMateriaisNecessarios(
               page_size: 100,
             });
             for (const f of filhos.results as any[]) {
-              const t = rtTexto(f);
-              if (t) detalhes.push(t);
+              const linha = formatarDetalhe(f);
+              if (linha) detalhes.push(linha);
             }
           } catch {
             /* sem acesso aos filhos — ignora */
           }
         }
-        if (cabecalho || detalhes.length > 0) {
-          out.push({ cabecalho, detalhes });
-        }
+        // Ignora callout placeholder "Nada" / "—" / vazio
+        const cabNorm = cabecalho.trim().toLowerCase();
+        if (
+          !cabecalho &&
+          detalhes.length === 0
+        )
+          continue;
+        if (
+          (cabNorm === 'nada' || cabNorm === '—' || cabNorm === '-') &&
+          detalhes.length === 0
+        )
+          continue;
+        out.push({ cabecalho, detalhes });
       }
       return out.length > 0 ? out : null;
     }
@@ -1875,6 +1902,11 @@ async function lerMateriaisNecessarios(
     return null;
   }
 }
+
+const lerMateriaisNecessarios = (postId: string) =>
+  lerSecaoComCallouts(postId, 'Materiais que precisamos');
+const lerInformacoesNecessarias = (postId: string) =>
+  lerSecaoComCallouts(postId, 'Informações que precisamos');
 
 async function lerBodyCompletoDoPost(postId: string): Promise<string | null> {
   try {
@@ -1981,6 +2013,7 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       bodyCompleto,
       ideiaDoPost,
       materiaisNecessarios,
+      informacoesNecessarias,
     ] = await Promise.all([
       resolveRelacoes(formatoIds),
       resolveRelacoes(funilIds),
@@ -1990,6 +2023,7 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       lerBodyCompletoDoPost(postId),
       lerSecaoEntre(postId, 'Ideia do Post', []),
       lerMateriaisNecessarios(postId),
+      lerInformacoesNecessarias(postId),
     ]);
 
     const formatoTipo: PostDetalhado['formatoTipo'] = formatoInfo?.tipo ?? 'desconhecido';
@@ -2017,6 +2051,7 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       bodyCompleto,
       ideiaDoPost,
       materiaisNecessarios,
+      informacoesNecessarias,
       tarefaIds: tarefasRel.map((r: any) => r.id),
     };
   } catch {

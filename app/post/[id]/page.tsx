@@ -283,9 +283,47 @@ export default async function PostDetalhePage({
           />
         )}
 
-        {/* Conteúdo de texto (roteiro de voice over, briefing, etc.) —
-            tudo que o cliente precisa LER antes de gravar/enviar.            */}
+        {/* ETAPA "PRÉVIOS": só mostra as perguntas/info que precisamos do cliente
+            (não confunde com voice over / materiais — essa etapa é antes da
+            produção, é só coletar contexto).                                  */}
         {modo === 'material' &&
+          subtipoMaterial(tarefaTitulo) === 'previas' &&
+          post.informacoesNecessarias &&
+          post.informacoesNecessarias.length > 0 && (
+            <div className="space-y-3">
+              {post.informacoesNecessarias.map((m, i) => (
+                <div key={i} className="card p-5">
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
+                      📣
+                    </span>
+                    <div>
+                      <div className="text-[14px] font-semibold leading-snug text-ink">
+                        {m.cabecalho || 'Informações que precisamos pra esse post'}
+                      </div>
+                    </div>
+                  </div>
+                  {m.detalhes.length > 0 && (
+                    <div className="mt-3 space-y-1.5 pl-7">
+                      {m.detalhes.map((d, j) => (
+                        <p
+                          key={j}
+                          className="whitespace-pre-line text-[13px] leading-[1.6] text-t1"
+                        >
+                          {d}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+        {/* ETAPA "MATERIAIS": conteúdo de texto (roteiro de voice over, etc.) —
+            tudo que o cliente precisa LER antes de gravar/enviar.             */}
+        {modo === 'material' &&
+          subtipoMaterial(tarefaTitulo) === 'materiais' &&
           post.materiaisNecessarios &&
           post.materiaisNecessarios.filter((m) => m.detalhes.length > 0).length > 0 && (
             <div className="space-y-3">
@@ -318,9 +356,9 @@ export default async function PostDetalhePage({
             </div>
           )}
 
-        {/* Lista de materiais a enviar — descrições curtas, sem texto pra ler.
-            Aparece colada na caixa de upload pra reforçar o que falta enviar. */}
+        {/* ETAPA "MATERIAIS": lista enxuta com descrições curtas do que enviar. */}
         {modo === 'material' &&
+          subtipoMaterial(tarefaTitulo) === 'materiais' &&
           post.materiaisNecessarios &&
           post.materiaisNecessarios.filter((m) => m.detalhes.length === 0).length > 0 && (
             <div className="card p-5">
