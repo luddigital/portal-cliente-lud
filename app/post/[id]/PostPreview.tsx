@@ -13,7 +13,7 @@ export type PreviewArquivo = {
   isFolder: boolean;
 };
 
-type Modo = 'idle' | 'aprovando' | 'pedindoAlteracao';
+type Modo = 'idle' | 'aprovando' | 'pedindoAlteracao' | 'comentando';
 
 function isImage(mime: string, name: string): boolean {
   if (mime.startsWith('image/')) return true;
@@ -77,6 +77,7 @@ export function PostPreview({
   tarefaTitulo,
   legenda,
   voltarPara = '/',
+  aprovacaoColaborativa = false,
 }: {
   arquivos: PreviewArquivo[];
   formatoTipo: FormatoTipo;
@@ -85,6 +86,7 @@ export function PostPreview({
   tarefaTitulo: string;
   legenda?: string | null;
   voltarPara?: string;
+  aprovacaoColaborativa?: boolean;
 }) {
   const info = FORMATO_INFO[formatoTipo] ?? FORMATO_INFO.desconhecido;
   const router = useRouter();
@@ -252,6 +254,35 @@ export function PostPreview({
     }
   }
 
+  async function comentarSemEncerrar() {
+    if (!tarefaId) return;
+    if (comentarioFinal.length < 2) {
+      setError('Escreve algo antes de comentar.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setModo('comentando');
+    try {
+      const res = await fetch(`/api/tarefas/${tarefaId}/comentar`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ comentario: comentarioFinal }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      limparRascunho();
+      setComentarioGeral('');
+      setMarcacoes([]);
+      // Não navega — fica na página pra outros opinarem
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+      setModo('idle');
+    }
+  }
+
   if (arquivos.length === 0) {
     return (
       <div className="card p-6 text-center text-[13px] text-mauve">
@@ -395,6 +426,58 @@ export function PostPreview({
               const temComentario =
                 marcacoes.length > 0 || comentarioGeral.trim() !== '';
               const totalMarcs = marcacoes.length;
+              if (aprovacaoColaborativa) {
+                // Modo TKRA: vários da equipe podem opinar; só Aprovar/Reprovar fecham.
+                return (
+                  <div className="space-y-2.5">
+                    <div
+                      className="rounded-lg px-3 py-2 text-[12px] leading-snug"
+                      style={{ background: 'var(--bgSoft)', color: 'var(--t2)' }}
+                    >
+                      Vários da equipe podem opinar aqui. <b>Comentar</b> não
+                      encerra o post — só <b>Aprovar</b> ou <b>Reprovar</b>{' '}
+                      fecham pra produção seguir.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={comentarSemEncerrar}
+                      disabled={loading || !temComentario}
+                      className="btn-ghost w-full justify-center whitespace-nowrap"
+                    >
+                      {modo === 'comentando'
+                        ? 'Enviando…'
+                        : '💬 Comentar (não encerra)'}
+                    </button>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={aprovar}
+                        disabled={loading}
+                        className="btn-primary w-full justify-center whitespace-nowrap"
+                        style={{ background: 'var(--prazo-em-dia)' }}
+                      >
+                        {modo === 'aprovando'
+                          ? 'Aprovando…'
+                          : '✓ Aprovar e encerrar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={pedirAlteracao}
+                        disabled={loading || !temComentario}
+                        className="btn-ghost w-full justify-center whitespace-nowrap"
+                        style={{
+                          background: 'var(--prazo-hoje-soft)',
+                          color: 'var(--prazo-hoje)',
+                        }}
+                      >
+                        {modo === 'pedindoAlteracao'
+                          ? 'Enviando…'
+                          : '✏️ Reprovar e encerrar'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div className="space-y-2.5">
                   <div

@@ -50,6 +50,18 @@ export const env = {
     clienteProps: {
       email: opt('NOTION_CLIENTE_PROP_EMAIL', 'E-mail da empresa'),
       projetos: opt('NOTION_CLIENTE_PROP_PROJETOS', 'Projetos'),
+      aprovacaoColaborativa: opt(
+        'NOTION_CLIENTE_PROP_COLABORATIVA',
+        'Aprovação colaborativa',
+      ),
+    },
+    acessosDbId: opt('NOTION_ACESSOS_DB_ID', '376d04d23b4a814683a5c93380459777'),
+    acessoProps: {
+      email: opt('NOTION_ACESSO_PROP_EMAIL', 'E-mail'),
+      cliente: opt('NOTION_ACESSO_PROP_CLIENTE', 'Cliente'),
+      nome: opt('NOTION_ACESSO_PROP_NOME', 'Nome'),
+      funcao: opt('NOTION_ACESSO_PROP_FUNCAO', 'Função'),
+      ativo: opt('NOTION_ACESSO_PROP_ATIVO', 'Ativo'),
     },
     prestadoresDbId: opt('NOTION_PRESTADORES_DB_ID', '15fd04d23b4a8034b164f578349737ca'),
     prestadorProps: {

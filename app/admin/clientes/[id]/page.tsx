@@ -1,8 +1,13 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { getEmpresaDetalhe, type EmpresaDetalhe } from '@/lib/notion';
+import {
+  getEmpresaDetalhe,
+  listAcessosDoCliente,
+  type EmpresaDetalhe,
+} from '@/lib/notion';
 import { BotaoCopiarLink } from '../../BotaoCopiarLink';
+import { AcessosManager } from './AcessosManager';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +28,10 @@ function SecTitle({ children }: { children: React.ReactNode }) {
 }
 
 async function Conteudo({ id }: { id: string }) {
-  const empresa = await getEmpresaDetalhe(id);
+  const [empresa, acessos] = await Promise.all([
+    getEmpresaDetalhe(id),
+    listAcessosDoCliente(id),
+  ]);
   if (!empresa) notFound();
 
   return (
@@ -109,6 +117,18 @@ async function Conteudo({ id }: { id: string }) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* acessos extras */}
+          <div className="card p-6">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <SecTitle>Acessos extras</SecTitle>
+              <span className="text-[11px] text-t3">
+                {acessos.length}{' '}
+                {acessos.length === 1 ? 'pessoa' : 'pessoas'}
+              </span>
+            </div>
+            <AcessosManager clienteId={empresa.id} iniciais={acessos} />
           </div>
 
           {/* pendências */}

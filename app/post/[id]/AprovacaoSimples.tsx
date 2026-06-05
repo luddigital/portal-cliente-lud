@@ -3,27 +3,34 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
-type Modo = 'idle' | 'aprovando' | 'pedindoAlteracao';
+type Modo = 'idle' | 'aprovando' | 'pedindoAlteracao' | 'comentando';
 
 /**
  * Caixa de aprovação simples: usada em fluxos sem preview/carrossel
  * (ex: Aprovação de Pauta). Mesma lógica dinâmica de botões do PostPreview.
+ *
+ * Quando `aprovacaoColaborativa` é true (cliente com time grande tipo TKRA),
+ * adiciona um botão extra "Comentar" que só anexa o comentário no post sem
+ * encerrar a tarefa — Aprovar/Reprovar continuam fechando.
  */
 export function AprovacaoSimples({
   tarefaId,
   tarefaTitulo,
   voltarPara = '/',
+  aprovacaoColaborativa = false,
 }: {
   tarefaId: string;
   tarefaTitulo: string;
   voltarPara?: string;
+  aprovacaoColaborativa?: boolean;
 }) {
   const router = useRouter();
   const [comentario, setComentario] = useState('');
   const [loading, setLoading] = useState(false);
   const [modo, setModo] = useState<Modo>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<'aprovado' | 'alteracao' | null>(null);
+  const [done, setDone] = useState<'aprovado' | 'alteracao' | 'comentado' | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   // Persiste o rascunho — se o cliente sai e volta, o comentário continua aqui.
   const storageKey = `lud:coment:${tarefaId}`;
@@ -115,6 +122,34 @@ export function AprovacaoSimples({
     }
   }
 
+  async function comentarSemEncerrar() {
+    if (comentario.trim().length < 2) {
+      setError('Escreve algo antes de comentar.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setModo('comentando');
+    try {
+      const res = await fetch(`/api/tarefas/${tarefaId}/comentar`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ comentario: comentario.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      limparRascunho();
+      setComentario('');
+      setAviso('Comentário enviado. O post continua aberto pros outros opinarem.');
+      setTimeout(() => setAviso(null), 4000);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+      setModo('idle');
+    }
+  }
+
   return (
     <div className="card sticky bottom-2 sm:bottom-6 z-20 space-y-3 border border-[rgba(21,21,33,0.08)] bg-white p-4 sm:p-5 shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
       <div>
@@ -132,22 +167,76 @@ export function AprovacaoSimples({
       </div>
 
       {error && <p className="text-[12px] font-medium text-hubRed">{error}</p>}
+      {aviso && (
+        <p className="rounded-md bg-[var(--prazo-em-dia-soft)] px-3 py-2 text-[12px] text-[var(--prazo-em-dia)]">
+          {aviso}
+        </p>
+      )}
 
       {done ? (
         <div className="text-center">
           <div className="text-[14px] font-semibold text-ink">
-            {done === 'aprovado' ? '✅ Aprovado pelo cliente' : '🔁 Alteração solicitada'}
+            {done === 'aprovado'
+              ? '✅ Aprovado pelo cliente'
+              : done === 'alteracao'
+                ? '🔁 Alteração solicitada'
+                : '💬 Comentário registrado'}
           </div>
           <p className="mt-1 text-[12px] text-mauve">
             {done === 'aprovado'
               ? 'A gente segue daqui.'
-              : 'A gente vai ajustar e te avisa quando estiver pronto.'}
+              : done === 'alteracao'
+                ? 'A gente vai ajustar e te avisa quando estiver pronto.'
+                : 'Seu comentário foi anexado ao post.'}
           </p>
           <p className="mt-2 text-[11px] text-t3">
             {voltarPara === '/' ? 'Voltando pro dashboard…' : 'Voltando pra etapa…'}
           </p>
         </div>
+      ) : aprovacaoColaborativa ? (
+        // ===== MODO COLABORATIVO =====
+        <div className="space-y-2.5">
+          <div
+            className="rounded-lg px-3 py-2 text-[12px] leading-snug"
+            style={{ background: 'var(--bgSoft)', color: 'var(--t2)' }}
+          >
+            Vários da equipe podem opinar aqui. <b>Comentar</b> não encerra o
+            post — só <b>Aprovar</b> ou <b>Reprovar</b> fecham pra produção
+            seguir.
+          </div>
+          <button
+            type="button"
+            onClick={comentarSemEncerrar}
+            disabled={loading || !temComentario}
+            className="btn-ghost w-full justify-center whitespace-nowrap"
+          >
+            {modo === 'comentando' ? 'Enviando…' : '💬 Comentar (não encerra)'}
+          </button>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={aprovar}
+              disabled={loading}
+              className="btn-primary w-full justify-center whitespace-nowrap"
+              style={{ background: 'var(--prazo-em-dia)' }}
+            >
+              {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar e encerrar'}
+            </button>
+            <button
+              type="button"
+              onClick={pedirAlteracao}
+              disabled={loading || !temComentario}
+              className="btn-ghost w-full justify-center whitespace-nowrap"
+              style={{ background: 'var(--prazo-hoje-soft)', color: 'var(--prazo-hoje)' }}
+            >
+              {modo === 'pedindoAlteracao'
+                ? 'Enviando…'
+                : '✏️ Reprovar e encerrar'}
+            </button>
+          </div>
+        </div>
       ) : (
+        // ===== MODO INDIVIDUAL (padrão) =====
         <div className="space-y-2.5">
           <div
             className="rounded-lg px-3 py-2 text-[12px] leading-snug"

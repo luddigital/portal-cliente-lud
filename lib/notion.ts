@@ -279,6 +279,9 @@ export type ClienteResumo = {
   nome: string;
   email: string | null;
   projetoCount: number;
+  /** Quando true, a aprovação dos posts é coletiva: comentários não fecham
+   *  a tarefa — só os botões explícitos "Aprovar"/"Reprovar" encerram. */
+  aprovacaoColaborativa: boolean;
 };
 
 async function _listAllClientesUncached(): Promise<ClienteResumo[]> {
@@ -303,11 +306,16 @@ async function _listAllClientesUncached(): Promise<ClienteResumo[]> {
         page.properties?.[env.notion.clienteProps.email]?.email ?? null;
       const projetos =
         page.properties?.[env.notion.clienteProps.projetos]?.relation ?? [];
+      const colabProp =
+        page.properties?.[env.notion.clienteProps.aprovacaoColaborativa];
+      const aprovacaoColaborativa =
+        colabProp?.type === 'checkbox' ? !!colabProp.checkbox : false;
       out.push({
         id: page.id,
         nome,
         email,
         projetoCount: projetos.length,
+        aprovacaoColaborativa,
       });
     }
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
@@ -344,7 +352,17 @@ export async function getClienteById(id: string): Promise<ClienteResumo | null> 
       page.properties?.[env.notion.clienteProps.email]?.email ?? null;
     const projetos =
       page.properties?.[env.notion.clienteProps.projetos]?.relation ?? [];
-    return { id: page.id, nome, email, projetoCount: projetos.length };
+    const colabProp =
+      page.properties?.[env.notion.clienteProps.aprovacaoColaborativa];
+    const aprovacaoColaborativa =
+      colabProp?.type === 'checkbox' ? !!colabProp.checkbox : false;
+    return {
+      id: page.id,
+      nome,
+      email,
+      projetoCount: projetos.length,
+      aprovacaoColaborativa,
+    };
   } catch {
     return null;
   }
@@ -652,7 +670,7 @@ export async function getNomeDoCliente(email: string): Promise<string | null> {
 
 const _findProjetosByEmailCached = unstable_cache(
   findProjetosByEmailUncached,
-  ['projetos-by-email-v2'],
+  ['projetos-by-email-v3-acessos'],
   { revalidate: 300, tags: [TAG_CLIENTES] }, // 5 min
 );
 
@@ -665,6 +683,7 @@ async function findProjetosByEmailUncached(emailNorm: string): Promise<ProjetoCl
   const projetoIds = new Set<string>();
   let cursor: string | undefined;
 
+  // 1) Cliente "dono" — quem tem esse email no campo principal de E-mail
   do {
     const res = await notion.databases.query({
       database_id: env.notion.clientesDbId,
@@ -680,6 +699,49 @@ async function findProjetosByEmailUncached(emailNorm: string): Promise<ProjetoCl
     }
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
   } while (cursor);
+
+  // 2) Acessos extras — emails autorizados pelo admin (banco LudHub — Acessos)
+  try {
+    let cur2: string | undefined;
+    do {
+      const res = await notion.databases.query({
+        database_id: env.notion.acessosDbId,
+        start_cursor: cur2,
+        filter: {
+          and: [
+            {
+              property: env.notion.acessoProps.email,
+              title: { equals: emailNorm },
+            },
+            // Considera só acessos ativos. Quando o usuário criar via portal,
+            // a flag já vai como true. Pra entradas manuais, marcar Ativo.
+            {
+              property: env.notion.acessoProps.ativo,
+              checkbox: { equals: true },
+            },
+          ],
+        },
+      });
+      for (const acesso of res.results as any[]) {
+        const clienteRel =
+          getProp(acesso, env.notion.acessoProps.cliente)?.relation ?? [];
+        for (const r of clienteRel) {
+          try {
+            const cli = await cachedPageRetrieve(r.id);
+            const projRel =
+              getProp(cli, env.notion.clienteProps.projetos)?.relation ?? [];
+            for (const p of projRel) projetoIds.add(p.id);
+          } catch {
+            /* ignora */
+          }
+        }
+      }
+      cur2 = res.has_more ? res.next_cursor ?? undefined : undefined;
+    } while (cur2);
+  } catch (err: any) {
+    // Sem acesso ao banco ou ainda não compartilhado — sem problema
+    console.warn('[acessos] falhou consulta:', err?.message);
+  }
 
   // Paraleliza retrieves dos projetos (antes era serial, era ~70% do tempo de login)
   const projetosResultado = await Promise.all(
@@ -1662,6 +1724,9 @@ export type PostDetalhado = {
   /** "Informações que precisamos para o post" — usado na etapa de Envio de
    *  Conteúdos Prévios (questões pro cliente responder antes da produção). */
   informacoesNecessarias: MaterialBloco[] | null;
+  /** Quando true, o cliente tem aprovação colaborativa: comentários não
+   *  fecham a tarefa, só os botões explícitos "Aprovar"/"Reprovar". */
+  aprovacaoColaborativa: boolean;
   tarefaIds: string[];
 };
 
@@ -2035,6 +2100,38 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       if (url) driveLinks.push({ name: f.name ?? 'arquivo', url });
     }
 
+    // Descobre o cliente "dono" do projeto pra saber se ele tem aprovação
+    // colaborativa. Usa a lista cached pra não fazer query extra.
+    let aprovacaoColaborativa = false;
+    if (projetoId) {
+      try {
+        const clientes = await _listAllClientesCached();
+        const dono = clientes.find((c) => c.id === projetoId);
+        // ^^ projetoId é id do projeto, não do cliente. Precisamos buscar o
+        // cliente cuja relação 'Projetos' contém esse projetoId.
+        if (!dono) {
+          // Procura nos clientes via relação projetos
+          for (const c of clientes) {
+            try {
+              const cliPage = await cachedPageRetrieve(c.id);
+              const projRel =
+                getProp(cliPage, env.notion.clienteProps.projetos)?.relation ?? [];
+              if (projRel.some((r: any) => r.id === projetoId)) {
+                aprovacaoColaborativa = c.aprovacaoColaborativa;
+                break;
+              }
+            } catch {
+              /* ignora */
+            }
+          }
+        } else {
+          aprovacaoColaborativa = dono.aprovacaoColaborativa;
+        }
+      } catch {
+        /* mantém false */
+      }
+    }
+
     return {
       id: page.id,
       titulo: txt(titleProp?.title) || 'Post sem título',
@@ -2052,6 +2149,7 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       ideiaDoPost,
       materiaisNecessarios,
       informacoesNecessarias,
+      aprovacaoColaborativa,
       tarefaIds: tarefasRel.map((r: any) => r.id),
     };
   } catch {
@@ -2964,6 +3062,113 @@ export async function getColaboradorByEmail(
   return (
     lista.find((c) => (c.email ?? '').trim().toLowerCase() === alvo) ?? null
   );
+}
+
+// ============================================================================
+// ACESSOS POR CLIENTE — banco "LudHub — Acessos por Cliente"
+// Permite que múltiplos emails entrem no portal do mesmo cliente (clientes
+// com time grande, tipo TKRA).
+// ============================================================================
+
+export type AcessoCliente = {
+  id: string;
+  email: string;
+  nome: string | null;
+  funcao: string | null;
+  ativo: boolean;
+};
+
+export async function listAcessosDoCliente(
+  clienteId: string,
+): Promise<AcessoCliente[]> {
+  try {
+    const out: AcessoCliente[] = [];
+    let cursor: string | undefined;
+    do {
+      const res = await notion.databases.query({
+        database_id: env.notion.acessosDbId,
+        start_cursor: cursor,
+        page_size: 100,
+        filter: {
+          property: env.notion.acessoProps.cliente,
+          relation: { contains: clienteId },
+        },
+      });
+      for (const page of res.results as any[]) {
+        const tProp = Object.values(page.properties).find(
+          (p: any) => p.type === 'title',
+        ) as any;
+        const email = (txt(tProp?.title) || '').trim().toLowerCase();
+        const nome =
+          (getProp(page, env.notion.acessoProps.nome)?.rich_text ?? [])
+            .map((r: any) => r.plain_text)
+            .join('')
+            .trim() || null;
+        const funcao =
+          (getProp(page, env.notion.acessoProps.funcao)?.rich_text ?? [])
+            .map((r: any) => r.plain_text)
+            .join('')
+            .trim() || null;
+        const ativoProp = getProp(page, env.notion.acessoProps.ativo);
+        const ativo =
+          ativoProp?.type === 'checkbox' ? !!ativoProp.checkbox : true;
+        if (email) out.push({ id: page.id, email, nome, funcao, ativo });
+      }
+      cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+    } while (cursor);
+    return out.sort((a, b) => a.email.localeCompare(b.email));
+  } catch (err: any) {
+    console.warn('[listAcessosDoCliente] falhou:', err?.message);
+    return [];
+  }
+}
+
+export async function criarAcesso(input: {
+  clienteId: string;
+  email: string;
+  nome?: string;
+  funcao?: string;
+}): Promise<AcessoCliente> {
+  const emailNorm = input.email.trim().toLowerCase();
+  if (!emailNorm.includes('@')) {
+    throw new Error('Email inválido');
+  }
+  const props: any = {
+    [env.notion.acessoProps.email]: {
+      title: [{ type: 'text', text: { content: emailNorm } }],
+    },
+    [env.notion.acessoProps.cliente]: {
+      relation: [{ id: input.clienteId }],
+    },
+    [env.notion.acessoProps.ativo]: { checkbox: true },
+  };
+  if (input.nome) {
+    props[env.notion.acessoProps.nome] = {
+      rich_text: [{ type: 'text', text: { content: input.nome } }],
+    };
+  }
+  if (input.funcao) {
+    props[env.notion.acessoProps.funcao] = {
+      rich_text: [{ type: 'text', text: { content: input.funcao } }],
+    };
+  }
+  const page: any = await notion.pages.create({
+    parent: { type: 'database_id', database_id: env.notion.acessosDbId },
+    properties: props,
+  });
+  revalidateTag(TAG_CLIENTES);
+  return {
+    id: page.id,
+    email: emailNorm,
+    nome: input.nome ?? null,
+    funcao: input.funcao ?? null,
+    ativo: true,
+  };
+}
+
+export async function removerAcesso(acessoId: string): Promise<void> {
+  await notion.pages.update({ page_id: acessoId, archived: true });
+  revalidateTag(TAG_CLIENTES);
 }
 
 // ---------- Tarefas de um colaborador ----------

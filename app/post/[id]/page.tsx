@@ -260,6 +260,7 @@ export default async function PostDetalhePage({
               tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
               legenda={post.legenda}
               voltarPara={voltarPara}
+              aprovacaoColaborativa={post.aprovacaoColaborativa}
             />
           </div>
         ) : (
@@ -281,6 +282,7 @@ export default async function PostDetalhePage({
             tarefaId={tarefaId}
             tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
             voltarPara={voltarPara}
+            aprovacaoColaborativa={post.aprovacaoColaborativa}
           />
         )}
 
