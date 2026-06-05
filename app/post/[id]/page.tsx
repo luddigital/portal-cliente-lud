@@ -267,6 +267,42 @@ export default async function PostDetalhePage({
           />
         )}
 
+        {modo === 'material' && post.materiaisNecessarios && post.materiaisNecessarios.length > 0 && (
+          <div>
+            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+              O que precisamos pra esse post
+            </div>
+            <div className="space-y-3">
+              {post.materiaisNecessarios.map((m, i) => (
+                <div key={i} className="card p-5">
+                  {m.cabecalho && (
+                    <div className="flex items-start gap-2.5">
+                      <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
+                        🎬
+                      </span>
+                      <div className="text-[14px] font-semibold leading-snug text-ink">
+                        {m.cabecalho}
+                      </div>
+                    </div>
+                  )}
+                  {m.detalhes.length > 0 && (
+                    <div className={`space-y-2 ${m.cabecalho ? 'mt-3 pl-7' : ''}`}>
+                      {m.detalhes.map((d, j) => (
+                        <p
+                          key={j}
+                          className="whitespace-pre-line text-[13px] leading-[1.6] text-t1"
+                        >
+                          {d}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {modo === 'material' && tarefaId && (
           <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} />
         )}

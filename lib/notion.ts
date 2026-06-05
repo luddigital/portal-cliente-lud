@@ -1656,7 +1656,17 @@ export type PostDetalhado = {
   legenda: string | null;
   bodyCompleto: string | null;
   ideiaDoPost: string | null;
+  /** Texto do bloco "Materiais que precisamos para o post" — usado quando o
+   *  cliente está no fluxo de envio de materiais ou de conteúdos prévios. */
+  materiaisNecessarios: MaterialBloco[] | null;
   tarefaIds: string[];
+};
+
+export type MaterialBloco = {
+  /** Texto principal da aside/callout (primeira linha) */
+  cabecalho: string;
+  /** Linhas adicionais (parágrafos filhos da callout) */
+  detalhes: string[];
 };
 
 const LEGENDA_KEYWORDS = ['legenda', 'caption'];
@@ -1784,6 +1794,88 @@ export async function lerSecaoEntre(
   }
 }
 
+/**
+ * Lê a seção "Materiais que precisamos para o post" do card no Notion,
+ * preservando a estrutura de callouts/asides. Cada callout vira um
+ * MaterialBloco com cabeçalho (o texto da própria callout) + detalhes
+ * (parágrafos filhos dentro dela).
+ *
+ * Busca recursiva pelo heading porque ele pode estar aninhado dentro de
+ * tabs/colunas/sub-paragrafos do template do Notion.
+ */
+async function lerMateriaisNecessarios(
+  postId: string,
+): Promise<MaterialBloco[] | null> {
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/[:.\s]+/g, ' ').trim();
+  const alvo = normalize('Materiais que precisamos');
+
+  async function extrairDeContainer(
+    parentId: string,
+    profundidade = 0,
+  ): Promise<MaterialBloco[] | null> {
+    if (profundidade > 5) return null;
+    let blocos: any[];
+    try {
+      const r = await notion.blocks.children.list({
+        block_id: parentId,
+        page_size: 100,
+      });
+      blocos = r.results as any[];
+    } catch {
+      return null;
+    }
+
+    // 1) Achei o heading nesse nível? Pega siblings até o próximo heading.
+    const idx = blocos.findIndex(
+      (b) => normalize(rtTexto(b)).includes(alvo),
+    );
+    if (idx >= 0) {
+      const out: MaterialBloco[] = [];
+      for (let i = idx + 1; i < blocos.length; i++) {
+        const b = blocos[i];
+        if (ehHeading(b)) break;
+        if (b.type !== 'callout' && b.type !== 'quote') continue;
+        const cabecalho = rtTexto(b);
+        const detalhes: string[] = [];
+        if (b.has_children) {
+          try {
+            const filhos = await notion.blocks.children.list({
+              block_id: b.id,
+              page_size: 100,
+            });
+            for (const f of filhos.results as any[]) {
+              const t = rtTexto(f);
+              if (t) detalhes.push(t);
+            }
+          } catch {
+            /* sem acesso aos filhos — ignora */
+          }
+        }
+        if (cabecalho || detalhes.length > 0) {
+          out.push({ cabecalho, detalhes });
+        }
+      }
+      return out.length > 0 ? out : null;
+    }
+
+    // 2) Não achei aqui — desce pra cada container filho
+    for (const b of blocos) {
+      if (b.has_children) {
+        const r = await extrairDeContainer(b.id, profundidade + 1);
+        if (r) return r;
+      }
+    }
+    return null;
+  }
+
+  try {
+    return await extrairDeContainer(postId);
+  } catch {
+    return null;
+  }
+}
+
 async function lerBodyCompletoDoPost(postId: string): Promise<string | null> {
   try {
     const blocks = await coletarBlocosRecursivo(postId);
@@ -1880,16 +1972,25 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
     const funilIds = (getProp(page, 'Funil')?.relation ?? []).map((r: any) => r.id);
     const objetivoIds = (getProp(page, 'Objetivo')?.relation ?? []).map((r: any) => r.id);
 
-    const [formato, funil, objetivo, formatoInfo, legenda, bodyCompleto, ideiaDoPost] =
-      await Promise.all([
-        resolveRelacoes(formatoIds),
-        resolveRelacoes(funilIds),
-        resolveRelacoes(objetivoIds),
-        resolverFormato(formatoIds),
-        lerLegendaDoPost(postId),
-        lerBodyCompletoDoPost(postId),
-        lerSecaoEntre(postId, 'Ideia do Post', []),
-      ]);
+    const [
+      formato,
+      funil,
+      objetivo,
+      formatoInfo,
+      legenda,
+      bodyCompleto,
+      ideiaDoPost,
+      materiaisNecessarios,
+    ] = await Promise.all([
+      resolveRelacoes(formatoIds),
+      resolveRelacoes(funilIds),
+      resolveRelacoes(objetivoIds),
+      resolverFormato(formatoIds),
+      lerLegendaDoPost(postId),
+      lerBodyCompletoDoPost(postId),
+      lerSecaoEntre(postId, 'Ideia do Post', []),
+      lerMateriaisNecessarios(postId),
+    ]);
 
     const formatoTipo: PostDetalhado['formatoTipo'] = formatoInfo?.tipo ?? 'desconhecido';
 
@@ -1915,6 +2016,7 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       legenda,
       bodyCompleto,
       ideiaDoPost,
+      materiaisNecessarios,
       tarefaIds: tarefasRel.map((r: any) => r.id),
     };
   } catch {
