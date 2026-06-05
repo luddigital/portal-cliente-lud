@@ -38,6 +38,8 @@ export default async function Dashboard() {
   // Admin sem projetos vinculados não tem o que ver na área do cliente — manda pro admin.
   const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
   if (ehAdmin && session.projetoIds.length === 0) redirect('/admin');
+  // Colaborador sem projetos vinculados vai pra área da equipe.
+  if (session.colaboradorId && session.projetoIds.length === 0) redirect('/equipe/me');
 
   const hoje = new Date();
   const year = hoje.getFullYear();

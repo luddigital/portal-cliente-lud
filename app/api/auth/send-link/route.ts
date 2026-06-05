@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { signMagicToken } from '@/lib/auth';
 import { sendMagicLink } from '@/lib/mail';
-import { findProjetosByEmail } from '@/lib/notion';
+import { findProjetosByEmail, getColaboradorByEmail } from '@/lib/notion';
 import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -13,9 +13,18 @@ export async function POST(req: Request) {
   }
 
   const ehAdmin = env.auth.adminEmails.includes(email.trim().toLowerCase());
-  const projetos = await findProjetosByEmail(email);
-  if (projetos.length === 0 && !ehAdmin) {
-    return NextResponse.json({ error: 'Email não encontrado nos nossos clientes. Fala com a gente no oi@lud.digital.' }, { status: 404 });
+  const [projetos, colaborador] = await Promise.all([
+    findProjetosByEmail(email),
+    getColaboradorByEmail(email),
+  ]);
+  if (projetos.length === 0 && !ehAdmin && !colaborador) {
+    return NextResponse.json(
+      {
+        error:
+          'Email não encontrado. Se você faz parte da equipe ou é cliente, fala com a gente no oi@lud.digital.',
+      },
+      { status: 404 },
+    );
   }
 
   const token = await signMagicToken(email);

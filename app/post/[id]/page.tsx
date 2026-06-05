@@ -92,9 +92,10 @@ export default async function PostDetalhePage({
   const post = await getPostComDetalhes(params.id);
   if (!post) notFound();
   const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+  const ehColaborador = !!session.colaboradorId;
   if (
     !post.projetoId ||
-    (!ehAdmin && !session.projetoIds.includes(post.projetoId))
+    (!ehAdmin && !ehColaborador && !session.projetoIds.includes(post.projetoId))
   ) {
     notFound();
   }

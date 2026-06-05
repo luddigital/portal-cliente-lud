@@ -13,6 +13,10 @@ const secret = () => new TextEncoder().encode(env.auth.secret);
 export type SessionPayload = {
   email: string;
   projetoIds: string[];
+  /** Quando o usuário é um colaborador (Prestadores de Serviço), guarda o
+   *  page id dele aqui. Usado pelo /equipe/me pra carregar a produção
+   *  correta. Vazio significa que não é colaborador (cliente comum/admin). */
+  colaboradorId?: string | null;
 };
 
 export async function signMagicToken(email: string): Promise<string> {
@@ -54,7 +58,11 @@ export async function getSession(): Promise<SessionPayload | null> {
   if (!c) return null;
   try {
     const { payload } = await jwtVerify(c, secret());
-    return { email: (payload as any).email, projetoIds: (payload as any).projetoIds ?? [] };
+    return {
+      email: (payload as any).email,
+      projetoIds: (payload as any).projetoIds ?? [],
+      colaboradorId: (payload as any).colaboradorId ?? null,
+    };
   } catch {
     return null;
   }

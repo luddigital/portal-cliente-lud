@@ -2950,6 +2950,22 @@ export async function getColaboradorById(
   return lista.find((c) => c.id === id || c.id.replace(/-/g, '') === id.replace(/-/g, '')) ?? null;
 }
 
+/**
+ * Acha um colaborador pelo email (case-insensitive). Usado no login —
+ * quando alguém de fora dos clientes tenta entrar, a gente verifica
+ * se é um prestador cadastrado e libera.
+ */
+export async function getColaboradorByEmail(
+  email: string,
+): Promise<ColaboradorResumo | null> {
+  const alvo = email.trim().toLowerCase();
+  if (!alvo) return null;
+  const lista = await _listColaboradoresCached();
+  return (
+    lista.find((c) => (c.email ?? '').trim().toLowerCase() === alvo) ?? null
+  );
+}
+
 // ---------- Tarefas de um colaborador ----------
 
 export type TarefaColaborador = {
