@@ -43,6 +43,22 @@ function modoDoPost(titulo: string | null): 'aprovacao' | 'material' | 'leitura'
   return 'aprovacao';
 }
 
+/**
+ * Detecta o subtipo dentro do modo "material" pra decidir copy do form:
+ *  - 'materiais'    → só upload (info já veio nos Conteúdos Prévios)
+ *  - 'previas'      → upload + texto (informações iniciais do post)
+ *  - 'stories'      → upload + texto (direcionamento dos stories)
+ *  - 'outro'        → upload + texto (default conservador)
+ */
+function subtipoMaterial(titulo: string | null): 'materiais' | 'previas' | 'stories' | 'outro' {
+  if (!titulo) return 'outro';
+  const t = titulo.toLowerCase();
+  if (t.includes('stories') || t.includes('direcionamento')) return 'stories';
+  if (t.includes('prévi') || t.includes('previa') || t.includes('conteúdo') || t.includes('conteudo')) return 'previas';
+  if (t.includes('materia')) return 'materiais';
+  return 'outro';
+}
+
 function fmtData(iso: string | null): string {
   if (!iso) return '—';
   const [y, m, d] = iso.split('T')[0].split('-');
@@ -334,9 +350,37 @@ export default async function PostDetalhePage({
             </div>
           )}
 
-        {modo === 'material' && tarefaId && (
-          <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} />
-        )}
+        {modo === 'material' && tarefaId && (() => {
+          const sub = subtipoMaterial(tarefaTitulo);
+          const props =
+            sub === 'materiais'
+              ? {
+                  mostrarTexto: false,
+                  tituloUpload: 'Materiais + voice over',
+                  ajudaUpload:
+                    'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
+                  textoBotao: 'Enviar materiais',
+                }
+              : sub === 'stories'
+                ? {
+                    mostrarTexto: true,
+                    tituloUpload: 'Fotos e vídeos pros stories',
+                    ajudaUpload: 'Anexe as artes e arquivos que pretende usar.',
+                    textoBotao: 'Enviar direcionamento',
+                  }
+                : sub === 'previas'
+                  ? {
+                      mostrarTexto: true,
+                      tituloUpload: 'Fotos, vídeos e áudios',
+                      ajudaUpload:
+                        'Anexe o que já tiver pra ajudar a equipe a montar o post.',
+                      textoBotao: 'Enviar informações',
+                    }
+                  : {};
+          return (
+            <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} {...props} />
+          );
+        })()}
 
         {/* histórico de comentários — discreto, no fim da página */}
         <Suspense fallback={null}>

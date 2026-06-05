@@ -149,6 +149,23 @@ export default async function TarefaPage({
           <TarefaForm
             tarefaId={t.tarefaId}
             voltarPara={searchParams.from ? `/etapa/${searchParams.from}` : '/'}
+            {...(ehMateriais
+              ? {
+                  mostrarTexto: false,
+                  tituloUpload: 'Materiais + voice over',
+                  ajudaUpload:
+                    'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
+                  textoBotao: 'Enviar materiais',
+                }
+              : ehPrevias
+                ? {
+                    mostrarTexto: true,
+                    tituloUpload: 'Fotos, vídeos e áudios',
+                    ajudaUpload:
+                      'Anexe o que já tiver pra ajudar a equipe a montar o post.',
+                    textoBotao: 'Enviar informações',
+                  }
+                : {})}
           />
         </div>
       </main>

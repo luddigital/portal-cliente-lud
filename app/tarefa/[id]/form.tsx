@@ -6,9 +6,27 @@ import { useState } from 'react';
 export function TarefaForm({
   tarefaId,
   voltarPara = '/',
+  /** Mostra o campo de texto "Informações". Pode ser desligado pra etapas
+   *  em que o cliente só precisa subir arquivo (ex: Envio de Materiais —
+   *  as informações já foram coletadas na etapa de Conteúdos Prévios). */
+  mostrarTexto = true,
+  /** Tipos de arquivo aceitos. Default cobre fotos, vídeos e áudio (voice
+   *  over). Mude se precisar restringir. */
+  aceitarTipos = 'image/*,video/*,audio/*',
+  /** Texto do botão final. */
+  textoBotao = 'Enviar materiais',
+  /** Título do bloco de upload. */
+  tituloUpload = 'Fotos, vídeos e áudios',
+  /** Subtexto auxiliar do upload. */
+  ajudaUpload = 'Você pode anexar vários arquivos — incluindo gravações de voice over.',
 }: {
   tarefaId: string;
   voltarPara?: string;
+  mostrarTexto?: boolean;
+  aceitarTipos?: string;
+  textoBotao?: string;
+  tituloUpload?: string;
+  ajudaUpload?: string;
 }) {
   const router = useRouter();
   const [texto, setTexto] = useState('');
@@ -23,7 +41,7 @@ export function TarefaForm({
     setError(null);
     try {
       const fd = new FormData();
-      if (texto) fd.set('texto', texto);
+      if (mostrarTexto && texto) fd.set('texto', texto);
       for (const f of arquivos) fd.append('arquivos', f);
       const res = await fetch(`/api/tarefas/${tarefaId}/submit`, { method: 'POST', body: fd });
       let data: any = {};
@@ -53,26 +71,34 @@ export function TarefaForm({
     );
   }
 
+  // Botão fica desabilitado se ainda não tem nada pra enviar.
+  // Quando o texto não é mostrado, só arquivos contam.
+  const semConteudo = mostrarTexto
+    ? !texto && arquivos.length === 0
+    : arquivos.length === 0;
+
   return (
     <form onSubmit={submit} className="space-y-6">
-      <div className="card p-5">
-        <label className="label">Informações</label>
-        <textarea
-          rows={8}
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder="Escreva aqui tudo que a gente precisa saber pra montar esse post."
-          className="input resize-y"
-        />
-      </div>
+      {mostrarTexto && (
+        <div className="card p-5">
+          <label className="label">Informações</label>
+          <textarea
+            rows={8}
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Escreva aqui tudo que a gente precisa saber pra montar esse post."
+            className="input resize-y"
+          />
+        </div>
+      )}
 
       <div className="card p-5">
-        <label className="label">Fotos e vídeos</label>
+        <label className="label">{tituloUpload}</label>
         <div className="relative rounded-[10px] border-2 border-dashed border-[rgba(21,21,33,0.1)] bg-[#FAFAFB] p-10 text-center transition hover:border-navy/40">
           <input
             type="file"
             multiple
-            accept="image/*,video/*"
+            accept={aceitarTipos}
             onChange={(e) => setArquivos(Array.from(e.target.files ?? []))}
             className="absolute inset-0 cursor-pointer opacity-0"
           />
@@ -93,9 +119,9 @@ export function TarefaForm({
           <div className="text-[13px] font-medium text-ink">
             {arquivos.length > 0
               ? `${arquivos.length} arquivo${arquivos.length > 1 ? 's' : ''} selecionado${arquivos.length > 1 ? 's' : ''}`
-              : 'Selecione as fotos e vídeos do seu computador ou celular'}
+              : 'Selecione os arquivos do seu computador ou celular'}
           </div>
-          <div className="mt-1 text-[11px] text-t3">Você pode anexar vários arquivos</div>
+          <div className="mt-1 text-[11px] text-t3">{ajudaUpload}</div>
         </div>
         {arquivos.length > 0 && (
           <ul className="mt-3 space-y-1 text-[12px] text-t2">
@@ -112,8 +138,8 @@ export function TarefaForm({
       {error && <p className="text-[12px] font-medium text-crimson">{error}</p>}
 
       <div className="flex items-center justify-end gap-3">
-        <button type="submit" disabled={loading || (!texto && arquivos.length === 0)} className="btn-primary">
-          {loading ? 'Enviando…' : 'Enviar materiais'}
+        <button type="submit" disabled={loading || semConteudo} className="btn-primary">
+          {loading ? 'Enviando…' : textoBotao}
         </button>
       </div>
     </form>
