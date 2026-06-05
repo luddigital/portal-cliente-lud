@@ -267,25 +267,26 @@ export default async function PostDetalhePage({
           />
         )}
 
-        {modo === 'material' && post.materiaisNecessarios && post.materiaisNecessarios.length > 0 && (
-          <div>
-            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-              O que precisamos pra esse post
-            </div>
+        {/* Conteúdo de texto (roteiro de voice over, briefing, etc.) —
+            tudo que o cliente precisa LER antes de gravar/enviar.            */}
+        {modo === 'material' &&
+          post.materiaisNecessarios &&
+          post.materiaisNecessarios.filter((m) => m.detalhes.length > 0).length > 0 && (
             <div className="space-y-3">
-              {post.materiaisNecessarios.map((m, i) => (
-                <div key={i} className="card p-5">
-                  {m.cabecalho && (
-                    <div className="flex items-start gap-2.5">
-                      <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
-                        🎬
-                      </span>
-                      <div className="text-[14px] font-semibold leading-snug text-ink">
-                        {m.cabecalho}
+              {post.materiaisNecessarios
+                .filter((m) => m.detalhes.length > 0)
+                .map((m, i) => (
+                  <div key={i} className="card p-5">
+                    {m.cabecalho && (
+                      <div className="flex items-start gap-2.5">
+                        <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
+                          📝
+                        </span>
+                        <div className="text-[14px] font-semibold leading-snug text-ink">
+                          {m.cabecalho}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  {m.detalhes.length > 0 && (
+                    )}
                     <div className={`space-y-2 ${m.cabecalho ? 'mt-3 pl-7' : ''}`}>
                       {m.detalhes.map((d, j) => (
                         <p
@@ -296,12 +297,42 @@ export default async function PostDetalhePage({
                         </p>
                       ))}
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                ))}
             </div>
-          </div>
-        )}
+          )}
+
+        {/* Lista de materiais a enviar — descrições curtas, sem texto pra ler.
+            Aparece colada na caixa de upload pra reforçar o que falta enviar. */}
+        {modo === 'material' &&
+          post.materiaisNecessarios &&
+          post.materiaisNecessarios.filter((m) => m.detalhes.length === 0).length > 0 && (
+            <div className="card p-5">
+              <div className="flex items-start gap-2.5">
+                <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
+                  🎬
+                </span>
+                <div>
+                  <div className="text-[14px] font-semibold text-ink">
+                    Materiais que precisamos
+                  </div>
+                  <ul className="mt-2 space-y-1.5">
+                    {post.materiaisNecessarios
+                      .filter((m) => m.detalhes.length === 0)
+                      .map((m, i) => (
+                        <li
+                          key={i}
+                          className="flex items-start gap-2 text-[13px] leading-snug text-t1"
+                        >
+                          <span className="mt-[7px] inline-block h-1 w-1 shrink-0 rounded-full bg-t3" />
+                          <span>{m.cabecalho}</span>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
         {modo === 'material' && tarefaId && (
           <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} />
