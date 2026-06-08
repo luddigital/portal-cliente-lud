@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AcoesTarefa } from './AcoesTarefa';
+import { AnexarMateriais } from './AnexarMateriais';
 import { HistoricoBox, type ComentarioItem } from '../../../_components/HistoricoBox';
 
 type Arquivo = {
@@ -46,6 +47,22 @@ function ehPauta(titulo: string): boolean {
 /** Detecta se a tarefa é de aprovação (tem opção de pedir alteração). */
 function ehAprovacao(titulo: string): boolean {
   return /aprova/i.test(titulo);
+}
+
+/** Detecta se a tarefa é de coleta de material/conteúdo prévio/stories
+ *  — etapas em que admin pode querer anexar arquivos recebidos por fora. */
+function ehColetaDeMaterial(titulo: string): boolean {
+  const t = titulo.toLowerCase();
+  if (ehAprovacao(t)) return false;
+  return (
+    t.includes('materia') ||
+    t.includes('conteúdo') ||
+    t.includes('conteudo') ||
+    t.includes('stories') ||
+    t.includes('direcionamento') ||
+    t.includes('prévi') ||
+    t.includes('previa')
+  );
 }
 
 function isVideo(name: string, mime: string): boolean {
@@ -117,6 +134,7 @@ export function PostModal({
 
   const pauta = ehPauta(tarefaTitulo);
   const aprovacao = ehAprovacao(tarefaTitulo);
+  const coletaMaterial = ehColetaDeMaterial(tarefaTitulo);
 
   useEffect(() => {
     let cancelado = false;
@@ -303,6 +321,11 @@ export function PostModal({
                     </p>
                   </div>
                 </>
+              )}
+
+              {/* Anexar materiais — só nas etapas de coleta */}
+              {coletaMaterial && (
+                <AnexarMateriais tarefaId={tarefaId} />
               )}
 
               {/* Ações */}

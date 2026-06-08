@@ -2702,6 +2702,38 @@ export async function atualizarLinkDriveDoPost(postId: string, nome: string, url
   });
 }
 
+/**
+ * Acrescenta um novo link no campo "Link do Google Drive" do post, sem
+ * sobrescrever os links já existentes. Diferente de atualizarLinkDriveDoPost
+ * que substitui tudo.
+ */
+export async function adicionarLinkDriveAoPost(
+  postId: string,
+  nome: string,
+  url: string,
+): Promise<void> {
+  const page: any = await notion.pages.retrieve({ page_id: postId });
+  const atual = page.properties?.[env.notion.postProps.driveLink]?.files ?? [];
+  const novos = [
+    ...atual.map((f: any) => {
+      // Mantém o formato pra não quebrar — Notion exige type: 'external' ou 'file'
+      if (f.type === 'external') {
+        return { name: f.name, type: 'external', external: f.external };
+      }
+      // Files internos do Notion não dá pra reescrever em update, então
+      // ignora — eles continuam lá só se mantermos como referência.
+      return null;
+    }).filter(Boolean),
+    { name: nome, type: 'external', external: { url } },
+  ];
+  await notion.pages.update({
+    page_id: postId,
+    properties: {
+      [env.notion.postProps.driveLink]: { files: novos },
+    },
+  });
+}
+
 // ===== Atualizações recentes (admin home) =====
 
 export type AtualizacaoRecente = {
