@@ -20,6 +20,43 @@ import { AdminAvisarPanel } from './AdminAvisarPanel';
 import { EntregaCard } from './EntregaCard';
 import { CalendarSemana, type DiaSemana } from './_components/CalendarSemana';
 import { AtualizacoesCompacto } from './_components/AtualizacoesCompacto';
+import { ProjetosTabs, type ItemProjeto } from './_components/ProjetosTabs';
+
+/**
+ * Classifica o projeto por serviço pelo prefixo do nome.
+ * Padrões da Lud:
+ *   IG | @x          → Instagram
+ *   TTK | x          → TikTok
+ *   Stories | x      → Stories
+ *   Tráfego Pago x   → Tráfego Pago
+ *   Site x           → Site
+ *   LP | x           → Landing Page
+ *   E-book x         → E-book
+ *   Mentoria x       → Mentoria
+ *   Consultoria | x  → Consultoria
+ *   Grupo / Grupos   → Grupos
+ *   ID | x           → Identidade visual
+ *   Processo Sel.    → Interno
+ *   resto            → Outros
+ */
+function classificarProjeto(nome: string): string {
+  const n = nome.trim();
+  if (/^ig\s*\|/i.test(n)) return 'Instagram';
+  if (/^ttk\s*\|/i.test(n)) return 'TikTok';
+  if (/^stories\s*\|/i.test(n)) return 'Stories';
+  if (/^tr[áa]fego\s+pago/i.test(n)) return 'Tráfego Pago';
+  if (/^site\b/i.test(n)) return 'Site';
+  if (/^lp\s*\|/i.test(n)) return 'Landing Page';
+  if (/^e-?book/i.test(n)) return 'E-book';
+  if (/^mentoria\b/i.test(n)) return 'Mentoria';
+  if (/^consultoria/i.test(n)) return 'Consultoria';
+  if (/^grupos?\b/i.test(n)) return 'Grupos';
+  if (/^id\s*\|/i.test(n)) return 'Identidade visual';
+  if (/^processo\s+seletivo/i.test(n) || /^reestrutura/i.test(n) || /^tudo no lugar/i.test(n) || /^portif[óo]lio/i.test(n)) {
+    return 'Interno';
+  }
+  return 'Outros';
+}
 
 const DIAS_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -206,13 +243,12 @@ async function ListaProjetos() {
       </p>
     );
   }
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {projetos.map((p) => (
-        <ProjetoCard key={p.id} projeto={p} />
-      ))}
-    </div>
-  );
+  const itens: ItemProjeto[] = projetos.map((p) => ({
+    id: p.id,
+    servico: classificarProjeto(p.nome),
+    card: <ProjetoCard projeto={p} />,
+  }));
+  return <ProjetosTabs itens={itens} />;
 }
 
 function ProjetoCard({ projeto }: { projeto: ProjetoListItem }) {
