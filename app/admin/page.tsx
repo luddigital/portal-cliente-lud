@@ -2,15 +2,14 @@ import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import {
-  listAllClientes,
-  findProjetosByEmail,
+  listAllProjetos,
   getResumoTarefasCliente,
   listEntregas,
   getEntregasDoDia,
   listPostsNoIntervalo,
   ehEntregaDeAprovacao,
   CATEGORIA_LABEL,
-  type ClienteResumo,
+  type ProjetoListItem,
   type CategoriaTarefa,
   type ResumoTarefasCliente,
   type EntregaItem,
@@ -19,7 +18,6 @@ import {
 import { env } from '@/lib/env';
 import { AdminAvisarPanel } from './AdminAvisarPanel';
 import { EntregaCard } from './EntregaCard';
-import { BotaoCopiarLink } from './BotaoCopiarLink';
 import { CalendarSemana, type DiaSemana } from './_components/CalendarSemana';
 import { AtualizacoesCompacto } from './_components/AtualizacoesCompacto';
 
@@ -161,10 +159,10 @@ export default async function AdminPage({
         <section className="space-y-4">
           <div>
             <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
-              Centrais dos clientes
+              Projetos
             </h2>
             <p className="mt-1 text-[14px] text-t2">
-              Clica num card pra entrar como aquele cliente e ver a central dele.
+              Clica num card pra ver o projeto, suas pendências e o cliente dono.
             </p>
           </div>
           <Suspense
@@ -179,7 +177,7 @@ export default async function AdminPage({
               </div>
             }
           >
-            <ListaClientes />
+            <ListaProjetos />
           </Suspense>
         </section>
 
@@ -199,61 +197,48 @@ export default async function AdminPage({
   );
 }
 
-async function ListaClientes() {
-  const clientes = await listAllClientes();
-  if (clientes.length === 0) {
+async function ListaProjetos() {
+  const projetos = await listAllProjetos();
+  if (projetos.length === 0) {
     return (
       <p className="text-[13px] text-t3">
-        Nenhum cliente com email cadastrado no banco Clientes.
+        Nenhum projeto cadastrado.
       </p>
     );
   }
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {clientes.map((c) => (
-        <ClienteCard key={c.id} cliente={c} />
+      {projetos.map((p) => (
+        <ProjetoCard key={p.id} projeto={p} />
       ))}
     </div>
   );
 }
 
-function ClienteCard({ cliente }: { cliente: ClienteResumo }) {
-  const detalheHref = `/admin/clientes/${cliente.id}`;
-  const temEmail = !!cliente.email;
-  const loginHref = temEmail
-    ? `/api/admin/login-as?email=${encodeURIComponent(cliente.email!)}`
-    : null;
+function ProjetoCard({ projeto }: { projeto: ProjetoListItem }) {
+  const detalheHref = `/admin/projetos/${projeto.id}`;
   return (
     <div className="group rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-4 transition hover:border-navy/40 hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
       <a href={detalheHref} className="block">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="text-[14px] font-semibold tracking-[-0.01em] text-ink truncate">
-              {cliente.nome}
+              {projeto.nome}
             </div>
-            <div className="mt-1 text-[11px] font-mono text-t3 truncate">
-              {cliente.email ?? (
-                <span className="not-italic text-[10px] font-sans uppercase tracking-[0.06em]">
-                  via acessos extras
-                </span>
-              )}
+            <div className="mt-1 text-[11px] text-t3 truncate">
+              {projeto.clienteNome || 'sem cliente'}
             </div>
           </div>
-          <span className="shrink-0 rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-semibold text-t2">
-            {cliente.projetoCount}{' '}
-            {cliente.projetoCount === 1 ? 'projeto' : 'projetos'}
-          </span>
+          {projeto.status && (
+            <span className="shrink-0 rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em] text-t2">
+              {projeto.status}
+            </span>
+          )}
         </div>
 
-        {temEmail ? (
-          <Suspense fallback={<ResumoSkeleton />}>
-            <ResumoEtapas email={cliente.email!} />
-          </Suspense>
-        ) : (
-          <div className="mt-3 text-[11px] text-t3">
-            Sem email principal — acessos individuais cadastrados.
-          </div>
-        )}
+        <Suspense fallback={<ResumoSkeleton />}>
+          <ResumoEtapasProjeto projetoId={projeto.id} />
+        </Suspense>
       </a>
 
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-[rgba(21,21,33,0.06)] pt-2.5">
@@ -263,41 +248,21 @@ function ClienteCard({ cliente }: { cliente: ClienteResumo }) {
         >
           Ver detalhes
         </a>
-        <div className="flex items-center gap-3">
-          {temEmail ? (
-            <>
-              <BotaoCopiarLink email={cliente.email!} />
-              {loginHref && (
-                <a
-                  href={loginHref}
-                  className="text-[11px] text-mauve hover:text-ink"
-                >
-                  Entrar como →
-                </a>
-              )}
-            </>
-          ) : (
-            <a
-              href={detalheHref}
-              className="text-[11px] text-navy hover:text-ink"
-            >
-              Gerenciar acessos →
-            </a>
-          )}
-        </div>
+        {projeto.clienteId && (
+          <a
+            href={`/admin/clientes/${projeto.clienteId}`}
+            className="text-[11px] text-mauve hover:text-ink"
+          >
+            Cliente →
+          </a>
+        )}
       </div>
     </div>
   );
 }
 
-async function ResumoEtapas({ email }: { email: string }) {
-  const projetos = await findProjetosByEmail(email);
-  if (projetos.length === 0) {
-    return (
-      <div className="mt-3 text-[11px] text-t3">Sem projetos vinculados.</div>
-    );
-  }
-  const resumo = await getResumoTarefasCliente(projetos.map((p) => p.id));
+async function ResumoEtapasProjeto({ projetoId }: { projetoId: string }) {
+  const resumo = await getResumoTarefasCliente([projetoId]);
   return <ResumoChips resumo={resumo} />;
 }
 
