@@ -17,6 +17,47 @@ function diasAte(iso: string): number {
   return Math.round((d.getTime() - hoje.getTime()) / 86400000);
 }
 
+type StatusPrazo = {
+  label: string;
+  bg: string;
+  fg: string;
+};
+
+/** Classifica o prazo da tarefa numa pill colorida. */
+function statusDoPrazo(iso: string | null): StatusPrazo | null {
+  if (!iso) return { label: 'Sem prazo', bg: 'var(--bgSoft)', fg: 'var(--t3)' };
+  const dias = diasAte(iso);
+  if (dias < 0) {
+    return {
+      label: dias === -1 ? 'Atrasada · 1 dia' : `Atrasada · ${-dias} dias`,
+      bg: 'var(--prazo-atrasada-soft)',
+      fg: 'var(--prazo-atrasada)',
+    };
+  }
+  if (dias === 0) return { label: 'Hoje', bg: 'var(--prazo-hoje-soft)', fg: 'var(--prazo-hoje)' };
+  if (dias === 1) return { label: 'Amanhã', bg: 'var(--prazo-hoje-soft)', fg: 'var(--prazo-hoje)' };
+  if (dias <= 3) return { label: `Chegando · em ${dias}d`, bg: 'var(--cal-aprovacao-soft)', fg: 'var(--cal-aprovacao)' };
+  if (dias <= 7) return { label: `Em ${dias} dias`, bg: 'var(--cal-agendado-soft)', fg: 'var(--cal-agendado)' };
+  return null; // mais à frente — sem pill pra não poluir
+}
+
+function PillPrazo({ iso }: { iso: string | null }) {
+  const s = statusDoPrazo(iso);
+  if (!s) return null;
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em]"
+      style={{ background: s.bg, color: s.fg }}
+    >
+      <span
+        className="inline-block h-1 w-1 rounded-full"
+        style={{ background: 'currentColor' }}
+      />
+      {s.label}
+    </span>
+  );
+}
+
 /** Bloco de data à esquerda da tarefa (mês + dia). */
 function DataBox({ iso }: { iso: string | null }) {
   if (!iso) {
@@ -54,30 +95,96 @@ function DataBox({ iso }: { iso: string | null }) {
 
 type Grupo = { titulo: string; tarefas: TarefaDaEntrega[] };
 
+function ordenarPorUrgencia(tarefas: TarefaDaEntrega[]): TarefaDaEntrega[] {
+  return [...tarefas].sort((a, b) => {
+    // Sem prazo vai pro fim
+    if (!a.prazo && !b.prazo) return 0;
+    if (!a.prazo) return 1;
+    if (!b.prazo) return -1;
+    return a.prazo.localeCompare(b.prazo);
+  });
+}
+
+function resumoGrupo(tarefas: TarefaDaEntrega[]): {
+  atrasadas: number;
+  hoje: number;
+  chegando: number;
+} {
+  let atrasadas = 0;
+  let hoje = 0;
+  let chegando = 0;
+  for (const t of tarefas) {
+    if (!t.prazo) continue;
+    const d = diasAte(t.prazo);
+    if (d < 0) atrasadas++;
+    else if (d === 0) hoje++;
+    else if (d <= 3) chegando++;
+  }
+  return { atrasadas, hoje, chegando };
+}
+
 export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
   const [aberto, setAberto] = useState<TarefaDaEntrega | null>(null);
 
   return (
     <>
       <div className="space-y-3">
-        {grupos.map((g) => (
+        {grupos.map((g) => {
+          const ordenadas = ordenarPorUrgencia(g.tarefas);
+          const r = resumoGrupo(g.tarefas);
+          return (
           <div key={g.titulo} className="card p-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-[13px] font-semibold tracking-[-0.01em] text-ink">
                 {g.titulo}
               </div>
-              <span
-                className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-                style={{
-                  background: 'var(--prazo-hoje-soft)',
-                  color: 'var(--prazo-hoje)',
-                }}
-              >
-                {g.tarefas.length}
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {r.atrasadas > 0 && (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    style={{
+                      background: 'var(--prazo-atrasada-soft)',
+                      color: 'var(--prazo-atrasada)',
+                    }}
+                  >
+                    {r.atrasadas} atrasada{r.atrasadas > 1 ? 's' : ''}
+                  </span>
+                )}
+                {r.hoje > 0 && (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    style={{
+                      background: 'var(--prazo-hoje-soft)',
+                      color: 'var(--prazo-hoje)',
+                    }}
+                  >
+                    {r.hoje} hoje
+                  </span>
+                )}
+                {r.chegando > 0 && (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    style={{
+                      background: 'var(--cal-aprovacao-soft)',
+                      color: 'var(--cal-aprovacao)',
+                    }}
+                  >
+                    {r.chegando} chegando
+                  </span>
+                )}
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                  style={{
+                    background: 'var(--bgSoft)',
+                    color: 'var(--t2)',
+                  }}
+                >
+                  {g.tarefas.length} total
+                </span>
+              </div>
             </div>
             <ul className="mt-3 space-y-1">
-              {g.tarefas.map((t) => (
+              {ordenadas.map((t) => (
                 <li key={t.tarefaId}>
                   <div
                     role={t.postId ? 'button' : undefined}
@@ -92,13 +199,15 @@ export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
                     <div className="min-w-0 flex-1 truncate text-[13px] text-ink">
                       {t.postTitulo || t.titulo}
                     </div>
+                    <PillPrazo iso={t.prazo} />
                     <BotaoConcluir tarefaId={t.tarefaId} />
                   </div>
                 </li>
               ))}
             </ul>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {aberto && aberto.postId && (
