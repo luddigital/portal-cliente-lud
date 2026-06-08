@@ -218,8 +218,11 @@ async function ListaClientes() {
 }
 
 function ClienteCard({ cliente }: { cliente: ClienteResumo }) {
-  const detalheHref = `/admin/cliente/${cliente.id}`;
-  const loginHref = `/api/admin/login-as?email=${encodeURIComponent(cliente.email!)}`;
+  const detalheHref = `/admin/clientes/${cliente.id}`;
+  const temEmail = !!cliente.email;
+  const loginHref = temEmail
+    ? `/api/admin/login-as?email=${encodeURIComponent(cliente.email!)}`
+    : null;
   return (
     <div className="group rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-4 transition hover:border-navy/40 hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
       <a href={detalheHref} className="block">
@@ -229,7 +232,11 @@ function ClienteCard({ cliente }: { cliente: ClienteResumo }) {
               {cliente.nome}
             </div>
             <div className="mt-1 text-[11px] font-mono text-t3 truncate">
-              {cliente.email}
+              {cliente.email ?? (
+                <span className="not-italic text-[10px] font-sans uppercase tracking-[0.06em]">
+                  via acessos extras
+                </span>
+              )}
             </div>
           </div>
           <span className="shrink-0 rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-semibold text-t2">
@@ -238,9 +245,15 @@ function ClienteCard({ cliente }: { cliente: ClienteResumo }) {
           </span>
         </div>
 
-        <Suspense fallback={<ResumoSkeleton />}>
-          <ResumoEtapas email={cliente.email!} />
-        </Suspense>
+        {temEmail ? (
+          <Suspense fallback={<ResumoSkeleton />}>
+            <ResumoEtapas email={cliente.email!} />
+          </Suspense>
+        ) : (
+          <div className="mt-3 text-[11px] text-t3">
+            Sem email principal — acessos individuais cadastrados.
+          </div>
+        )}
       </a>
 
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-[rgba(21,21,33,0.06)] pt-2.5">
@@ -251,13 +264,26 @@ function ClienteCard({ cliente }: { cliente: ClienteResumo }) {
           Ver detalhes
         </a>
         <div className="flex items-center gap-3">
-          <BotaoCopiarLink email={cliente.email!} />
-          <a
-            href={loginHref}
-            className="text-[11px] text-mauve hover:text-ink"
-          >
-            Entrar como →
-          </a>
+          {temEmail ? (
+            <>
+              <BotaoCopiarLink email={cliente.email!} />
+              {loginHref && (
+                <a
+                  href={loginHref}
+                  className="text-[11px] text-mauve hover:text-ink"
+                >
+                  Entrar como →
+                </a>
+              )}
+            </>
+          ) : (
+            <a
+              href={detalheHref}
+              className="text-[11px] text-navy hover:text-ink"
+            >
+              Gerenciar acessos →
+            </a>
+          )}
         </div>
       </div>
     </div>

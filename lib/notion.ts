@@ -320,8 +320,36 @@ async function _listAllClientesUncached(): Promise<ClienteResumo[]> {
     }
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
   } while (cursor);
+
+  // Pega quais clientes têm pelo menos 1 acesso extra cadastrado — incluímos
+  // esses na listagem mesmo sem email principal (caso TKRA: time grande,
+  // ninguém dá email único, só acessos múltiplos).
+  const clientesComAcesso = new Set<string>();
+  try {
+    let cur: string | undefined;
+    do {
+      const r = await notion.databases.query({
+        database_id: env.notion.acessosDbId,
+        page_size: 100,
+        start_cursor: cur,
+        filter: {
+          property: env.notion.acessoProps.ativo,
+          checkbox: { equals: true },
+        },
+      });
+      for (const acesso of r.results as any[]) {
+        const rel =
+          getProp(acesso, env.notion.acessoProps.cliente)?.relation ?? [];
+        for (const c of rel) clientesComAcesso.add(c.id);
+      }
+      cur = r.has_more ? r.next_cursor ?? undefined : undefined;
+    } while (cur);
+  } catch {
+    /* sem acesso ao banco de acessos — segue só com filtragem por email */
+  }
+
   return out
-    .filter((c) => !!c.email)
+    .filter((c) => !!c.email || clientesComAcesso.has(c.id))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
