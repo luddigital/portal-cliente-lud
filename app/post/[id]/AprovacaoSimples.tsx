@@ -151,17 +151,21 @@ export function AprovacaoSimples({
   }
 
   return (
-    <div className="card sticky bottom-2 sm:bottom-6 z-20 space-y-3 border border-[rgba(21,21,33,0.08)] bg-white p-4 sm:p-5 shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
+    <div className="card sticky bottom-2 sm:bottom-6 z-20 space-y-4 border border-[rgba(21,21,33,0.08)] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
       <div>
-        <label className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-          Comentário (opcional)
+        <label className="label">
+          {aprovacaoColaborativa ? 'Comentário da equipe' : 'Comentário (opcional)'}
         </label>
         <textarea
-          rows={3}
+          rows={aprovacaoColaborativa ? 6 : 4}
           value={comentario}
           onChange={(e) => setComentario(e.target.value)}
-          placeholder="Algum recado pra equipe?"
-          className="input mt-1 resize-y text-[13px]"
+          placeholder={
+            aprovacaoColaborativa
+              ? 'Escreve seu feedback aqui. Vários da equipe podem comentar — só Aprovar/Reprovar fecham o post.'
+              : 'Algum recado pra equipe?'
+          }
+          className="input resize-y text-[13px]"
           disabled={loading || !!done}
         />
       </div>
@@ -195,43 +199,50 @@ export function AprovacaoSimples({
         </div>
       ) : aprovacaoColaborativa ? (
         // ===== MODO COLABORATIVO =====
-        <div className="space-y-2.5">
-          <div
-            className="rounded-lg px-3 py-2 text-[12px] leading-snug"
-            style={{ background: 'var(--bgSoft)', color: 'var(--t2)' }}
-          >
-            Vários da equipe podem opinar aqui. <b>Comentar</b> não encerra o
-            post — só <b>Aprovar</b> ou <b>Reprovar</b> fecham pra produção
-            seguir.
-          </div>
+        <div className="space-y-5">
+          {/* Bloco 1: comentar */}
           <button
             type="button"
             onClick={comentarSemEncerrar}
             disabled={loading || !temComentario}
-            className="btn-ghost w-full justify-center whitespace-nowrap"
+            className="btn-primary w-full justify-center whitespace-nowrap"
           >
-            {modo === 'comentando' ? 'Enviando…' : '💬 Comentar (não encerra)'}
+            {modo === 'comentando' ? 'Enviando…' : '💬 Enviar comentário'}
           </button>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+
+          {/* Separador com rótulo */}
+          <div className="relative pt-1">
+            <div className="absolute inset-x-0 top-1/2 h-px bg-[rgba(21,21,33,0.08)]" />
+            <div className="relative mx-auto inline-flex w-full justify-center">
+              <span className="bg-white px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-t3">
+                Quando o feedback estiver final
+              </span>
+            </div>
+          </div>
+
+          {/* Bloco 2: encerrar */}
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <button
               type="button"
               onClick={aprovar}
               disabled={loading}
-              className="btn-primary w-full justify-center whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
               style={{ background: 'var(--prazo-em-dia)' }}
             >
-              {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar e encerrar'}
+              {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar'}
             </button>
             <button
               type="button"
               onClick={pedirAlteracao}
               disabled={loading || !temComentario}
-              className="btn-ghost w-full justify-center whitespace-nowrap"
-              style={{ background: 'var(--prazo-hoje-soft)', color: 'var(--prazo-hoje)' }}
+              className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-[rgba(21,21,33,0.1)] px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-50"
+              style={{
+                background: 'var(--prazo-hoje-soft)',
+                color: 'var(--prazo-hoje)',
+                borderColor: 'var(--prazo-hoje)',
+              }}
             >
-              {modo === 'pedindoAlteracao'
-                ? 'Enviando…'
-                : '✏️ Reprovar e encerrar'}
+              {modo === 'pedindoAlteracao' ? 'Enviando…' : '✏️ Reprovar'}
             </button>
           </div>
         </div>
