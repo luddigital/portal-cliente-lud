@@ -284,14 +284,24 @@ function ProjetoCard({ projeto }: { projeto: ProjetoListItem }) {
         >
           Ver detalhes
         </a>
-        {projeto.clienteId && (
-          <a
-            href={`/admin/clientes/${projeto.clienteId}`}
-            className="text-[11px] text-mauve hover:text-ink"
-          >
-            Cliente →
-          </a>
-        )}
+        <div className="flex items-center gap-3">
+          {projeto.clienteId && (
+            <a
+              href={`/api/admin/login-as-cliente?id=${projeto.clienteId}`}
+              className="text-[11px] font-medium text-navy hover:underline"
+            >
+              👁 Ver como cliente
+            </a>
+          )}
+          {projeto.clienteId && (
+            <a
+              href={`/admin/clientes/${projeto.clienteId}`}
+              className="text-[11px] text-mauve hover:text-ink"
+            >
+              Cliente →
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );
