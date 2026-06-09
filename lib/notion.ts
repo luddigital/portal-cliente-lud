@@ -1,5 +1,6 @@
 import { Client } from '@notionhq/client';
 import { unstable_cache, revalidateTag } from 'next/cache';
+import { cache } from 'react';
 import { env } from './env';
 
 // Tags pra cache do Next — usadas pra invalidar quando algo muda no Notion
@@ -111,8 +112,8 @@ function makeCache<T>(ttlMs: number) {
 
 const projetosByEmailCache = makeCache<ProjetoCliente[]>(5 * 60_000);
 const nomeClienteCache = makeCache<string | null>(10 * 60_000);
-const tarefasPorCategoriaCache = makeCache<PostsAgrupadosPorCategoria>(30_000);
-const postsDoMesCache = makeCache<PostCalendario[]>(30_000);
+const tarefasPorCategoriaCache = makeCache<PostsAgrupadosPorCategoria>(120_000); // 2 min
+const postsDoMesCache = makeCache<PostCalendario[]>(120_000); // 2 min
 
 export type DemandaTipo = 'Informação' | 'Produção Material' | 'Informação & Produção de Material' | 'Duplicado' | 'Nada.';
 
@@ -360,6 +361,45 @@ const _listAllClientesCached = unstable_cache(
 );
 
 /**
+ * Mapa projetoId → flag de aprovação colaborativa do cliente dono.
+ * Pré-computado pra evitar O(N) sobre clientes no carregamento de cada post.
+ * Cache de 5 min, invalidado pelo TAG_CLIENTES.
+ */
+async function _getProjetoColaborativoMapUncached(): Promise<
+  Record<string, boolean>
+> {
+  const clientes = await _listAllClientesCached();
+  const mapa: Record<string, boolean> = {};
+  await Promise.all(
+    clientes.map(async (c) => {
+      try {
+        const cliPage: any = await cachedPageRetrieve(c.id);
+        const projRel =
+          getProp(cliPage, env.notion.clienteProps.projetos)?.relation ?? [];
+        for (const r of projRel) {
+          mapa[r.id] = c.aprovacaoColaborativa;
+        }
+      } catch {
+        /* ignora cliente individual com falha */
+      }
+    }),
+  );
+  return mapa;
+}
+
+const _getProjetoColaborativoMapCached = unstable_cache(
+  _getProjetoColaborativoMapUncached,
+  ['mapa-projeto-colaborativo-v1'],
+  { revalidate: 300, tags: [TAG_CLIENTES] },
+);
+
+export async function getProjetoColaborativoMap(): Promise<
+  Record<string, boolean>
+> {
+  return _getProjetoColaborativoMapCached();
+}
+
+/**
  * Lista todos os clientes do banco Clientes (somente os que têm email cadastrado).
  * Usado pelo painel admin pra "entrar como" cada cliente.
  */
@@ -569,7 +609,7 @@ export type ProjetoListItem = {
 };
 
 /** Lista todos os projetos (agregando a partir dos clientes ativos). */
-export async function listAllProjetos(): Promise<ProjetoListItem[]> {
+async function _listAllProjetosUncached(): Promise<ProjetoListItem[]> {
   const clientes = await listAllClientes();
   const porCliente = await Promise.all(
     clientes.map(async (c) => {
@@ -577,15 +617,23 @@ export async function listAllProjetos(): Promise<ProjetoListItem[]> {
       return { clienteId: c.id, clienteNome: c.nome, ids };
     }),
   );
-  const vistos = new Set<string>();
-  const out: ProjetoListItem[] = [];
+
+  // Coleta IDs únicos + mapa id → cliente (primeiro cliente que reivindica vence)
+  const idToCliente = new Map<string, { clienteId: string; clienteNome: string }>();
   for (const { clienteId, clienteNome, ids } of porCliente) {
     for (const id of ids) {
-      if (vistos.has(id)) continue;
-      vistos.add(id);
+      if (!idToCliente.has(id)) {
+        idToCliente.set(id, { clienteId, clienteNome });
+      }
+    }
+  }
+
+  // Resolve TODOS os projetos em paralelo (antes era serial — gargalo)
+  const resolvidos = await Promise.all(
+    [...idToCliente.entries()].map(async ([id, donoInfo]) => {
       try {
         const proj = (await cachedPageRetrieve(id)) as any;
-        if (proj.archived) continue;
+        if (proj.archived) return null;
         const tp = Object.values(proj.properties).find(
           (p: any) => p.type === 'title',
         ) as any;
@@ -593,17 +641,32 @@ export async function listAllProjetos(): Promise<ProjetoListItem[]> {
           getProp(proj, 'Status Manual')?.select?.name ??
           getProp(proj, 'Status')?.status?.name ??
           null;
-        out.push({
+        return {
           id,
           nome: txt(tp?.title) || 'Projeto',
           status,
-          clienteId,
-          clienteNome,
-        });
-      } catch {}
-    }
-  }
-  return out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+          clienteId: donoInfo.clienteId,
+          clienteNome: donoInfo.clienteNome,
+        } as ProjetoListItem;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return resolvidos
+    .filter((p): p is ProjetoListItem => p !== null)
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+const _listAllProjetosCached = unstable_cache(
+  _listAllProjetosUncached,
+  ['list-all-projetos-v1'],
+  { revalidate: 300, tags: [TAG_CLIENTES] }, // 5 min — bate com clientes
+);
+
+export async function listAllProjetos(): Promise<ProjetoListItem[]> {
+  return _listAllProjetosCached();
 }
 
 export type ProjetoDetalhe = {
@@ -1770,8 +1833,15 @@ const LEGENDA_KEYWORDS = ['legenda', 'caption'];
 /**
  * Coleta todos os blocos do post de forma recursiva (entrando em callouts, tabs,
  * toggles, columns, etc) e retorna em ordem de leitura.
+ *
+ * Wrapped em `cache()` do React — chamadas múltiplas pro mesmo blockId
+ * DENTRO DA MESMA REQUEST batem dedupe (todas as 5 leituras de seção em
+ * getPostComDetalhes compartilham o mesmo fetch). Cache TTL = duração da request.
  */
-async function coletarBlocosRecursivo(blockId: string, profundidade = 0): Promise<any[]> {
+const coletarBlocosRecursivo = cache(async function coletarBlocosRecursivoInner(
+  blockId: string,
+  profundidade = 0,
+): Promise<any[]> {
   if (profundidade > 4) return []; // proteção contra recursão infinita
   try {
     const out: any[] = [];
@@ -1779,7 +1849,7 @@ async function coletarBlocosRecursivo(blockId: string, profundidade = 0): Promis
     for (const b of res.results as any[]) {
       out.push(b);
       if (b.has_children) {
-        const filhos = await coletarBlocosRecursivo(b.id, profundidade + 1);
+        const filhos = await coletarBlocosRecursivoInner(b.id, profundidade + 1);
         out.push(...filhos);
       }
     }
@@ -1787,7 +1857,7 @@ async function coletarBlocosRecursivo(blockId: string, profundidade = 0): Promis
   } catch {
     return [];
   }
-}
+});
 
 function rtTexto(b: any): string {
   const tipo = b.type;
@@ -2128,33 +2198,12 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       if (url) driveLinks.push({ name: f.name ?? 'arquivo', url });
     }
 
-    // Descobre o cliente "dono" do projeto pra saber se ele tem aprovação
-    // colaborativa. Usa a lista cached pra não fazer query extra.
+    // Lookup O(1) num mapa pré-computado (era O(N) sobre clientes — gargalo).
     let aprovacaoColaborativa = false;
     if (projetoId) {
       try {
-        const clientes = await _listAllClientesCached();
-        const dono = clientes.find((c) => c.id === projetoId);
-        // ^^ projetoId é id do projeto, não do cliente. Precisamos buscar o
-        // cliente cuja relação 'Projetos' contém esse projetoId.
-        if (!dono) {
-          // Procura nos clientes via relação projetos
-          for (const c of clientes) {
-            try {
-              const cliPage = await cachedPageRetrieve(c.id);
-              const projRel =
-                getProp(cliPage, env.notion.clienteProps.projetos)?.relation ?? [];
-              if (projRel.some((r: any) => r.id === projetoId)) {
-                aprovacaoColaborativa = c.aprovacaoColaborativa;
-                break;
-              }
-            } catch {
-              /* ignora */
-            }
-          }
-        } else {
-          aprovacaoColaborativa = dono.aprovacaoColaborativa;
-        }
+        const mapa = await getProjetoColaborativoMap();
+        aprovacaoColaborativa = !!mapa[projetoId];
       } catch {
         /* mantém false */
       }

@@ -89,10 +89,20 @@ export default async function PostDetalhePage({
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const post = await getPostComDetalhes(params.id);
-  if (!post) notFound();
   const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
   const ehColaborador = !!session.colaboradorId;
+
+  // Dispara post + (tarefa por query, se houver) em paralelo. Quando vem do
+  // /etapa/[stage] no portal cliente, sempre tem ?tarefa= — então a maioria
+  // dos casos sai com 1 round-trip ao invés de 2.
+  const [post, tarefaDoQuery] = await Promise.all([
+    getPostComDetalhes(params.id),
+    searchParams.tarefa
+      ? getTarefaComPost(searchParams.tarefa)
+      : Promise.resolve(null),
+  ]);
+
+  if (!post) notFound();
   if (
     !post.projetoId ||
     (!ehAdmin && !ehColaborador && !session.projetoIds.includes(post.projetoId))
@@ -101,19 +111,15 @@ export default async function PostDetalhePage({
   }
 
   // Carrega a tarefa específica que originou esse fluxo (se vier no query).
-  // Se não vier, tenta auto-detectar a tarefa cliente pendente desse post
-  // (` Pronto`=true e título matching com categoria do cliente).
+  // Se não vier, auto-detecta a tarefa cliente pendente desse post.
   let tarefaTitulo: string | null = null;
   let tarefaPrazo: string | null = null;
   let tarefaId: string | null = null;
-  if (searchParams.tarefa) {
-    const t = await getTarefaComPost(searchParams.tarefa);
-    if (t && t.tarefa.postId === post.id) {
-      tarefaId = t.tarefa.tarefaId;
-      tarefaTitulo = t.tarefa.tarefaTitulo;
-      tarefaPrazo = t.tarefa.tarefaPrazo;
-    }
-  } else {
+  if (tarefaDoQuery && tarefaDoQuery.tarefa.postId === post.id) {
+    tarefaId = tarefaDoQuery.tarefa.tarefaId;
+    tarefaTitulo = tarefaDoQuery.tarefa.tarefaTitulo;
+    tarefaPrazo = tarefaDoQuery.tarefa.tarefaPrazo;
+  } else if (!searchParams.tarefa) {
     // Auto-detecta a tarefa cliente do post. Pro admin, se não houver tarefa
     // "pronta", aceita qualquer tarefa cliente aberta (pra sempre conseguir agir).
     let auto = await findTarefaClienteProntaDoPost(post.id);
