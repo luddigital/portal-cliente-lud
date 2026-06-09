@@ -680,25 +680,45 @@ export type ProjetoDetalhe = {
 };
 
 /** Detalhe de um projeto + config + tarefas pendentes. */
-export async function getProjetoDetalhe(
+async function _getProjetoDetalheUncached(
   projetoId: string,
 ): Promise<ProjetoDetalhe | null> {
   try {
-    const proj = (await cachedPageRetrieve(projetoId)) as any;
-    if (proj.archived) return null;
+    // 3 chamadas independentes em paralelo (antes era serial)
+    const [projAny, tarefasRes, config] = await Promise.all([
+      cachedPageRetrieve(projetoId) as Promise<any>,
+      notion.databases.query({
+        database_id: env.notion.tarefasDbId,
+        page_size: 100,
+        filter: {
+          and: [
+            { property: 'Projeto', relation: { contains: projetoId } },
+            ...STATUS_TAREFA_FECHADOS.map((s) => ({
+              property: env.notion.taskProps.status,
+              status: { does_not_equal: s },
+            })),
+          ],
+        },
+      }),
+      getProjetoConfig(projetoId),
+    ]);
 
-    const tp = Object.values(proj.properties).find(
+    if (projAny.archived) return null;
+
+    const tp = Object.values(projAny.properties).find(
       (p: any) => p.type === 'title',
     ) as any;
     const nome = txt(tp?.title) || 'Projeto';
     const status =
-      getProp(proj, 'Status Manual')?.select?.name ??
-      getProp(proj, 'Status')?.status?.name ??
+      getProp(projAny, 'Status Manual')?.select?.name ??
+      getProp(projAny, 'Status')?.status?.name ??
       null;
-    const gestor = getProp(proj, 'Gestor de Projetos Resp')?.people?.[0]?.name ?? null;
+    const gestor =
+      getProp(projAny, 'Gestor de Projetos Resp')?.people?.[0]?.name ?? null;
 
+    // Cliente depende do projeto, mas chamada paralela à montagem das tarefas
     let clienteNome: string | null = null;
-    const crm = getProp(proj, 'CRM')?.relation ?? [];
+    const crm = getProp(projAny, 'CRM')?.relation ?? [];
     if (crm[0]) {
       try {
         const cli = (await cachedPageRetrieve(crm[0].id)) as any;
@@ -710,20 +730,7 @@ export async function getProjetoDetalhe(
     }
 
     const tarefas: ProjetoDetalhe['tarefas'] = [];
-    const res = await notion.databases.query({
-      database_id: env.notion.tarefasDbId,
-      page_size: 100,
-      filter: {
-        and: [
-          { property: 'Projeto', relation: { contains: projetoId } },
-          ...STATUS_TAREFA_FECHADOS.map((s) => ({
-            property: env.notion.taskProps.status,
-            status: { does_not_equal: s },
-          })),
-        ],
-      },
-    });
-    for (const t of res.results as any[]) {
+    for (const t of tarefasRes.results as any[]) {
       const ttp = Object.values(t.properties).find(
         (p: any) => p.type === 'title',
       ) as any;
@@ -734,11 +741,22 @@ export async function getProjetoDetalhe(
       });
     }
 
-    const config = await getProjetoConfig(projetoId);
     return { id: projetoId, nome, status, clienteNome, gestor, config, tarefas };
   } catch {
     return null;
   }
+}
+
+const _getProjetoDetalheCached = unstable_cache(
+  _getProjetoDetalheUncached,
+  ['get-projeto-detalhe-v1'],
+  { revalidate: 120, tags: [TAG_TAREFAS, TAG_CLIENTES] }, // 2 min
+);
+
+export async function getProjetoDetalhe(
+  projetoId: string,
+): Promise<ProjetoDetalhe | null> {
+  return _getProjetoDetalheCached(projetoId);
 }
 
 /** Retorna os projetoIds vinculados ao cliente. */
@@ -1145,7 +1163,7 @@ export type EntregaDetalhe = EntregaItem & {
  * Pega 1 entrega + retrieve de cada tarefa relacionada (com projeto/cliente).
  * Retorna só tarefas não concluídas.
  */
-export async function getEntregaDetalhe(entregaId: string): Promise<EntregaDetalhe | null> {
+async function _getEntregaDetalheUncached(entregaId: string): Promise<EntregaDetalhe | null> {
   try {
     const entrega = (await cachedPageRetrieve(entregaId)) as any;
     const titleProp = Object.values(entrega.properties).find(
@@ -1189,79 +1207,78 @@ export async function getEntregaDetalhe(entregaId: string): Promise<EntregaDetal
       cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
     } while (cursor);
 
-    // Resolve post/projeto/cliente em lotes, pra não estourar o rate limit.
-    const tarefasRelacionadas: TarefaDaEntrega[] = [];
-    const LOTE = 15;
-    for (let i = 0; i < tarefasAbertas.length; i += LOTE) {
-      const lote = tarefasAbertas.slice(i, i + LOTE);
-      const resolvidas = await Promise.all(
-        lote.map(async (t: any): Promise<TarefaDaEntrega | null> => {
-          try {
-            const tt = Object.values(t.properties).find(
+    // Resolve TODAS as tarefas em paralelo. cachedPageRetrieve já faz dedupe
+    // por id — se 50 tarefas referenciam 10 projetos, só vai 10 retrieves.
+    // Dentro de cada tarefa, post + projeto rodam em paralelo (não dependem).
+    const resolvidas = await Promise.all(
+      tarefasAbertas.map(async (t: any): Promise<TarefaDaEntrega | null> => {
+        try {
+          const tt = Object.values(t.properties).find(
+            (x: any) => x.type === 'title',
+          ) as any;
+          const titulo = txt(tt?.title) || '';
+          const status = t.properties.Status?.status?.name ?? null;
+          const prazo =
+            t.properties['Data Entrega']?.date?.start ??
+            t.properties['Data Inicial']?.date?.start ??
+            null;
+          const finalizada = t.properties['Finalizada em ']?.date?.start ?? null;
+          const postRel = t.properties.Post?.relation ?? [];
+          const projetoRel = t.properties.Projeto?.relation ?? [];
+
+          // post + projeto em paralelo
+          const [postPage, projPage] = await Promise.all([
+            postRel[0] ? cachedPageRetrieve(postRel[0].id).catch(() => null) : null,
+            projetoRel[0] ? cachedPageRetrieve(projetoRel[0].id).catch(() => null) : null,
+          ]);
+
+          let postTitulo: string | null = null;
+          if (postPage) {
+            const ptp = Object.values((postPage as any).properties).find(
               (x: any) => x.type === 'title',
             ) as any;
-            const titulo = txt(tt?.title) || '';
-            const status = t.properties.Status?.status?.name ?? null;
-            const prazo =
-              t.properties['Data Entrega']?.date?.start ??
-              t.properties['Data Inicial']?.date?.start ??
-              null;
-            const finalizada = t.properties['Finalizada em ']?.date?.start ?? null;
-            const postRel = t.properties.Post?.relation ?? [];
-            const projetoRel = t.properties.Projeto?.relation ?? [];
-
-            let postTitulo: string | null = null;
-            if (postRel[0]) {
-              try {
-                const p = (await cachedPageRetrieve(postRel[0].id)) as any;
-                const ptp = Object.values(p.properties).find(
-                  (x: any) => x.type === 'title',
-                ) as any;
-                postTitulo = txt(ptp?.title) || null;
-              } catch {}
-            }
-
-            let projetoNome: string | null = null;
-            let clienteNome: string | null = null;
-            if (projetoRel[0]) {
-              try {
-                const proj = (await cachedPageRetrieve(projetoRel[0].id)) as any;
-                const ptp = Object.values(proj.properties).find(
-                  (x: any) => x.type === 'title',
-                ) as any;
-                projetoNome = txt(ptp?.title) || null;
-                const clienteRel = proj.properties.Cliente?.relation ?? [];
-                if (clienteRel[0]) {
-                  try {
-                    const cli = (await cachedPageRetrieve(clienteRel[0].id)) as any;
-                    const ctp = Object.values(cli.properties).find(
-                      (x: any) => x.type === 'title',
-                    ) as any;
-                    clienteNome = txt(ctp?.title) || null;
-                  } catch {}
-                }
-              } catch {}
-            }
-
-            return {
-              tarefaId: t.id,
-              titulo,
-              status,
-              prazo,
-              finalizada,
-              postId: postRel[0]?.id ?? null,
-              postTitulo,
-              projetoId: projetoRel[0]?.id ?? null,
-              projetoNome,
-              clienteNome,
-            };
-          } catch {
-            return null;
+            postTitulo = txt(ptp?.title) || null;
           }
-        }),
-      );
-      for (const r of resolvidas) if (r) tarefasRelacionadas.push(r);
-    }
+
+          let projetoNome: string | null = null;
+          let clienteNome: string | null = null;
+          if (projPage) {
+            const projAny = projPage as any;
+            const ptp = Object.values(projAny.properties).find(
+              (x: any) => x.type === 'title',
+            ) as any;
+            projetoNome = txt(ptp?.title) || null;
+            const clienteRel = projAny.properties.Cliente?.relation ?? [];
+            if (clienteRel[0]) {
+              try {
+                const cli = (await cachedPageRetrieve(clienteRel[0].id)) as any;
+                const ctp = Object.values(cli.properties).find(
+                  (x: any) => x.type === 'title',
+                ) as any;
+                clienteNome = txt(ctp?.title) || null;
+              } catch {}
+            }
+          }
+
+          return {
+            tarefaId: t.id,
+            titulo,
+            status,
+            prazo,
+            finalizada,
+            postId: postRel[0]?.id ?? null,
+            postTitulo,
+            projetoId: projetoRel[0]?.id ?? null,
+            projetoNome,
+            clienteNome,
+          };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const tarefasRelacionadas: TarefaDaEntrega[] = [];
+    for (const r of resolvidas) if (r) tarefasRelacionadas.push(r);
 
     // Ordena por prazo: as mais antigas primeiro. Sem prazo vai pro fim.
     tarefasRelacionadas.sort((a, b) => {
@@ -1285,6 +1302,18 @@ export async function getEntregaDetalhe(entregaId: string): Promise<EntregaDetal
   } catch {
     return null;
   }
+}
+
+const _getEntregaDetalheCached = unstable_cache(
+  _getEntregaDetalheUncached,
+  ['get-entrega-detalhe-v1'],
+  { revalidate: 60, tags: [TAG_TAREFAS] }, // 1 min
+);
+
+export async function getEntregaDetalhe(
+  entregaId: string,
+): Promise<EntregaDetalhe | null> {
+  return _getEntregaDetalheCached(entregaId);
 }
 
 /** Diz se uma entrega é do tipo "Aprovação" (nome começa com "Aprovaç..."). */
