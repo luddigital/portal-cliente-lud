@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { getSession } from '@/lib/auth';
+import { getSession, getProjetoAtivo } from '@/lib/auth';
 import { env } from '@/lib/env';
 import {
   listTarefasPendentesPorCategoria,
@@ -41,6 +41,18 @@ export default async function Dashboard() {
   // Colaborador sem projetos vinculados vai pra área da equipe.
   if (session.colaboradorId && session.projetoIds.length === 0) redirect('/equipe/me');
 
+  // Cliente com 2+ projetos precisa escolher qual ver. Se o cookie de projeto
+  // ativo tá vazio ou inválido, manda pra página de escolha.
+  let projetoIdsAtivos = session.projetoIds;
+  const projetoAtivo = getProjetoAtivo();
+  const multiplos = session.projetoIds.length > 1;
+  if (multiplos) {
+    if (!projetoAtivo || !session.projetoIds.includes(projetoAtivo)) {
+      redirect('/projetos');
+    }
+    projetoIdsAtivos = [projetoAtivo];
+  }
+
   const hoje = new Date();
   const year = hoje.getFullYear();
   const month = hoje.getMonth() + 1;
@@ -59,12 +71,20 @@ export default async function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {multiplos && (
+              <Link
+                href="/projetos"
+                className="text-[12px] font-medium text-navy transition hover:underline"
+              >
+                Trocar projeto
+              </Link>
+            )}
             <Suspense
               fallback={
                 <div className="h-9 w-9 rounded-full bg-bgSoft animate-pulse" />
               }
             >
-              <Sino projetoIds={session.projetoIds} />
+              <Sino projetoIds={projetoIdsAtivos} />
             </Suspense>
             <form action="/api/auth/logout" method="post">
               <button className="text-[12px] text-mauve transition hover:text-ink">Sair</button>
@@ -77,7 +97,7 @@ export default async function Dashboard() {
         <Suspense fallback={<StatsSkeleton />}>
           <BannerStats
             email={session.email}
-            projetoIds={session.projetoIds}
+            projetoIds={projetoIdsAtivos}
             year={year}
             month={month}
             mesAtualLabel={mesAtualLabel}
@@ -98,7 +118,7 @@ export default async function Dashboard() {
             </div>
           </div>
           <Suspense fallback={<CardsSkeleton />}>
-            <TarefasCards projetoIds={session.projetoIds} />
+            <TarefasCards projetoIds={projetoIdsAtivos} />
           </Suspense>
         </section>
 
@@ -112,7 +132,7 @@ export default async function Dashboard() {
             </div>
           </div>
           <Suspense fallback={<CalendarSkeleton />}>
-            <CalendarioMes projetoIds={session.projetoIds} year={year} month={month} />
+            <CalendarioMes projetoIds={projetoIdsAtivos} year={year} month={month} />
           </Suspense>
         </section>
 

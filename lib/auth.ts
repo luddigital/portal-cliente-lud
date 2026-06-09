@@ -5,6 +5,7 @@ import { env } from './env';
 const SESSION_COOKIE = 'lud_session';
 const MAGIC_COOKIE = 'lud_magic';
 const ADMIN_ORIGEM_COOKIE = 'lud_admin_origem';
+const PROJETO_ATIVO_COOKIE = 'lud_projeto_ativo';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 ano — login fica lembrado
 const ADMIN_ORIGEM_MAX_AGE = 60 * 60 * 8; // 8h — tempo razoável pra sessão "como cliente"
 
@@ -106,8 +107,31 @@ export function clearAdminOrigem(): void {
   cookies().delete(ADMIN_ORIGEM_COOKIE);
 }
 
+/**
+ * Cookie de projeto ativo — usado quando o cliente tem 2+ projetos e
+ * precisa escolher qual ver. Guarda o id do escolhido.
+ */
+export function setProjetoAtivo(projetoId: string): void {
+  cookies().set(PROJETO_ATIVO_COOKIE, projetoId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: SESSION_MAX_AGE,
+  });
+}
+
+export function getProjetoAtivo(): string | null {
+  return cookies().get(PROJETO_ATIVO_COOKIE)?.value ?? null;
+}
+
+export function clearProjetoAtivo(): void {
+  cookies().delete(PROJETO_ATIVO_COOKIE);
+}
+
 export const COOKIES = {
   SESSION: SESSION_COOKIE,
   MAGIC: MAGIC_COOKIE,
   ADMIN_ORIGEM: ADMIN_ORIGEM_COOKIE,
+  PROJETO_ATIVO: PROJETO_ATIVO_COOKIE,
 };

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createSession, verifyMagicToken } from '@/lib/auth';
+import { createSession, clearProjetoAtivo, verifyMagicToken } from '@/lib/auth';
 import { findProjetosByEmail, getColaboradorByEmail } from '@/lib/notion';
 import { env } from '@/lib/env';
 
@@ -28,17 +28,24 @@ export async function GET(req: Request) {
     colaboradorId: colaborador?.id ?? null,
   });
 
+  // Sempre limpa o "projeto ativo" no login — força nova escolha caso
+  // sessão antiga tivesse seleção stale
+  clearProjetoAtivo();
+
   // Roteamento por tipo:
-  //   1) Cliente comum (tem projeto) → /
-  //   2) Admin sem projeto → /admin
-  //   3) Colaborador sem projeto e não admin → /equipe/me
+  //   1) Cliente com 2+ projetos → /projetos (escolher qual)
+  //   2) Cliente com 1 projeto → /
+  //   3) Admin sem projeto → /admin
+  //   4) Colaborador sem projeto e não admin → /equipe/me
   const destino =
-    projetos.length > 0
-      ? '/'
-      : ehAdmin
-        ? '/admin'
-        : colaborador
-          ? '/equipe/me'
-          : '/';
+    projetos.length > 1
+      ? '/projetos'
+      : projetos.length === 1
+        ? '/'
+        : ehAdmin
+          ? '/admin'
+          : colaborador
+            ? '/equipe/me'
+            : '/';
   return NextResponse.redirect(new URL(destino, url));
 }
