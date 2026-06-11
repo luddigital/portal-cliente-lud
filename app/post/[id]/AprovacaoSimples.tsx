@@ -7,7 +7,7 @@ type Modo = 'idle' | 'aprovando' | 'pedindoAlteracao' | 'comentando';
 
 /**
  * Caixa de aprovação simples: usada em fluxos sem preview/carrossel
- * (ex: Aprovação de Pauta). Mesma lógica dinâmica de botões do PostPreview.
+ * (ex: Aprovação de Tema). Mesma lógica dinâmica de botões do PostPreview.
  *
  * Quando `aprovacaoColaborativa` é true (cliente com time grande tipo TKRA),
  * adiciona um botão extra "Comentar" que só anexa o comentário no post sem
@@ -265,7 +265,7 @@ export function AprovacaoSimples({
               </>
             ) : (
               <>
-                Tudo certo com a pauta? Clique em <b>Aprovar</b> pra liberar a
+                Tudo certo com o tema? Clique em <b>Aprovar</b> pra liberar a
                 produção.
               </>
             )}

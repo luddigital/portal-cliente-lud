@@ -257,10 +257,10 @@ const TODOS_MATCHERS_CLIENTE: TituloMatcher[] = Object.values(TAREFAS_CATEGORIAS
 
 export const CATEGORIA_LABEL: Record<CategoriaTarefa, { label: string; tituloLongo: string; descSing: string; descPlur: string }> = {
   pauta: {
-    label: 'Aprovar pauta',
-    tituloLongo: 'Aprovação de Pauta',
-    descSing: 'pauta aguardando aprovação.',
-    descPlur: 'pautas aguardando aprovação.',
+    label: 'Aprovar tema',
+    tituloLongo: 'Aprovação de Tema',
+    descSing: 'tema aguardando aprovação.',
+    descPlur: 'temas aguardando aprovação.',
   },
   post: {
     label: 'Aprovar posts',

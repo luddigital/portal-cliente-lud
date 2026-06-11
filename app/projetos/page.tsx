@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 
 const ORDEM: CategoriaTarefa[] = ['pauta', 'previas', 'materiais', 'post'];
 const ETAPA_ABREV: Record<CategoriaTarefa, string> = {
-  pauta: 'Pauta',
+  pauta: 'Tema',
   previas: 'Info',
   materiais: 'Material',
   post: 'Post',

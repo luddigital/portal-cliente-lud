@@ -12,7 +12,7 @@ import { AcessosManager } from './AcessosManager';
 export const dynamic = 'force-dynamic';
 
 const PENDENCIA_LABEL: { chave: keyof EmpresaDetalhe['pendencias']; label: string }[] = [
-  { chave: 'pauta', label: 'Pauta' },
+  { chave: 'pauta', label: 'Tema' },
   { chave: 'previas', label: 'Prévias' },
   { chave: 'materiais', label: 'Materiais' },
   { chave: 'post', label: 'Post' },

@@ -82,7 +82,7 @@ const ORDEM_CATEGORIAS: CategoriaTarefa[] = [
 ];
 
 const ETAPA_ABREV: Record<CategoriaTarefa, string> = {
-  pauta: 'Pauta',
+  pauta: 'Tema',
   previas: 'Info',
   materiais: 'Material',
   post: 'Post',

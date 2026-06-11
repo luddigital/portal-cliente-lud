@@ -17,7 +17,7 @@ const CATEGORIA_INFO: Record<
   { label: string; cor: string; bg: string; emoji: string }
 > = {
   pauta: {
-    label: 'Aprovar pauta',
+    label: 'Aprovar tema',
     cor: 'var(--cal-aprovacao)',
     bg: 'var(--cal-aprovacao-soft)',
     emoji: '📋',
