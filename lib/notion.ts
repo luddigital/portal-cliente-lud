@@ -39,7 +39,84 @@ export function invalidarTudo() {
   pageCache.clear();
 }
 
-const notion = new Client({ auth: env.notion.token });
+const _notionRaw = new Client({ auth: env.notion.token });
+
+/**
+ * Wrapper de retry em torno das operações do Notion mais usadas.
+ *
+ * O Notion devolve 503 (PgPoolWaitConnectionTimeout) ou 429 (rate limit) em
+ * picos de tráfego do lado deles. Antes, qualquer 503 quebrava a página com
+ * "Application error: server-side exception". Agora retentamos até 4× com
+ * backoff exponencial + jitter (200ms, 500ms, 1.2s, 3s).
+ */
+async function comRetry<T>(fn: () => Promise<T>, max = 4): Promise<T> {
+  const delays = [200, 500, 1200, 3000];
+  let ultimoErro: any;
+  for (let tent = 0; tent <= max; tent++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      ultimoErro = err;
+      const code = err?.code as string | undefined;
+      const status = err?.status as number | undefined;
+      const retriavel =
+        code === 'service_unavailable' ||
+        code === 'rate_limited' ||
+        status === 503 ||
+        status === 429 ||
+        status === 502 ||
+        status === 504;
+      if (!retriavel || tent === max) throw err;
+      const base = delays[Math.min(tent, delays.length - 1)];
+      const jitter = Math.floor(Math.random() * 200);
+      await new Promise((r) => setTimeout(r, base + jitter));
+    }
+  }
+  throw ultimoErro;
+}
+
+/**
+ * Cliente Notion com retry automático nas 3 operações que a gente mais usa
+ * (query/retrieve/blocks). Outras operações (create, update, etc) seguem
+ * direto sem retry — assumem que a chamada é deliberada e o erro propaga.
+ */
+const notion = {
+  ..._notionRaw,
+  databases: {
+    ..._notionRaw.databases,
+    query: ((args: any) =>
+      comRetry(() => _notionRaw.databases.query(args))) as typeof _notionRaw.databases.query,
+    retrieve: ((args: any) =>
+      comRetry(() =>
+        _notionRaw.databases.retrieve(args),
+      )) as typeof _notionRaw.databases.retrieve,
+    update: _notionRaw.databases.update.bind(_notionRaw.databases),
+    create: _notionRaw.databases.create.bind(_notionRaw.databases),
+  },
+  pages: {
+    ..._notionRaw.pages,
+    retrieve: ((args: any) =>
+      comRetry(() => _notionRaw.pages.retrieve(args))) as typeof _notionRaw.pages.retrieve,
+    update: _notionRaw.pages.update.bind(_notionRaw.pages),
+    create: _notionRaw.pages.create.bind(_notionRaw.pages),
+  },
+  blocks: {
+    ..._notionRaw.blocks,
+    children: {
+      ..._notionRaw.blocks.children,
+      list: ((args: any) =>
+        comRetry(() =>
+          _notionRaw.blocks.children.list(args),
+        )) as typeof _notionRaw.blocks.children.list,
+      append: _notionRaw.blocks.children.append.bind(_notionRaw.blocks.children),
+    },
+    update: _notionRaw.blocks.update.bind(_notionRaw.blocks),
+    delete: _notionRaw.blocks.delete.bind(_notionRaw.blocks),
+  },
+  comments: _notionRaw.comments,
+  users: _notionRaw.users,
+  search: _notionRaw.search.bind(_notionRaw),
+};
 
 // Cache em memória de page retrieves (TTL 5 min). Páginas Notion (projetos,
 // formatos, posts) raramente mudam — esse cache transforma vários round-trips
