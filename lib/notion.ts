@@ -685,21 +685,37 @@ async function _getProjetoDetalheUncached(
 ): Promise<ProjetoDetalhe | null> {
   try {
     // 3 chamadas independentes em paralelo (antes era serial)
-    const [projAny, tarefasRes, config] = await Promise.all([
+    // Pega TODAS tarefas pendentes paginando (projetos grandes tipo Ste Travels
+    // têm 200+ pendentes — antes só pegava as primeiras 100, escondendo o resto).
+    async function pegarTodasTarefas(): Promise<any[]> {
+      const out: any[] = [];
+      let cursor: string | undefined;
+      do {
+        const r = await notion.databases.query({
+          database_id: env.notion.tarefasDbId,
+          page_size: 100,
+          start_cursor: cursor,
+          filter: {
+            and: [
+              { property: 'Projeto', relation: { contains: projetoId } },
+              ...STATUS_TAREFA_FECHADOS.map((s) => ({
+                property: env.notion.taskProps.status,
+                status: { does_not_equal: s },
+              })),
+            ],
+          },
+        });
+        out.push(...(r.results as any[]));
+        cursor = r.has_more ? r.next_cursor ?? undefined : undefined;
+        // Cap em 5 páginas (500 tarefas) — projetos absurdamente grandes
+        if (out.length >= 500) break;
+      } while (cursor);
+      return out;
+    }
+
+    const [projAny, todasTarefas, config] = await Promise.all([
       cachedPageRetrieve(projetoId) as Promise<any>,
-      notion.databases.query({
-        database_id: env.notion.tarefasDbId,
-        page_size: 100,
-        filter: {
-          and: [
-            { property: 'Projeto', relation: { contains: projetoId } },
-            ...STATUS_TAREFA_FECHADOS.map((s) => ({
-              property: env.notion.taskProps.status,
-              status: { does_not_equal: s },
-            })),
-          ],
-        },
-      }),
+      pegarTodasTarefas(),
       getProjetoConfig(projetoId),
     ]);
 
@@ -730,7 +746,7 @@ async function _getProjetoDetalheUncached(
     }
 
     const tarefas: ProjetoDetalhe['tarefas'] = [];
-    for (const t of tarefasRes.results as any[]) {
+    for (const t of todasTarefas) {
       const ttp = Object.values(t.properties).find(
         (p: any) => p.type === 'title',
       ) as any;
@@ -749,7 +765,7 @@ async function _getProjetoDetalheUncached(
 
 const _getProjetoDetalheCached = unstable_cache(
   _getProjetoDetalheUncached,
-  ['get-projeto-detalhe-v1'],
+  ['get-projeto-detalhe-v2-paginado'],
   { revalidate: 120, tags: [TAG_TAREFAS, TAG_CLIENTES] }, // 2 min
 );
 
