@@ -1,6 +1,5 @@
 import { Client } from '@notionhq/client';
 import { unstable_cache, revalidateTag } from 'next/cache';
-import { cache } from 'react';
 import { env } from './env';
 
 // Tags pra cache do Next — usadas pra invalidar quando algo muda no Notion
@@ -1879,30 +1878,37 @@ const LEGENDA_KEYWORDS = ['legenda', 'caption'];
  * Coleta todos os blocos do post de forma recursiva (entrando em callouts, tabs,
  * toggles, columns, etc) e retorna em ordem de leitura.
  *
- * Wrapped em `cache()` do React — chamadas múltiplas pro mesmo blockId
- * DENTRO DA MESMA REQUEST batem dedupe (todas as 5 leituras de seção em
- * getPostComDetalhes compartilham o mesmo fetch). Cache TTL = duração da request.
+ * Dedupe in-memory por (blockId + profundidade), TTL de 30s — várias chamadas
+ * pra mesma página dentro do warm time compartilham o mesmo fetch sem depender
+ * de React.cache (que só é seguro em Server Components).
  */
-const coletarBlocosRecursivo = cache(async function coletarBlocosRecursivoInner(
+const blocosMemCache = makeCache<any[]>(30_000);
+async function coletarBlocosRecursivo(
   blockId: string,
   profundidade = 0,
 ): Promise<any[]> {
-  if (profundidade > 4) return []; // proteção contra recursão infinita
-  try {
-    const out: any[] = [];
-    const res = await notion.blocks.children.list({ block_id: blockId, page_size: 100 });
-    for (const b of res.results as any[]) {
-      out.push(b);
-      if (b.has_children) {
-        const filhos = await coletarBlocosRecursivoInner(b.id, profundidade + 1);
-        out.push(...filhos);
+  const cacheKey = `${blockId}|${profundidade}`;
+  return blocosMemCache.get(cacheKey, async () => {
+    if (profundidade > 4) return [];
+    try {
+      const out: any[] = [];
+      const res = await notion.blocks.children.list({
+        block_id: blockId,
+        page_size: 100,
+      });
+      for (const b of res.results as any[]) {
+        out.push(b);
+        if (b.has_children) {
+          const filhos = await coletarBlocosRecursivo(b.id, profundidade + 1);
+          out.push(...filhos);
+        }
       }
+      return out;
+    } catch {
+      return [];
     }
-    return out;
-  } catch {
-    return [];
-  }
-});
+  });
+}
 
 function rtTexto(b: any): string {
   const tipo = b.type;
