@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getSession, createSession, pushAdminOrigem } from '@/lib/auth';
+import {
+  getSession,
+  createSession,
+  pushAdminOrigem,
+  clearProjetoAtivo,
+} from '@/lib/auth';
 import {
   findProjetosByEmail,
   getClienteById,
@@ -61,5 +66,9 @@ export async function GET(req: Request): Promise<Response> {
   // Guarda a sessão admin original pra voltar com 1 click
   await pushAdminOrigem(session);
   await createSession({ email, projetoIds: projetos.map((p) => p.id) });
+  // Limpa o "projeto ativo" — senão um cookie stale (de outro 'ver como')
+  // filtra os dados pelo projeto errado, mostrando coisas que o cliente
+  // de verdade nem vê.
+  clearProjetoAtivo();
   return NextResponse.redirect(new URL('/', req.url));
 }
