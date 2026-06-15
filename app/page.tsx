@@ -6,8 +6,10 @@ import {
   listTarefasPendentesPorCategoria,
   listPostsDoMes,
   getNomeDoCliente,
+  findProjetosByEmail,
   type CategoriaTarefa,
 } from '@/lib/notion';
+import { ProjetoSwitcher } from './_components/ProjetoSwitcher';
 import { EtapaBanner } from './_components/EtapaBanner';
 import { TaskCategoryCard } from './_components/TaskCategoryCard';
 import { CalendarNavigator } from './_components/CalendarNavigator';
@@ -58,6 +60,13 @@ export default async function Dashboard() {
   const month = hoje.getMonth() + 1;
   const mesAtualLabel = MESES_PT[month - 1];
 
+  // Lista de projetos do cliente pra alimentar o switcher (já está cached).
+  // Só busca se tiver mais de um — pra cliente com 1 projeto não tem switcher.
+  const projetosCliente = multiplos
+    ? await findProjetosByEmail(session.email)
+    : [];
+  const projetoAtivoId = projetoIdsAtivos[0] ?? '';
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
@@ -72,12 +81,10 @@ export default async function Dashboard() {
           </div>
           <div className="flex items-center gap-3">
             {multiplos && (
-              <Link
-                href="/projetos"
-                className="text-[12px] font-medium text-navy transition hover:underline"
-              >
-                Trocar projeto
-              </Link>
+              <ProjetoSwitcher
+                projetos={projetosCliente.map((p) => ({ id: p.id, nome: p.nome }))}
+                ativoId={projetoAtivoId}
+              />
             )}
             <Suspense
               fallback={
