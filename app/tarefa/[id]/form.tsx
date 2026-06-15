@@ -10,6 +10,11 @@ export function TarefaForm({
    *  em que o cliente só precisa subir arquivo (ex: Envio de Materiais —
    *  as informações já foram coletadas na etapa de Conteúdos Prévios). */
   mostrarTexto = true,
+  /** Mostra um campo opcional de comentário curto (recado pra equipe). */
+  aceitarComentario = false,
+  /** Mostra um campo opcional pra colar um link externo (Drive, Dropbox,
+   *  WeTransfer) — fica anexado ao post como link extra do Drive. */
+  aceitarLink = false,
   /** Tipos de arquivo aceitos. Default cobre fotos, vídeos e áudio (voice
    *  over). Mude se precisar restringir. */
   aceitarTipos = 'image/*,video/*,audio/*',
@@ -23,6 +28,8 @@ export function TarefaForm({
   tarefaId: string;
   voltarPara?: string;
   mostrarTexto?: boolean;
+  aceitarComentario?: boolean;
+  aceitarLink?: boolean;
   aceitarTipos?: string;
   textoBotao?: string;
   tituloUpload?: string;
@@ -30,6 +37,8 @@ export function TarefaForm({
 }) {
   const router = useRouter();
   const [texto, setTexto] = useState('');
+  const [comentario, setComentario] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,11 +46,22 @@ export function TarefaForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    const linkLimpo = linkUrl.trim();
+    if (linkLimpo && !/^https?:\/\//i.test(linkLimpo)) {
+      setError('O link precisa começar com https://');
+      return;
+    }
+    setLoading(true);
     try {
       const fd = new FormData();
       if (mostrarTexto && texto) fd.set('texto', texto);
+      if (aceitarComentario && comentario.trim()) {
+        fd.set('comentario', comentario.trim());
+      }
+      if (aceitarLink && linkLimpo) {
+        fd.set('linkUrl', linkLimpo);
+      }
       for (const f of arquivos) fd.append('arquivos', f);
       const res = await fetch(`/api/tarefas/${tarefaId}/submit`, { method: 'POST', body: fd });
       let data: any = {};
@@ -72,10 +92,13 @@ export function TarefaForm({
   }
 
   // Botão fica desabilitado se ainda não tem nada pra enviar.
-  // Quando o texto não é mostrado, só arquivos contam.
-  const semConteudo = mostrarTexto
-    ? !texto && arquivos.length === 0
-    : arquivos.length === 0;
+  // Conta como conteúdo: texto, comentário, link, ou arquivo.
+  const algumConteudo =
+    (mostrarTexto && !!texto.trim()) ||
+    (aceitarComentario && !!comentario.trim()) ||
+    (aceitarLink && !!linkUrl.trim()) ||
+    arquivos.length > 0;
+  const semConteudo = !algumConteudo;
 
   return (
     <form onSubmit={submit} className="space-y-6">
@@ -134,6 +157,48 @@ export function TarefaForm({
           </ul>
         )}
       </div>
+
+      {(aceitarComentario || aceitarLink) && (
+        <div className="card space-y-4 p-5">
+          <div>
+            <div className="label">Algo a mais? (opcional)</div>
+            <p className="-mt-1 mb-2 text-[11px] text-t3">
+              Deixa um recado pra equipe ou cola um link de Drive / Dropbox /
+              WeTransfer se preferir mandar os arquivos por fora.
+            </p>
+          </div>
+
+          {aceitarComentario && (
+            <div>
+              <label className="block text-[11px] font-medium text-t2">
+                Comentário
+              </label>
+              <textarea
+                rows={3}
+                value={comentario}
+                onChange={(e) => setComentario(e.target.value)}
+                placeholder="Ex: prefiro usar a foto X, ou já mandei o material no WhatsApp."
+                className="input mt-1 resize-y text-[13px]"
+              />
+            </div>
+          )}
+
+          {aceitarLink && (
+            <div>
+              <label className="block text-[11px] font-medium text-t2">
+                Link externo
+              </label>
+              <input
+                type="url"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="https://drive.google.com/…"
+                className="input mt-1 text-[13px]"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-[12px] font-medium text-crimson">{error}</p>}
 

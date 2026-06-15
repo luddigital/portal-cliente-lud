@@ -403,6 +403,8 @@ export default async function PostDetalhePage({
             sub === 'materiais'
               ? {
                   mostrarTexto: false,
+                  aceitarComentario: true,
+                  aceitarLink: true,
                   tituloUpload: 'Materiais + voice over',
                   ajudaUpload:
                     'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
@@ -411,6 +413,7 @@ export default async function PostDetalhePage({
               : sub === 'stories'
                 ? {
                     mostrarTexto: true,
+                    aceitarLink: true,
                     tituloUpload: 'Fotos e vídeos pros stories',
                     ajudaUpload: 'Anexe as artes e arquivos que pretende usar.',
                     textoBotao: 'Enviar direcionamento',
@@ -418,6 +421,7 @@ export default async function PostDetalhePage({
                 : sub === 'previas'
                   ? {
                       mostrarTexto: true,
+                      aceitarLink: true,
                       tituloUpload: 'Fotos, vídeos e áudios',
                       ajudaUpload:
                         'Anexe o que já tiver pra ajudar a equipe a montar o post.',

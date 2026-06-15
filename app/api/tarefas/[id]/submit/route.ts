@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import {
+  adicionarLinkDriveAoPost,
   atualizarLinkDriveDoPost,
   comentarPost,
   concluirTarefa,
@@ -38,10 +39,16 @@ async function handle(req: Request, tarefaId: string) {
 
   const form = await req.formData();
   const texto = (form.get('texto') as string | null)?.trim() ?? '';
+  const comentario = (form.get('comentario') as string | null)?.trim() ?? '';
+  const linkUrlRaw = (form.get('linkUrl') as string | null)?.trim() ?? '';
+  const linkUrl = /^https?:\/\//i.test(linkUrlRaw) ? linkUrlRaw : '';
   const arquivos = form.getAll('arquivos').filter((f): f is File => f instanceof File && f.size > 0);
 
-  if (!texto && arquivos.length === 0) {
-    return NextResponse.json({ error: 'envia pelo menos texto ou arquivo' }, { status: 400 });
+  if (!texto && !comentario && !linkUrl && arquivos.length === 0) {
+    return NextResponse.json(
+      { error: 'envia pelo menos texto, arquivo, comentário ou link' },
+      { status: 400 },
+    );
   }
 
   let driveLink: string | null = null;
@@ -69,20 +76,47 @@ async function handle(req: Request, tarefaId: string) {
     await atualizarLinkDriveDoPost(t.postId, `Materiais — ${t.postTitulo}`, driveLink);
   }
 
-  // O texto vem só como comentário no Notion — não escrevemos no corpo do post.
+  // Se o cliente colou um link externo (Drive, Dropbox, WeTransfer), anexa
+  // ao campo Drive do post sem sobrescrever o que já tem.
+  if (linkUrl) {
+    try {
+      await adicionarLinkDriveAoPost(
+        t.postId,
+        `Link enviado pelo cliente — ${t.postTitulo}`,
+        linkUrl,
+      );
+    } catch (err: any) {
+      console.warn('[submit] falhou adicionar link externo:', err?.message);
+    }
+  }
+
+  // Resumo no comentário do Notion — não escrevemos no corpo do post.
   const partes: string[] = [`✅ Tarefa "${t.tarefaTitulo}" — recebida do cliente.`];
   if (totalArquivos > 0 && driveLink) {
     partes.push(`📎 ${totalArquivos} arquivo${totalArquivos > 1 ? 's' : ''} no Drive: ${driveLink}`);
+  }
+  if (linkUrl) {
+    partes.push(`🔗 Link externo: ${linkUrl}`);
   }
   if (texto) {
     partes.push('');
     partes.push(`📝 Informações enviadas pelo cliente:`);
     partes.push(texto);
   }
+  if (comentario) {
+    partes.push('');
+    partes.push(`💬 Comentário do cliente:`);
+    partes.push(comentario);
+  }
   await comentarPost(t.postId, partes.join('\n'));
 
   await concluirTarefa(t.tarefaId);
   invalidarCachesAposMudanca();
 
-  return NextResponse.json({ ok: true, driveLink, arquivos: totalArquivos });
+  return NextResponse.json({
+    ok: true,
+    driveLink,
+    arquivos: totalArquivos,
+    linkAdicionado: !!linkUrl,
+  });
 }
