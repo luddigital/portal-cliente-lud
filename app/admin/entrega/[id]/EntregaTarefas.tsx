@@ -95,34 +95,6 @@ function DataBox({ iso }: { iso: string | null }) {
 
 type Grupo = { titulo: string; tarefas: TarefaDaEntrega[] };
 
-function ordenarPorUrgencia(tarefas: TarefaDaEntrega[]): TarefaDaEntrega[] {
-  return [...tarefas].sort((a, b) => {
-    // Sem prazo vai pro fim
-    if (!a.prazo && !b.prazo) return 0;
-    if (!a.prazo) return 1;
-    if (!b.prazo) return -1;
-    return a.prazo.localeCompare(b.prazo);
-  });
-}
-
-function resumoGrupo(tarefas: TarefaDaEntrega[]): {
-  atrasadas: number;
-  hoje: number;
-  chegando: number;
-} {
-  let atrasadas = 0;
-  let hoje = 0;
-  let chegando = 0;
-  for (const t of tarefas) {
-    if (!t.prazo) continue;
-    const d = diasAte(t.prazo);
-    if (d < 0) atrasadas++;
-    else if (d === 0) hoje++;
-    else if (d <= 3) chegando++;
-  }
-  return { atrasadas, hoje, chegando };
-}
-
 export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
   const [aberto, setAberto] = useState<TarefaDaEntrega | null>(null);
 
@@ -130,16 +102,27 @@ export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
     <>
       <div className="space-y-3">
         {grupos.map((g) => {
-          const ordenadas = ordenarPorUrgencia(g.tarefas);
-          const r = resumoGrupo(g.tarefas);
+          // Quando o grupo já é por dia, a urgência tá implícita no título.
+          // Mantemos só a contagem total + pill de atrasadas (única coisa
+          // que o título sozinho não comunica — é o agrupado de TODAS as
+          // atrasadas, com prazos variados dentro).
+          const atrasadasNoGrupo = g.tarefas.filter(
+            (t) => t.prazo && diasAte(t.prazo) < 0,
+          ).length;
+          const ehGrupoAtrasadas = g.titulo === 'Atrasadas';
           return (
           <div key={g.titulo} className="card p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[13px] font-semibold tracking-[-0.01em] text-ink">
+              <div
+                className="text-[13px] font-semibold tracking-[-0.01em]"
+                style={{
+                  color: ehGrupoAtrasadas ? 'var(--prazo-atrasada)' : 'var(--ink)',
+                }}
+              >
                 {g.titulo}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                {r.atrasadas > 0 && (
+                {atrasadasNoGrupo > 0 && !ehGrupoAtrasadas && (
                   <span
                     className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
                     style={{
@@ -147,44 +130,26 @@ export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
                       color: 'var(--prazo-atrasada)',
                     }}
                   >
-                    {r.atrasadas} atrasada{r.atrasadas > 1 ? 's' : ''}
-                  </span>
-                )}
-                {r.hoje > 0 && (
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                    style={{
-                      background: 'var(--prazo-hoje-soft)',
-                      color: 'var(--prazo-hoje)',
-                    }}
-                  >
-                    {r.hoje} hoje
-                  </span>
-                )}
-                {r.chegando > 0 && (
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                    style={{
-                      background: 'var(--cal-aprovacao-soft)',
-                      color: 'var(--cal-aprovacao)',
-                    }}
-                  >
-                    {r.chegando} chegando
+                    {atrasadasNoGrupo} atrasada{atrasadasNoGrupo > 1 ? 's' : ''}
                   </span>
                 )}
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] font-bold"
                   style={{
-                    background: 'var(--bgSoft)',
-                    color: 'var(--t2)',
+                    background: ehGrupoAtrasadas
+                      ? 'var(--prazo-atrasada-soft)'
+                      : 'var(--bgSoft)',
+                    color: ehGrupoAtrasadas
+                      ? 'var(--prazo-atrasada)'
+                      : 'var(--t2)',
                   }}
                 >
-                  {g.tarefas.length} total
+                  {g.tarefas.length} {g.tarefas.length === 1 ? 'post' : 'posts'}
                 </span>
               </div>
             </div>
             <ul className="mt-3 space-y-1">
-              {ordenadas.map((t) => (
+              {g.tarefas.map((t) => (
                 <li key={t.tarefaId}>
                   <div
                     role={t.postId ? 'button' : undefined}
@@ -196,8 +161,15 @@ export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
                     }`}
                   >
                     <DataBox iso={t.prazo} />
-                    <div className="min-w-0 flex-1 truncate text-[13px] text-ink">
-                      {t.postTitulo || t.titulo}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] text-ink">
+                        {t.postTitulo || t.titulo}
+                      </div>
+                      {(t.clienteNome ?? t.projetoNome) && (
+                        <div className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.06em] text-t3">
+                          {t.clienteNome ?? t.projetoNome}
+                        </div>
+                      )}
                     </div>
                     <PillPrazo iso={t.prazo} />
                     <BotaoConcluir tarefaId={t.tarefaId} />

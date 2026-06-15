@@ -20,6 +20,43 @@ function fmtDataBR(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
+const DIAS_SEMANA = [
+  'domingo',
+  'segunda',
+  'terça',
+  'quarta',
+  'quinta',
+  'sexta',
+  'sábado',
+];
+const MESES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+
+/** Título legível pro grupo do dia. Ex: "Hoje · 27/jun (terça)" */
+function tituloDoDia(iso: string, dias: number): string {
+  const [y, m, d] = iso.split('T')[0].split('-');
+  const data = new Date(Number(y), Number(m) - 1, Number(d));
+  const dia = data.getDate();
+  const mes = MESES[data.getMonth()];
+  const diaSemana = DIAS_SEMANA[data.getDay()];
+  const base = `${dia} de ${mes} (${diaSemana})`;
+  if (dias === 0) return `Hoje · ${base}`;
+  if (dias === 1) return `Amanhã · ${base}`;
+  return base;
+}
+
 export default async function EntregaAdminPage({ params }: { params: { id: string } }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -62,16 +99,36 @@ async function Conteudo({ id }: { id: string }) {
   const entrega = await getEntregaDetalhe(id);
   if (!entrega) notFound();
 
-  // Agrupa tarefas por cliente (ou projeto se não tiver cliente)
-  const grupos = new Map<string, { titulo: string; tarefas: TarefaDaEntrega[] }>();
-  for (const t of entrega.tarefasRelacionadas) {
-    const chave = t.clienteNome ?? t.projetoNome ?? '(sem projeto)';
-    if (!grupos.has(chave)) grupos.set(chave, { titulo: chave, tarefas: [] });
+  // Agrupa tarefas pelo dia do prazo (YYYY-MM-DD). Sem prazo cai num grupo
+  // separado no fim. Atrasadas viram um único bloco no topo "Atrasadas".
+  type Grupo = { titulo: string; tarefas: TarefaDaEntrega[]; chaveOrdem: string };
+  const grupos = new Map<string, Grupo>();
+  const addAo = (chave: string, titulo: string, chaveOrdem: string, t: TarefaDaEntrega) => {
+    if (!grupos.has(chave)) grupos.set(chave, { titulo, tarefas: [], chaveOrdem });
     grupos.get(chave)!.tarefas.push(t);
+  };
+
+  for (const t of entrega.tarefasRelacionadas) {
+    if (!t.prazo) {
+      addAo('sem-prazo', 'Sem prazo', '9999-12-31', t);
+      continue;
+    }
+    const dia = t.prazo.split('T')[0];
+    const dias = diasAte(dia);
+    if (dias < 0) {
+      // Atrasada — junta num bloco só, ordenada por data dentro
+      addAo('atrasadas', 'Atrasadas', '0000-00-00', t);
+    } else {
+      addAo(dia, tituloDoDia(dia, dias), dia, t);
+    }
   }
   const gruposOrdenados = [...grupos.values()].sort((a, b) =>
-    a.titulo.localeCompare(b.titulo, 'pt-BR'),
+    a.chaveOrdem.localeCompare(b.chaveOrdem),
   );
+  // Dentro de cada grupo, ordena por prazo (mais antiga primeiro)
+  for (const g of gruposOrdenados) {
+    g.tarefas.sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''));
+  }
 
   // Data da tarefa pendente mais antiga (a que está esperando há mais tempo).
   const prazoMaisAntigo =
@@ -127,7 +184,7 @@ async function Conteudo({ id }: { id: string }) {
             Tarefas em aberto
           </div>
           <div className="mt-1 text-[13px] text-t2">
-            Tarefas prontas (check ativado) ainda não concluídas, agrupadas por cliente.
+            Tarefas prontas (check ativado) ainda não concluídas, agrupadas pelo dia do prazo.
           </div>
         </div>
         <div
