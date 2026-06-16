@@ -5,9 +5,25 @@ import { findProjetosByEmail } from '@/lib/notion';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+async function validarESalvar(
+  session: NonNullable<Awaited<ReturnType<typeof getSession>>>,
+  id: string,
+): Promise<{ ok: true } | { ok: false; reason: 'not_allowed' }> {
+  const permitidos = new Set(session.projetoIds);
+  if (!permitidos.has(id)) {
+    // Tenta refresh pela lista mais recente (caso projeto tenha sido
+    // vinculado depois da sessão ser criada)
+    const lista = await findProjetosByEmail(session.email);
+    for (const p of lista) permitidos.add(p.id);
+  }
+  if (!permitidos.has(id)) return { ok: false, reason: 'not_allowed' };
+  setProjetoAtivo(id);
+  return { ok: true };
+}
+
 /**
- * Cliente escolhe qual projeto quer ver. Salva no cookie e manda pra home.
- * Valida que o projeto realmente faz parte dos acessos da sessão.
+ * GET: redireciona após salvar — usado pela tela /projetos (link direto).
+ * POST: retorna JSON — usado pelo dropdown ProjetoSwitcher no header.
  */
 export async function GET(req: Request): Promise<Response> {
   const session = await getSession();
@@ -15,22 +31,31 @@ export async function GET(req: Request): Promise<Response> {
 
   const url = new URL(req.url);
   const id = url.searchParams.get('id')?.trim();
-  if (!id) {
-    return NextResponse.redirect(new URL('/projetos', req.url));
-  }
+  if (!id) return NextResponse.redirect(new URL('/projetos', req.url));
 
-  // Confere que o projeto faz parte do que a sessão pode ver
-  const permitidos = new Set(session.projetoIds);
-  // Também checa via findProjetosByEmail (caso a session tenha sido criada
-  // antes de algum projeto ser vinculado — pra evitar quebrar acesso)
-  if (!permitidos.has(id)) {
-    const lista = await findProjetosByEmail(session.email);
-    for (const p of lista) permitidos.add(p.id);
-  }
-  if (!permitidos.has(id)) {
-    return NextResponse.redirect(new URL('/projetos', req.url));
-  }
-
-  setProjetoAtivo(id);
+  const r = await validarESalvar(session, id);
+  if (!r.ok) return NextResponse.redirect(new URL('/projetos', req.url));
   return NextResponse.redirect(new URL('/', req.url));
+}
+
+export async function POST(req: Request): Promise<Response> {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as { id?: string };
+  const id = body.id?.trim();
+  if (!id) {
+    return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+  }
+
+  const r = await validarESalvar(session, id);
+  if (!r.ok) {
+    return NextResponse.json(
+      { error: 'projeto fora dos seus acessos' },
+      { status: 403 },
+    );
+  }
+  return NextResponse.json({ ok: true });
 }
