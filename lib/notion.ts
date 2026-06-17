@@ -713,10 +713,13 @@ async function _listAllProjetosUncached(): Promise<ProjetoListItem[]> {
         const tp = Object.values(proj.properties).find(
           (p: any) => p.type === 'title',
         ) as any;
+        // "Status Manual" no Notion é tipo `status` (Novo / Ativo / Concluído)
         const status =
-          getProp(proj, 'Status Manual')?.select?.name ??
+          getProp(proj, 'Status Manual')?.status?.name ??
           getProp(proj, 'Status')?.status?.name ??
           null;
+        // Só projetos Ativos aparecem por padrão (esconde Concluído e Novo).
+        if (status !== 'Ativo') return null;
         return {
           id,
           nome: txt(tp?.title) || 'Projeto',
@@ -737,7 +740,7 @@ async function _listAllProjetosUncached(): Promise<ProjetoListItem[]> {
 
 const _listAllProjetosCached = unstable_cache(
   _listAllProjetosUncached,
-  ['list-all-projetos-v1'],
+  ['list-all-projetos-v2-ativos'],
   { revalidate: 300, tags: [TAG_CLIENTES] }, // 5 min — bate com clientes
 );
 
@@ -871,7 +874,7 @@ export async function getNomeDoCliente(email: string): Promise<string | null> {
 
 const _findProjetosByEmailCached = unstable_cache(
   findProjetosByEmailUncached,
-  ['projetos-by-email-v3-acessos'],
+  ['projetos-by-email-v4-so-ativos'],
   { revalidate: 300, tags: [TAG_CLIENTES] }, // 5 min
 );
 
@@ -950,6 +953,10 @@ async function findProjetosByEmailUncached(emailNorm: string): Promise<ProjetoCl
       try {
         const page = await cachedPageRetrieve(id);
         if (page.archived) return null;
+        // Cliente só vê projetos Ativos (esconde Concluído e Novo do switcher).
+        const status =
+          getProp(page, 'Status Manual')?.status?.name ?? null;
+        if (status !== 'Ativo') return null;
         const titleProp = Object.values(page.properties).find((p: any) => p.type === 'title') as any;
         return {
           id: page.id,
