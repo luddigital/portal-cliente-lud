@@ -90,6 +90,19 @@ export type WhatsappMensagem = {
   criado_em: string;
 };
 
+export type WhatsappSugestao = {
+  id: string;
+  grupo_id: string;
+  mensagem_id: string | null;
+  texto: string;
+  status: 'pendente' | 'aprovada' | 'rejeitada';
+  modelo: string | null;
+  enviada_mensagem_id: string | null;
+  aprovada_por: string | null;
+  criado_em: string;
+  atualizado_em: string;
+};
+
 // -----------------------------------------------------------------
 // Helpers de domínio
 // -----------------------------------------------------------------
@@ -138,4 +151,19 @@ export async function listarMensagens(
   if (error) throw new Error(`Supabase: ${error.message}`);
   // devolve em ordem crescente pra renderizar de cima pra baixo
   return (data ?? []).reverse() as WhatsappMensagem[];
+}
+
+/** Sugestões pendentes da Claude para um grupo (mais recentes primeiro). */
+export async function listarSugestoesPendentes(
+  grupoId: string,
+): Promise<WhatsappSugestao[]> {
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('whatsapp_sugestoes')
+    .select('*')
+    .eq('grupo_id', grupoId)
+    .eq('status', 'pendente')
+    .order('criado_em', { ascending: false });
+  if (error) throw new Error(`Supabase: ${error.message}`);
+  return (data ?? []) as WhatsappSugestao[];
 }

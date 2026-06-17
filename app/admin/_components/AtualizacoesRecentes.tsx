@@ -164,22 +164,21 @@ function LinhaAtualizacao({ a }: { a: AtualizacaoRecente }) {
           {a.tipo === 'comentario' ? (
             <span className="text-ink">💬 {a.resumo}</span>
           ) : a.tipo === 'tarefa' ? (
-            // Mostra: '<tarefa concluída> → <status do post agora>'
-            // O 'Concluído' da tarefa é redundante (toda tarefa do feed
-            // já é Concluído — capturamos via Finalizada em). O que dá
-            // contexto é pra ONDE o post foi depois dessa ação.
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span className="text-[12px] text-t2">
-                <span className="font-medium text-ink">
-                  {a.tarefaTitulo}
-                </span>
-                {' concluída'}
+            // Mostra: '<tarefa concluída> → <próxima tarefa que abriu>'.
+            // Ex: 'Aprovação | Arte → Copy' (o fluxo seguiu pra Copy)
+            // Ex: 'Aprovação | Pauta → Alteração Pauta' (foi reprovada)
+            // Fallback pro status do post quando não houver próxima.
+            <span className="inline-flex flex-wrap items-center gap-2 text-[12px]">
+              <span className="font-medium text-ink">
+                {a.tarefaTitulo}
               </span>
-              {(a.statusGeral ?? a.status) && (
-                <>
-                  <span className="text-t3">→</span>
-                  <StatusPill status={a.statusGeral ?? a.status} />
-                </>
+              <span className="text-t3">→</span>
+              {a.proximaTarefa ? (
+                <span className="font-medium text-ink">
+                  {a.proximaTarefa}
+                </span>
+              ) : (
+                <StatusPill status={a.statusGeral ?? a.status} />
               )}
             </span>
           ) : (

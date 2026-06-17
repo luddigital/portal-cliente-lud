@@ -8,7 +8,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { parseMensagemRecebida, validarWebhookSecret, type WebhookPayload } from '@/lib/whatsapp';
-import { supabaseAdmin } from '@/lib/supabase';
+import { listarMensagens, supabaseAdmin } from '@/lib/supabase';
+import { gerarSugestaoResposta } from '@/lib/claude';
+import { env } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
   // Conversas pessoais e grupos que não habilitamos são descartadas silenciosamente.
   const { data: grupo, error: errGrupo } = await sb
     .from('whatsapp_grupos')
-    .select('id, ativo')
+    .select('id, nome, ativo, auto_sugestao')
     .eq('id', msg.grupoId)
     .maybeSingle();
 
@@ -82,6 +84,36 @@ export async function POST(req: NextRequest) {
   if (errInsert) {
     console.error('[whatsapp] erro persistindo mensagem', errInsert);
     return NextResponse.json({ error: 'db_error' }, { status: 500 });
+  }
+
+  // 6. Sugestão da Claude (modo "aprovar antes de enviar").
+  // Só roda se: o grupo tem auto_sugestao ligado, a Claude está configurada,
+  // a mensagem NÃO é nossa (fromMe) e tem texto. Qualquer falha aqui é
+  // silenciosa — nunca quebra a ingestão da mensagem.
+  const fromMe = Boolean(payload.data?.key?.fromMe);
+  if (grupo.auto_sugestao && env.anthropic.apiKey && !fromMe && msg.conteudo?.trim()) {
+    try {
+      const historico = await listarMensagens(msg.grupoId, 20);
+      const texto = await gerarSugestaoResposta({
+        grupoNome: grupo.nome,
+        mensagens: historico,
+      });
+      if (texto) {
+        // unique(mensagem_id) torna idempotente se o webhook repetir.
+        await sb.from('whatsapp_sugestoes').upsert(
+          {
+            grupo_id: msg.grupoId,
+            mensagem_id: msg.id,
+            texto,
+            status: 'pendente',
+            modelo: env.anthropic.model,
+          },
+          { onConflict: 'mensagem_id', ignoreDuplicates: true },
+        );
+      }
+    } catch (e: any) {
+      console.error('[whatsapp] falha gerando sugestão Claude', e?.message);
+    }
   }
 
   return NextResponse.json({ ok: true });

@@ -12,6 +12,7 @@
     "deploy:prod": "vercel deploy --prod --yes"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.2",
     "@notionhq/client": "^2.2.15",
     "@supabase/supabase-js": "^2.106.1",
     "google-auth-library": "^9.15.0",

@@ -5,10 +5,12 @@ import { useRef, useState } from 'react';
 type Props = {
   onEnviar: (texto: string) => Promise<void>;
   enviando: boolean;
+  /** Texto pré-preenchido (ex: ao clicar "Editar" numa sugestão da Claude). */
+  textoInicial?: string;
 };
 
-export function MessageInput({ onEnviar, enviando }: Props) {
-  const [texto, setTexto] = useState('');
+export function MessageInput({ onEnviar, enviando, textoInicial }: Props) {
+  const [texto, setTexto] = useState(textoInicial ?? '');
   const ref = useRef<HTMLTextAreaElement>(null);
 
   function ajustarAltura() {

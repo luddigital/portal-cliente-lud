@@ -2954,6 +2954,9 @@ export type AtualizacaoRecente = {
   resumo: string; // texto curto do evento
   tarefaTitulo?: string | null;
   tarefaStatus?: string | null;
+  /** Próxima tarefa em aberto do mesmo post (a que "abriu" depois dessa
+   *  ser concluída). Quando exibido, fica "Aprovação | Arte → Copy". */
+  proximaTarefa?: string | null;
 };
 
 /**
@@ -3118,6 +3121,97 @@ async function _listAtualizacoesRecentesUncached(
     });
   }
 
+  // 5b) Pra cada evento de tarefa, busca a "próxima tarefa" do mesmo post —
+  //     ou seja, a tarefa que abriu DEPOIS dessa concluir, que mostra pra
+  //     onde o fluxo foi. Ex: 'Aprovação | Arte → Copy' OR
+  //     'Aprovação | Pauta → Alteração Pauta'. Uma query só, filtrada por
+  //     Post in (postIds dos eventos).
+  const postIdsComTarefa = new Set<string>();
+  for (const ev of eventos) {
+    if (ev.tipo === 'tarefa') postIdsComTarefa.add(ev.postId);
+  }
+  if (postIdsComTarefa.size > 0) {
+    const filtrosPostRelation = [...postIdsComTarefa].map((pid) => ({
+      property: env.notion.taskProps.post,
+      relation: { contains: pid },
+    }));
+    try {
+      const tarefasAbertas: any[] = [];
+      let curAb: string | undefined;
+      do {
+        const r = await notion.databases.query({
+          database_id: env.notion.tarefasDbId,
+          page_size: 100,
+          start_cursor: curAb,
+          filter: {
+            and: [
+              { or: filtrosPostRelation },
+              {
+                property: env.notion.taskProps.status,
+                status: { does_not_equal: 'Concluído' },
+              },
+              {
+                property: env.notion.taskProps.status,
+                status: { does_not_equal: 'Cancelado' },
+              },
+            ],
+          },
+        });
+        tarefasAbertas.push(...(r.results as any[]));
+        curAb = r.has_more ? r.next_cursor ?? undefined : undefined;
+        if (tarefasAbertas.length >= 500) break;
+      } while (curAb);
+
+      // Pra cada post, escolhe a "próxima" — preferência:
+      //   1. tarefas com Pronto=true (já liberadas)
+      //   2. menor 'Ordem' (sequência do template do Notion)
+      //   3. mais recentemente editada
+      const proximaPorPost = new Map<string, string>();
+      const grupoPorPost = new Map<string, any[]>();
+      for (const t of tarefasAbertas) {
+        const pid = getProp(t, env.notion.taskProps.post)?.relation?.[0]?.id;
+        if (!pid) continue;
+        if (!grupoPorPost.has(pid)) grupoPorPost.set(pid, []);
+        grupoPorPost.get(pid)!.push(t);
+      }
+      for (const [pid, lista] of grupoPorPost) {
+        lista.sort((a, b) => {
+          const aProntoProp = getProp(a, env.notion.taskProps.pronto);
+          const bProntoProp = getProp(b, env.notion.taskProps.pronto);
+          const aPronto = aProntoProp?.formula?.boolean === true ? 1 : 0;
+          const bPronto = bProntoProp?.formula?.boolean === true ? 1 : 0;
+          if (aPronto !== bPronto) return bPronto - aPronto;
+          const aOrdem = getProp(a, 'Ordem')?.select?.name ?? 'zzz';
+          const bOrdem = getProp(b, 'Ordem')?.select?.name ?? 'zzz';
+          if (aOrdem !== bOrdem) return aOrdem.localeCompare(bOrdem);
+          return (b.last_edited_time as string).localeCompare(
+            a.last_edited_time as string,
+          );
+        });
+        const primeira = lista[0];
+        if (primeira) {
+          const tp = Object.values(primeira.properties).find(
+            (p: any) => p.type === 'title',
+          ) as any;
+          const titulo = txt(tp?.title);
+          if (titulo) proximaPorPost.set(pid, titulo);
+        }
+      }
+
+      // Atribui nos eventos de tarefa — só quando a próxima não é a própria
+      // tarefa concluída (caso o status local ainda esteja como aberta)
+      for (const ev of eventos) {
+        if (ev.tipo !== 'tarefa') continue;
+        const proxima = proximaPorPost.get(ev.postId);
+        if (proxima && proxima !== ev.tarefaTitulo) {
+          ev.proximaTarefa = proxima;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[atualizacoes] falhou lookup próxima tarefa:', err?.message);
+    }
+  }
+
   // 6) Eventos de EDIÇÃO direta do post + COMENTÁRIOS (em paralelo, em lotes)
   const lote = 5;
   for (let i = 0; i < topPosts.length; i += lote) {
@@ -3203,7 +3297,7 @@ async function _listAtualizacoesRecentesUncached(
 
 const _listAtualizacoesRecentesCached = unstable_cache(
   _listAtualizacoesRecentesUncached,
-  ['list-atualizacoes-recentes-v5-finalizadas'],
+  ['list-atualizacoes-recentes-v6-proxima'],
   { revalidate: 30, tags: [TAG_POSTS, TAG_TAREFAS] }, // 30s
 );
 

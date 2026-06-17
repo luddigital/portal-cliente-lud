@@ -117,6 +117,11 @@ export const env = {
     // Segredo compartilhado entre Evolution e Portal pra validar webhook
     webhookSecret: optSoft('EVOLUTION_WEBHOOK_SECRET'),
   },
+  anthropic: {
+    // Claude — gera rascunhos de resposta pro atendimento no WhatsApp.
+    apiKey: optSoft('ANTHROPIC_API_KEY'),
+    model: opt('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+  },
   supabase: {
     url: optSoft('SUPABASE_URL'),
     serviceRoleKey: optSoft('SUPABASE_SERVICE_ROLE_KEY'),

@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { WhatsappMensagem } from '@/lib/supabase';
+import type { WhatsappMensagem, WhatsappSugestao } from '@/lib/supabase';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
+import { SugestaoBanner } from './SugestaoBanner';
 
 type Props = {
   grupoId: string;
@@ -21,6 +22,10 @@ export function ChatWindow({
   const [mensagens, setMensagens] = useState<WhatsappMensagem[]>(mensagensIniciais);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [sugestao, setSugestao] = useState<WhatsappSugestao | null>(null);
+  // Rascunho jogado no campo ao clicar "Editar" numa sugestão (remonta o input).
+  const [rascunho, setRascunho] = useState('');
+  const [rascunhoKey, setRascunhoKey] = useState(0);
   const fimRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll pro fim sempre que chegar mensagem
@@ -63,6 +68,20 @@ export function ChatWindow({
               });
             },
           )
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'whatsapp_sugestoes',
+              filter: `grupo_id=eq.${grupoId}`,
+            },
+            (payload: { new: WhatsappSugestao }) => {
+              if (podeResponder && payload.new.status === 'pendente') {
+                setSugestao(payload.new);
+              }
+            },
+          )
           .subscribe();
       } catch (e) {
         console.warn('[ChatWindow] realtime não disponível', e);
@@ -73,7 +92,63 @@ export function ChatWindow({
       cancelado = true;
       if (channel) channel.unsubscribe();
     };
-  }, [grupoId]);
+  }, [grupoId, podeResponder]);
+
+  // Carrega a sugestão pendente da Claude (se houver) ao abrir o grupo.
+  useEffect(() => {
+    if (!podeResponder) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/whatsapp/sugestoes?grupoId=${encodeURIComponent(grupoId)}`);
+        if (!res.ok) return;
+        const json = (await res.json()) as { sugestoes: WhatsappSugestao[] };
+        if (!cancelado) setSugestao(json.sugestoes?.[0] ?? null);
+      } catch {
+        // sem sugestão — segue a vida
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [grupoId, podeResponder]);
+
+  async function handleAprovarSugestao(texto: string) {
+    if (!sugestao) return;
+    setErro(null);
+    try {
+      const res = await fetch(`/api/whatsapp/sugestoes/${sugestao.id}/aprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? `Erro ${res.status}`);
+      }
+      // A mensagem enviada chega pelo Realtime; basta limpar o banner.
+      setSugestao(null);
+    } catch (e: any) {
+      setErro(e?.message ?? 'Erro ao aprovar sugestão');
+    }
+  }
+
+  async function handleRejeitarSugestao() {
+    if (!sugestao) return;
+    setErro(null);
+    try {
+      await fetch(`/api/whatsapp/sugestoes/${sugestao.id}/rejeitar`, { method: 'POST' });
+    } catch {
+      // mesmo se falhar a marcação, tiramos da tela
+    }
+    setSugestao(null);
+  }
+
+  function handleEditarSugestao(texto: string) {
+    setRascunho(texto);
+    setRascunhoKey((k) => k + 1); // remonta o input com o texto preenchido
+    setSugestao(null);
+  }
 
   async function handleEnviar(texto: string) {
     if (!texto.trim() || enviando) return;
@@ -163,7 +238,22 @@ export function ChatWindow({
       )}
 
       {podeResponder ? (
-        <MessageInput onEnviar={handleEnviar} enviando={enviando} />
+        <>
+          {sugestao && (
+            <SugestaoBanner
+              sugestao={sugestao}
+              onAprovar={handleAprovarSugestao}
+              onRejeitar={handleRejeitarSugestao}
+              onEditar={handleEditarSugestao}
+            />
+          )}
+          <MessageInput
+            key={rascunhoKey}
+            textoInicial={rascunho}
+            onEnviar={handleEnviar}
+            enviando={enviando}
+          />
+        </>
       ) : (
         <div className="border-t border-[rgba(21,21,33,0.08)] bg-white px-4 py-3 text-center text-[12px] text-t3">
           Você tem acesso apenas de leitura nesta conversa.
