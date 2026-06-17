@@ -113,12 +113,14 @@ function LinhaCompacto({ a }: { a: AtualizacaoRecente }) {
             — {a.resumo}
           </span>
         ) : a.tipo === 'tarefa' ? (
+          // Mostra '<tarefa> → <status do post agora>' — 'Concluído' da
+          // tarefa era redundante (todas do feed são Concluído).
           <span className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] text-t2 sm:inline-flex">
             {a.tarefaTitulo}
-            {a.tarefaStatus && (
+            {(a.statusGeral ?? a.status) && (
               <>
                 <span className="text-t3">→</span>
-                <StatusPillMini status={a.tarefaStatus} />
+                <StatusPillMini status={a.statusGeral ?? a.status} />
               </>
             )}
           </span>
