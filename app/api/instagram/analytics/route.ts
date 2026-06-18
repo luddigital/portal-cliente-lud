@@ -17,7 +17,13 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const isAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
-  const dias = Math.min(90, Math.max(7, parseInt(url.searchParams.get('dias') ?? '30', 10) || 30));
+  const diasParam = url.searchParams.get('dias');
+  const since = url.searchParams.get('since')?.trim();
+  const until = url.searchParams.get('until')?.trim();
+  // Aceita 1 ano de range customizado (since/until) ou 7-90 dias via 'dias'
+  const dias = diasParam
+    ? Math.min(365, Math.max(1, parseInt(diasParam, 10) || 30))
+    : undefined;
 
   let igId = url.searchParams.get('igId') ?? '';
 
@@ -41,7 +47,14 @@ export async function GET(req: Request) {
   }
 
   try {
-    const analytics = await getIgAnalytics(igId, dias);
+    const reISO = /^\d{4}-\d{2}-\d{2}$/;
+    const sinceValid = since && reISO.test(since) ? since : undefined;
+    const untilValid = until && reISO.test(until) ? until : undefined;
+    const analytics = await getIgAnalytics(igId, {
+      dias,
+      since: sinceValid,
+      until: untilValid,
+    });
     return NextResponse.json({ analytics });
   } catch (err: any) {
     return NextResponse.json(

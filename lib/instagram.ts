@@ -41,7 +41,14 @@ export type IgAnalytics = {
   anterior: IgPeriodInsights;
   topMedia: IgMediaItem[];
   taxaEngajamento: number;
+  /** Reach diário no período. */
   serieAlcance: IgPontoSerie[];
+  /** Delta diário de seguidores (signed: positivo = entraram, negativo = saíram).
+   *  Não dá pra separar entraram vs saíram nos mesmos dia — IG API só expõe
+   *  o saldo líquido por dia. */
+  serieSeguidores: IgPontoSerie[];
+  /** Contas que se engajaram (clique, like, save, comment, etc) por dia. */
+  serieEngajamento: IgPontoSerie[];
 };
 
 /** True quando o token da Graph API está configurado no ambiente. */
@@ -235,28 +242,55 @@ async function getTopMedia(
     .slice(0, limit);
 }
 
-/** Levantamento completo de um perfil: período atual vs. anterior + top posts. */
+function parseDataLocal(iso: string, fimDoDia = false): Date {
+  // ISO "YYYY-MM-DD" — interpreta como hora local pra não pular dia
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1, fimDoDia ? 23 : 0, fimDoDia ? 59 : 0, 0);
+}
+
+/** Levantamento completo de um perfil: período + período anterior (mesmo
+ *  tamanho) + top posts + 3 séries diárias.
+ *
+ *  Aceita opcoes em formato:
+ *   - { dias: 30 } → últimos N dias
+ *   - { since: '2024-01-01', until: '2024-01-31' } → range customizado
+ */
 export async function getIgAnalytics(
   igUserId: string,
-  dias = 30,
+  opts: { dias?: number; since?: string; until?: string } = {},
 ): Promise<IgAnalytics> {
-  const agora = new Date();
-  const inicioAtual = new Date(agora.getTime() - dias * 86400000);
-  const inicioAnterior = new Date(agora.getTime() - 2 * dias * 86400000);
+  const fim = opts.until ? parseDataLocal(opts.until, true) : new Date();
+  const inicioAtual = opts.since
+    ? parseDataLocal(opts.since)
+    : new Date(fim.getTime() - (opts.dias ?? 30) * 86400000);
+  const dias = Math.max(
+    1,
+    Math.round((fim.getTime() - inicioAtual.getTime()) / 86400000),
+  );
+  const inicioAnterior = new Date(inicioAtual.getTime() - dias * 86400000);
 
   const account = await getAccount(igUserId);
-  const [atual, anterior, topMedia, serieAlcance] = await Promise.all([
-    getPeriodInsights(igUserId, unixDay(inicioAtual), unixDay(agora)),
+  const [
+    atual,
+    anterior,
+    topMedia,
+    serieAlcance,
+    serieSeguidores,
+    serieEngajamento,
+  ] = await Promise.all([
+    getPeriodInsights(igUserId, unixDay(inicioAtual), unixDay(fim)),
     getPeriodInsights(igUserId, unixDay(inicioAnterior), unixDay(inicioAtual)),
-    getTopMedia(igUserId, Math.floor(inicioAtual.getTime() / 1000), 6),
-    timeSeries(igUserId, 'reach', unixDay(inicioAtual), unixDay(agora)),
+    getTopMedia(igUserId, Math.floor(inicioAtual.getTime() / 1000), 20),
+    timeSeries(igUserId, 'reach', unixDay(inicioAtual), unixDay(fim)),
+    timeSeries(igUserId, 'follower_count', unixDay(inicioAtual), unixDay(fim)),
+    timeSeries(igUserId, 'accounts_engaged', unixDay(inicioAtual), unixDay(fim)),
   ]);
 
   return {
     account,
     period: {
       since: inicioAtual.toISOString().slice(0, 10),
-      until: agora.toISOString().slice(0, 10),
+      until: fim.toISOString().slice(0, 10),
       dias,
     },
     atual,
@@ -264,5 +298,7 @@ export async function getIgAnalytics(
     topMedia,
     taxaEngajamento: atual.reach > 0 ? atual.interactions / atual.reach : 0,
     serieAlcance,
+    serieSeguidores,
+    serieEngajamento,
   };
 }
