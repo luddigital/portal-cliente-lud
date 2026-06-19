@@ -82,8 +82,6 @@ async function graph<T>(path: string, params: Record<string, string>): Promise<T
   return json as T;
 }
 
-const unixDay = (d: Date) => Math.floor(d.getTime() / 1000).toString();
-
 /** Lista as contas Instagram acessíveis pelo token (via Páginas do Business Manager). */
 export async function listIgAccounts(): Promise<IgAccount[]> {
   const json = await graph<{ data: any[] }>('me/accounts', {
@@ -154,9 +152,22 @@ async function getPeriodInsights(
       totalValue(igUserId, 'total_interactions', since, until),
       totalValue(igUserId, 'accounts_engaged', since, until),
       totalValue(igUserId, 'profile_views', since, until),
-      totalValue(igUserId, 'follower_count', since, until),
+      // follower_count NÃO é compatível com total_value (a API recusa). Vem como
+      // série diária de saldo líquido — somamos pra ter o ganho do período.
+      sumTimeSeries(igUserId, 'follower_count', since, until),
     ]);
   return { reach, interactions, engagedAccounts, profileViews, novosSeguidores };
+}
+
+/** Soma os valores diários de uma métrica time_series no período. */
+async function sumTimeSeries(
+  igUserId: string,
+  metric: string,
+  since: string,
+  until: string,
+): Promise<number> {
+  const pts = await timeSeries(igUserId, metric, since, until);
+  return pts.reduce((acc, p) => acc + p.valor, 0);
 }
 
 async function timeSeries(
@@ -248,6 +259,29 @@ function parseDataLocal(iso: string, fimDoDia = false): Date {
   return new Date(y, (m ?? 1) - 1, d ?? 1, fimDoDia ? 23 : 0, fimDoDia ? 59 : 0, 0);
 }
 
+/**
+ * Analytics ao vivo do Instagram de um projeto (início/fim em epoch ms).
+ * Devolve null se o projeto não tem conta mapeada em IG_ACCOUNTS, se não há
+ * token, ou se a Graph API falhar. Espelha o contrato do getMetaAdsRelatorio
+ * pra a página de projeto renderizar de forma condicional.
+ */
+export async function getIgAnalyticsDoProjeto(
+  projetoId: string,
+  inicioMs: number,
+  fimMs: number,
+): Promise<IgAnalytics | null> {
+  const igUserId = env.instagram.accounts[projetoId];
+  if (!igUserId || !env.instagram.graphToken) return null;
+  try {
+    const since = new Date(inicioMs).toISOString().slice(0, 10);
+    const until = new Date(fimMs).toISOString().slice(0, 10);
+    return await getIgAnalytics(igUserId, { since, until });
+  } catch (err) {
+    console.error('[instagram] erro no projeto', projetoId, err);
+    return null;
+  }
+}
+
 /** Levantamento completo de um perfil: período + período anterior (mesmo
  *  tamanho) + top posts + 3 séries diárias.
  *
@@ -260,14 +294,24 @@ export async function getIgAnalytics(
   opts: { dias?: number; since?: string; until?: string } = {},
 ): Promise<IgAnalytics> {
   const fim = opts.until ? parseDataLocal(opts.until, true) : new Date();
-  const inicioAtual = opts.since
+  const inicioPedido = opts.since
     ? parseDataLocal(opts.since)
     : new Date(fim.getTime() - (opts.dias ?? 30) * 86400000);
-  const dias = Math.max(
-    1,
-    Math.round((fim.getTime() - inicioAtual.getTime()) / 86400000),
+
+  // A Graph API recusa janelas de insights de conta com mais de 30 dias
+  // (2.592.000 s entre since e until). Como `until` vai pro fim do dia, uma
+  // janela "de 30 dias" estoura o limite por alguns segundos — o que fazia a
+  // API errar e o código devolver 0 em tudo. Fixamos o fim e recuamos o início
+  // o mínimo necessário pra caber na janela, preservando a data escolhida.
+  const LIMITE_S = 30 * 86400;
+  const fimU = Math.floor(fim.getTime() / 1000);
+  const inicioAtualU = Math.max(
+    Math.floor(inicioPedido.getTime() / 1000),
+    fimU - LIMITE_S,
   );
-  const inicioAnterior = new Date(inicioAtual.getTime() - dias * 86400000);
+  const dias = Math.max(1, Math.round((fimU - inicioAtualU) / 86400));
+  const inicioAnteriorU = inicioAtualU - dias * 86400;
+  const s = (n: number) => n.toString();
 
   const account = await getAccount(igUserId);
   const [
@@ -278,18 +322,18 @@ export async function getIgAnalytics(
     serieSeguidores,
     serieEngajamento,
   ] = await Promise.all([
-    getPeriodInsights(igUserId, unixDay(inicioAtual), unixDay(fim)),
-    getPeriodInsights(igUserId, unixDay(inicioAnterior), unixDay(inicioAtual)),
-    getTopMedia(igUserId, Math.floor(inicioAtual.getTime() / 1000), 20),
-    timeSeries(igUserId, 'reach', unixDay(inicioAtual), unixDay(fim)),
-    timeSeries(igUserId, 'follower_count', unixDay(inicioAtual), unixDay(fim)),
-    timeSeries(igUserId, 'accounts_engaged', unixDay(inicioAtual), unixDay(fim)),
+    getPeriodInsights(igUserId, s(inicioAtualU), s(fimU)),
+    getPeriodInsights(igUserId, s(inicioAnteriorU), s(inicioAtualU)),
+    getTopMedia(igUserId, inicioAtualU, 20),
+    timeSeries(igUserId, 'reach', s(inicioAtualU), s(fimU)),
+    timeSeries(igUserId, 'follower_count', s(inicioAtualU), s(fimU)),
+    timeSeries(igUserId, 'accounts_engaged', s(inicioAtualU), s(fimU)),
   ]);
 
   return {
     account,
     period: {
-      since: inicioAtual.toISOString().slice(0, 10),
+      since: new Date(inicioAtualU * 1000).toISOString().slice(0, 10),
       until: fim.toISOString().slice(0, 10),
       dias,
     },

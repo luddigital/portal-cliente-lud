@@ -23,6 +23,29 @@ function parseAccountsMap(raw: string): Record<string, string> {
   return {};
 }
 
+/**
+ * Mapa projetoId -> lista de campanhas. Aceita valor string (1 campanha) OU
+ * array de strings (N campanhas), normalizando sempre pra array. Permite um
+ * projeto mostrar várias campanhas separadas (ex: seguidores + WhatsApp).
+ */
+function parseCampaignsMap(raw: string): Record<string, string[]> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      const out: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (Array.isArray(v)) out[k] = v.map(String);
+        else if (typeof v === 'string' && v) out[k] = [v];
+      }
+      return out;
+    }
+  } catch {
+    // ignora JSON inválido
+  }
+  return {};
+}
+
 export const env = {
   notion: {
     token: must('NOTION_TOKEN'),
@@ -102,6 +125,25 @@ export const env = {
     graphVersion: opt('IG_GRAPH_VERSION', 'v22.0'),
     // Mapa projetoId (Notion) -> ig-user-id. JSON: {"<projetoId>":"<igUserId>"}
     accounts: parseAccountsMap(optSoft('IG_ACCOUNTS')),
+  },
+  metaAds: {
+    // Reaproveita IG_GRAPH_TOKEN (precisa de ads_read + conta atribuída).
+    // Mapa projetoId (Notion) -> campanha(s). JSON: {"<projetoId>":"<campaignId>"}
+    // ou {"<projetoId>":["<campaignId1>","<campaignId2>"]} pra ver várias separadas.
+    // Tem prioridade sobre accounts — mostra SÓ essas campanhas, sem misturar.
+    campaigns: parseCampaignsMap(optSoft('META_ADS_CAMPAIGNS')),
+    // Mapa projetoId (Notion) -> conta de anúncios (conta inteira). JSON: {"<projetoId>":"act_<id>"}
+    accounts: parseAccountsMap(optSoft('META_ADS_ACCOUNTS')),
+  },
+  hotmart: {
+    // Credenciais da API (Hotmart → Ferramentas → Credenciais da API).
+    clientId: optSoft('HOTMART_CLIENT_ID'),
+    clientSecret: optSoft('HOTMART_CLIENT_SECRET'),
+    basic: optSoft('HOTMART_BASIC'),
+    // Mapa projetoId (Notion) -> product_id da Hotmart. JSON: {"<projetoId>":"<productId>"}
+    products: parseAccountsMap(optSoft('HOTMART_PRODUCTS')),
+    // Produto usado quando o projeto não está no mapa (opcional).
+    defaultProductId: optSoft('HOTMART_DEFAULT_PRODUCT_ID'),
   },
   test: {
     projetoNomesAllowlist: opt('PORTAL_TEST_PROJETO_NOMES', '')
