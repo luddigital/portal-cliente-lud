@@ -1,3 +1,6 @@
+'use client';
+
+import { useRef, useState } from 'react';
 import type { IgPontoSerie } from '@/lib/instagram';
 
 const W = 720;
@@ -12,17 +15,21 @@ function fmtData(iso: string): string {
   return `${d}/${m}`;
 }
 
-function fmtNum(n: number): string {
-  const abs = Math.abs(n);
-  const sinal = n < 0 ? '-' : '';
-  if (abs >= 1000) return `${sinal}${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k`;
-  return n.toLocaleString('pt-BR');
+function fmtDataLonga(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  const data = new Date(Number(y), Number(m) - 1, Number(d));
+  const semana = data.toLocaleDateString('pt-BR', { weekday: 'short' });
+  return `${d}/${m} · ${semana}`;
 }
 
-/**
- * Indices distribuídos pra exibir ~6-8 labels no eixo X, independente do
- * tamanho da série. Sempre inclui o primeiro e o último.
- */
+function fmtNum(n: number): string {
+  const abs = Math.abs(n);
+  const sinal = n < 0 ? '-' : n > 0 ? '+' : '';
+  if (abs >= 1000) return `${sinal}${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k`;
+  return `${sinal}${abs.toLocaleString('pt-BR')}`;
+}
+
 function indicesEixoX(n: number): number[] {
   if (n <= 8) return Array.from({ length: n }, (_, i) => i);
   const passo = Math.ceil(n / 6);
@@ -32,11 +39,6 @@ function indicesEixoX(n: number): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
-/**
- * Gráfico de barras pra valores signed (positivo + negativo).
- * Usado pro delta diário de seguidores: barras verdes pra dias que ganhou,
- * vermelhas pra dias que perdeu. Linha do zero atravessa o meio.
- */
 export function GraficoBarras({
   dados,
   label,
@@ -44,6 +46,9 @@ export function GraficoBarras({
   dados: IgPontoSerie[];
   label: string;
 }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   if (dados.length === 0) return null;
 
   const valores = dados.map((p) => p.valor);
@@ -52,8 +57,6 @@ export function GraficoBarras({
   const temNegativos = min < 0;
   const range = Math.max(Math.abs(max), Math.abs(min), 1);
 
-  // Layout do eixo Y: se só tem positivos, baseia no piso. Se tem negativos,
-  // baseline no meio.
   const innerH = H - PADY_TOP - PADY_BOTTOM;
   const zeroY = temNegativos ? PADY_TOP + innerH / 2 : PADY_TOP + innerH;
   const escalaPos = temNegativos ? innerH / 2 / range : innerH / range;
@@ -69,21 +72,43 @@ export function GraficoBarras({
 
   const indicesX = indicesEixoX(dados.length);
 
-  // Cores do design system — versão suave (alpha) pras barras
   const corPos = 'var(--prazo-em-dia)';
   const corNeg = 'var(--prazo-atrasada)';
 
+  // Centro x de cada barra (pra posicionar tooltip + linha)
+  const centroX = (i: number) => PADX + i * stepX + stepX / 2;
+
+  function onMove(e: React.MouseEvent<SVGSVGElement>) {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const xPercent = (e.clientX - rect.left) / rect.width;
+    const svgX = xPercent * W;
+    let melhor = 0;
+    let melhorDist = Infinity;
+    for (let i = 0; i < dados.length; i++) {
+      const cx = centroX(i);
+      const d = Math.abs(cx - svgX);
+      if (d < melhorDist) {
+        melhorDist = d;
+        melhor = i;
+      }
+    }
+    setHoverIdx(melhor);
+  }
+
+  const hoverX = hoverIdx != null ? centroX(hoverIdx) : null;
+
   return (
-    <div className="card p-4">
+    <div className="card relative p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-[13px] font-semibold text-ink">{label}</h3>
         <div className="flex flex-wrap items-baseline gap-2 text-[11px]">
           <span style={{ color: corPos }} className="font-semibold">
-            +{fmtNum(positivos)}
+            +{Math.abs(positivos).toLocaleString('pt-BR')}
           </span>
           <span className="text-t3">entraram</span>
           <span style={{ color: corNeg }} className="ml-2 font-semibold">
-            {fmtNum(negativos)}
+            {negativos.toLocaleString('pt-BR')}
           </span>
           <span className="text-t3">saíram</span>
           <span
@@ -93,112 +118,87 @@ export function GraficoBarras({
             }}
           >
             {liquido > 0 ? '+' : ''}
-            {fmtNum(liquido)}
+            {liquido.toLocaleString('pt-BR')}
           </span>
           <span className="text-t3">líquido</span>
         </div>
       </div>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="mt-3 h-auto w-full"
-        preserveAspectRatio="none"
-      >
-        {/* linhas de referência */}
-        {(temNegativos ? [0.25, 0.75] : [0.25, 0.5, 0.75]).map((f) => {
-          const y = PADY_TOP + f * innerH;
-          return (
+      <div className="relative mt-3">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          className="h-auto w-full cursor-crosshair"
+          preserveAspectRatio="none"
+          onMouseMove={onMove}
+          onMouseLeave={() => setHoverIdx(null)}
+        >
+          {/* linhas de referência */}
+          {(temNegativos ? [0.25, 0.75] : [0.25, 0.5, 0.75]).map((f) => {
+            const y = PADY_TOP + f * innerH;
+            return (
+              <line
+                key={f}
+                x1={PADX}
+                x2={W - PADX}
+                y1={y}
+                y2={y}
+                stroke="rgba(21,21,33,0.06)"
+                strokeWidth="1"
+              />
+            );
+          })}
+
+          <line
+            x1={PADX}
+            x2={W - PADX}
+            y1={zeroY}
+            y2={zeroY}
+            stroke="rgba(21,21,33,0.18)"
+            strokeWidth="1"
+          />
+
+          {/* barras */}
+          {dados.map((p, i) => {
+            const x = PADX + i * stepX + (stepX - barW) / 2;
+            const cor = p.valor >= 0 ? corPos : corNeg;
+            const h =
+              p.valor >= 0
+                ? p.valor * escalaPos
+                : Math.abs(p.valor) * escalaNeg;
+            const y = p.valor >= 0 ? zeroY - h : zeroY;
+            const ativo = hoverIdx === i;
+            return (
+              <rect
+                key={i}
+                x={x}
+                y={y}
+                width={barW}
+                height={Math.max(1, h)}
+                rx={2}
+                fill={cor}
+                opacity={p.valor === 0 ? 0.25 : ativo ? 1 : 0.7}
+              />
+            );
+          })}
+
+          {/* linha vertical do hover */}
+          {hoverX != null && (
             <line
-              key={f}
-              x1={PADX}
-              x2={W - PADX}
-              y1={y}
-              y2={y}
-              stroke="rgba(21,21,33,0.06)"
+              x1={hoverX}
+              x2={hoverX}
+              y1={PADY_TOP}
+              y2={H - PADY_BOTTOM}
+              stroke="rgba(21,21,33,0.35)"
               strokeWidth="1"
+              strokeDasharray="2 2"
             />
-          );
-        })}
+          )}
 
-        {/* linha do zero */}
-        <line
-          x1={PADX}
-          x2={W - PADX}
-          y1={zeroY}
-          y2={zeroY}
-          stroke="rgba(21,21,33,0.18)"
-          strokeWidth="1"
-        />
-
-        {/* barras */}
-        {dados.map((p, i) => {
-          const x = PADX + i * stepX + (stepX - barW) / 2;
-          const cor = p.valor >= 0 ? corPos : corNeg;
-          const h =
-            p.valor >= 0
-              ? p.valor * escalaPos
-              : Math.abs(p.valor) * escalaNeg;
-          const y = p.valor >= 0 ? zeroY - h : zeroY;
-          return (
-            <rect
-              key={i}
-              x={x}
-              y={y}
-              width={barW}
-              height={Math.max(1, h)}
-              rx={2}
-              fill={cor}
-              opacity={p.valor === 0 ? 0.25 : 0.7}
-            />
-          );
-        })}
-
-        {/* destaque do maior valor positivo (pra dar referência numérica) */}
-        {max > 0 &&
-          (() => {
-            const iMax = valores.indexOf(max);
-            const x = PADX + iMax * stepX + stepX / 2;
-            const y = zeroY - max * escalaPos - 4;
-            return (
-              <text
-                x={x}
-                y={y}
-                fontSize="10"
-                fill="rgba(21,21,33,0.55)"
-                textAnchor="middle"
-                fontWeight="600"
-              >
-                +{fmtNum(max)}
-              </text>
-            );
-          })()}
-
-        {/* maior valor negativo */}
-        {min < 0 &&
-          (() => {
-            const iMin = valores.indexOf(min);
-            const x = PADX + iMin * stepX + stepX / 2;
-            const y = zeroY + Math.abs(min) * escalaNeg + 12;
-            return (
-              <text
-                x={x}
-                y={y}
-                fontSize="10"
-                fill="rgba(21,21,33,0.55)"
-                textAnchor="middle"
-                fontWeight="600"
-              >
-                {fmtNum(min)}
-              </text>
-            );
-          })()}
-
-        {/* eixo X — múltiplos labels */}
-        {indicesX.map((i) => {
-          const x = PADX + i * stepX + stepX / 2;
-          return (
+          {/* eixo X */}
+          {indicesX.map((i) => (
             <text
               key={i}
-              x={x}
+              x={centroX(i)}
               y={H - 8}
               fontSize="10"
               fill="rgba(21,21,33,0.45)"
@@ -206,9 +206,35 @@ export function GraficoBarras({
             >
               {fmtData(dados[i].dia)}
             </text>
-          );
-        })}
-      </svg>
+          ))}
+        </svg>
+
+        {/* tooltip */}
+        {hoverIdx != null && hoverX != null && (
+          <div
+            className="pointer-events-none absolute z-10 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] text-white shadow-lg"
+            style={{
+              left: `${(hoverX / W) * 100}%`,
+              top: 0,
+              transform: 'translate(-50%, -8px)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <div className="font-semibold">{fmtDataLonga(dados[hoverIdx].dia)}</div>
+            <div
+              className="font-mono"
+              style={{
+                color:
+                  dados[hoverIdx].valor >= 0
+                    ? 'rgba(180,220,180,0.95)'
+                    : 'rgba(255,180,180,0.95)',
+              }}
+            >
+              {fmtNum(dados[hoverIdx].valor)}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

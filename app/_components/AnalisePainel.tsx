@@ -71,39 +71,47 @@ function CardSeguidores({ a }: { a: IgAnalytics }) {
   const periodo = a.atual.novosSeguidores;
   const anterior = a.anterior.novosSeguidores;
   const d = delta(periodo, anterior);
+  const positivo = periodo >= anterior;
 
   return (
-    <div
-      className="overflow-hidden rounded-3xl p-7 sm:p-9"
-      style={{
-        background: 'linear-gradient(135deg, var(--navy) 0%, var(--mauve) 100%)',
-      }}
-    >
-      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/60">
-        Seguidores totais
-      </div>
-      <div className="mt-2 text-[52px] font-semibold tracking-[-0.03em] leading-none text-white sm:text-[64px]">
-        {fmt(total)}
-      </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3 text-[13px]">
-        <span className="font-semibold text-white">
-          {periodo > 0 ? '+' : ''}
-          {fmt(periodo)}
-        </span>
-        <span className="text-white/60">no período</span>
-        {d && (
-          <span
-            className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white"
-            style={{
-              background:
-                periodo >= anterior
-                  ? 'rgba(63, 122, 71, 0.35)'
-                  : 'rgba(179, 58, 58, 0.35)',
-            }}
-          >
-            {d.txt} vs. período anterior
+    <div className="relative overflow-hidden rounded-3xl border border-[rgba(21,21,33,0.06)] bg-bgSoft p-7 sm:p-10">
+      {/* círculo decorativo no canto direito — adiciona profundidade sem
+          polução visual */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-16 -top-16 h-72 w-72 rounded-full opacity-[0.07]"
+        style={{ background: '#2C3E66' }}
+      />
+      <div className="relative">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-t3">
+          Seguidores totais
+        </div>
+        <div className="mt-3 text-[64px] font-semibold tracking-[-0.04em] leading-none text-ink sm:text-[88px]">
+          {fmt(total)}
+        </div>
+        <div className="mt-5 flex flex-wrap items-center gap-2 text-[13px]">
+          <span className="font-semibold text-ink">
+            {periodo > 0 ? '+' : ''}
+            {fmt(periodo)}
           </span>
-        )}
+          <span className="text-t3">no período</span>
+          {d && (
+            <span
+              className="ml-1 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white"
+              style={{
+                background: positivo
+                  ? 'var(--prazo-em-dia)'
+                  : 'var(--prazo-atrasada)',
+              }}
+            >
+              <span>{d.txt}</span>
+              <span aria-hidden>{positivo ? '↗' : '↘'}</span>
+              <span className="font-normal opacity-80">
+                vs. período anterior
+              </span>
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

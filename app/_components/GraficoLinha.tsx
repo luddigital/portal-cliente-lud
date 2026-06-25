@@ -1,14 +1,25 @@
+'use client';
+
+import { useRef, useState } from 'react';
 import type { IgPontoSerie } from '@/lib/instagram';
 
 const W = 720;
-const H = 180;
+const H = 200;
 const PADX = 36;
-const PADY = 18;
+const PADY = 24;
 
 function fmtData(iso: string): string {
   if (!iso) return '';
   const [, m, d] = iso.split('-');
   return `${d}/${m}`;
+}
+
+function fmtDataLonga(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  const data = new Date(Number(y), Number(m) - 1, Number(d));
+  const semana = data.toLocaleDateString('pt-BR', { weekday: 'short' });
+  return `${d}/${m} · ${semana}`;
 }
 
 function fmtNum(n: number): string {
@@ -23,6 +34,9 @@ export function GraficoLinha({
   dados: IgPontoSerie[];
   label: string;
 }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   if (dados.length === 0) return null;
 
   const valores = dados.map((p) => p.valor);
@@ -35,10 +49,13 @@ export function GraficoLinha({
     return { x, y, p };
   });
 
-  const linha = pontos.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
-  const area = `${linha} L ${pontos[pontos.length - 1].x} ${H - PADY} L ${pontos[0].x} ${H - PADY} Z`;
+  const linha = pontos
+    .map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`)
+    .join(' ');
+  const area = `${linha} L ${pontos[pontos.length - 1].x} ${
+    H - PADY
+  } L ${pontos[0].x} ${H - PADY} Z`;
 
-  // ~6-8 labels distribuídos no eixo X (sempre inclui primeiro e último)
   const indicesEixo = (() => {
     if (dados.length <= 8) return dados.map((_, i) => i);
     const passo = Math.ceil(dados.length / 6);
@@ -51,57 +68,122 @@ export function GraficoLinha({
   const total = valores.reduce((a, b) => a + b, 0);
   const media = Math.round(total / dados.length);
 
+  // Converte coordenada do mouse pra índice do ponto mais próximo
+  function onMove(e: React.MouseEvent<SVGSVGElement>) {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const xPercent = (e.clientX - rect.left) / rect.width;
+    const svgX = xPercent * W;
+    let melhor = 0;
+    let melhorDist = Infinity;
+    for (let i = 0; i < pontos.length; i++) {
+      const d = Math.abs(pontos[i].x - svgX);
+      if (d < melhorDist) {
+        melhorDist = d;
+        melhor = i;
+      }
+    }
+    setHoverIdx(melhor);
+  }
+
+  const hoverPonto = hoverIdx != null ? pontos[hoverIdx] : null;
+
   return (
-    <div className="card p-4">
+    <div className="card relative p-4">
       <div className="flex items-baseline justify-between">
         <h3 className="text-[13px] font-semibold text-ink">{label}</h3>
-        <span className="text-[11px] text-t3">
-          média {fmtNum(media)} / dia
-        </span>
+        <span className="text-[11px] text-t3">média {fmtNum(media)} / dia</span>
       </div>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="mt-3 h-auto w-full"
-        preserveAspectRatio="none"
-      >
-        <defs>
-          <linearGradient id="gradAlcance" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#313D65" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#313D65" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[0.25, 0.5, 0.75].map((f) => (
-          <line
-            key={f}
-            x1={PADX}
-            x2={W - PADX}
-            y1={PADY + f * (H - PADY * 2)}
-            y2={PADY + f * (H - PADY * 2)}
-            stroke="rgba(21,21,33,0.06)"
-            strokeWidth="1"
-          />
-        ))}
-        <path d={area} fill="url(#gradAlcance)" />
-        <path d={linha} fill="none" stroke="#313D65" strokeWidth="2" />
-        {pontos.map((pt, i) => (
-          <circle key={i} cx={pt.x} cy={pt.y} r="2" fill="#313D65" />
-        ))}
-        <text x={PADX} y={PADY - 4} fontSize="10" fill="#9898AA">
-          {fmtNum(max)}
-        </text>
-        {indicesEixo.map((i) => (
-          <text
-            key={i}
-            x={pontos[i].x}
-            y={H - 2}
-            fontSize="10"
-            fill="rgba(21,21,33,0.45)"
-            textAnchor={i === 0 ? 'start' : i === dados.length - 1 ? 'end' : 'middle'}
-          >
-            {fmtData(dados[i].dia)}
+      <div className="relative mt-3">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          className="h-auto w-full cursor-crosshair"
+          preserveAspectRatio="none"
+          onMouseMove={onMove}
+          onMouseLeave={() => setHoverIdx(null)}
+        >
+          <defs>
+            <linearGradient id="gradAlcance" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#313D65" stopOpacity="0.18" />
+              <stop offset="100%" stopColor="#313D65" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {[0.25, 0.5, 0.75].map((f) => (
+            <line
+              key={f}
+              x1={PADX}
+              x2={W - PADX}
+              y1={PADY + f * (H - PADY * 2)}
+              y2={PADY + f * (H - PADY * 2)}
+              stroke="rgba(21,21,33,0.06)"
+              strokeWidth="1"
+            />
+          ))}
+          <path d={area} fill="url(#gradAlcance)" />
+          <path d={linha} fill="none" stroke="#313D65" strokeWidth="2" />
+          {pontos.map((pt, i) => (
+            <circle key={i} cx={pt.x} cy={pt.y} r="2" fill="#313D65" />
+          ))}
+
+          {/* linha vertical do hover */}
+          {hoverPonto && (
+            <>
+              <line
+                x1={hoverPonto.x}
+                x2={hoverPonto.x}
+                y1={PADY}
+                y2={H - PADY}
+                stroke="rgba(21,21,33,0.35)"
+                strokeWidth="1"
+                strokeDasharray="2 2"
+              />
+              <circle
+                cx={hoverPonto.x}
+                cy={hoverPonto.y}
+                r="5"
+                fill="#fff"
+                stroke="#313D65"
+                strokeWidth="2"
+              />
+            </>
+          )}
+
+          <text x={PADX} y={PADY - 4} fontSize="10" fill="#9898AA">
+            {fmtNum(max)}
           </text>
-        ))}
-      </svg>
+          {indicesEixo.map((i) => (
+            <text
+              key={i}
+              x={pontos[i].x}
+              y={H - 2}
+              fontSize="10"
+              fill="rgba(21,21,33,0.45)"
+              textAnchor={
+                i === 0 ? 'start' : i === dados.length - 1 ? 'end' : 'middle'
+              }
+            >
+              {fmtData(dados[i].dia)}
+            </text>
+          ))}
+        </svg>
+
+        {/* tooltip (em pixels reais, posicionado relativo ao SVG) */}
+        {hoverPonto && hoverIdx != null && (
+          <div
+            className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] text-white shadow-lg"
+            style={{
+              left: `${(hoverPonto.x / W) * 100}%`,
+              top: `${(hoverPonto.y / H) * 100}%`,
+              transform: 'translate(-50%, calc(-100% - 10px))',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <div className="font-semibold">{fmtDataLonga(dados[hoverIdx].dia)}</div>
+            <div className="text-white/80">{fmtNum(dados[hoverIdx].valor)}</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
