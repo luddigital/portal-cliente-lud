@@ -42,9 +42,25 @@ async function handle(req: Request, tarefaId: string) {
   const comentario = (form.get('comentario') as string | null)?.trim() ?? '';
   const linkUrlRaw = (form.get('linkUrl') as string | null)?.trim() ?? '';
   const linkUrl = /^https?:\/\//i.test(linkUrlRaw) ? linkUrlRaw : '';
+  // O cliente agora envia 1 arquivo por request (pra não estourar Vercel
+  // body limit nem timeout). O server aceita 0+ — vai subindo conforme
+  // chegarem. Não finaliza tarefa enquanto finalize !== 'true'.
   const arquivos = form.getAll('arquivos').filter((f): f is File => f instanceof File && f.size > 0);
+  const finalize = form.get('finalize') === 'true';
+  // Contagem acumulada vinda do client — só pro comentário final ficar
+  // certo ("52 arquivos no Drive" em vez de "1 arquivo").
+  const totalAcumulado = parseInt(
+    (form.get('totalAcumulado') as string | null) ?? '0',
+    10,
+  ) || 0;
 
-  if (!texto && !comentario && !linkUrl && arquivos.length === 0) {
+  if (!finalize && arquivos.length === 0) {
+    return NextResponse.json(
+      { error: 'sem arquivo nem finalize=true — nada a fazer' },
+      { status: 400 },
+    );
+  }
+  if (finalize && !texto && !comentario && !linkUrl && totalAcumulado === 0 && arquivos.length === 0) {
     return NextResponse.json(
       { error: 'envia pelo menos texto, arquivo, comentário ou link' },
       { status: 400 },
@@ -52,7 +68,7 @@ async function handle(req: Request, tarefaId: string) {
   }
 
   let driveLink: string | null = null;
-  let totalArquivos = 0;
+  let totalDessaCall = 0;
 
   if (arquivos.length > 0) {
     const folder = await ensurePostFolder({
@@ -62,22 +78,48 @@ async function handle(req: Request, tarefaId: string) {
     });
     driveLink = folder.webViewLink;
 
-    for (const file of arquivos) {
-      const buf = Buffer.from(await file.arrayBuffer());
-      await uploadFile({
-        folderId: folder.folderId,
-        name: file.name,
-        mimeType: file.type,
-        buffer: buf,
-      });
-      totalArquivos++;
-    }
+    // Sobe os arquivos dessa request em paralelo (cliente manda 1 por vez,
+    // mas mantemos o loop pra resiliência caso mude no futuro).
+    await Promise.all(
+      arquivos.map(async (file) => {
+        const buf = Buffer.from(await file.arrayBuffer());
+        await uploadFile({
+          folderId: folder.folderId,
+          name: file.name,
+          mimeType: file.type,
+          buffer: buf,
+        });
+      }),
+    );
+    totalDessaCall = arquivos.length;
+  }
 
+  // Se ainda não é o finalize, só responde "ok" sem mexer em tarefa nem
+  // Notion — vamos receber mais arquivos.
+  if (!finalize) {
+    return NextResponse.json({
+      ok: true,
+      driveLink,
+      arquivos: totalDessaCall,
+    });
+  }
+
+  // === FINALIZE: atualiza Drive link + comenta + conclui tarefa ===
+  if (driveLink) {
+    await atualizarLinkDriveDoPost(t.postId, `Materiais — ${t.postTitulo}`, driveLink);
+  } else if (totalAcumulado > 0) {
+    // Não temos a URL da pasta nesse request (foi setada no primeiro),
+    // mas se o cliente já subiu arquivos antes a pasta existe.
+    // Ensure pra pegar a URL e gravar.
+    const folder = await ensurePostFolder({
+      cliente: t.projetoNome,
+      postTitulo: t.postTitulo,
+      dataPostagem: t.postData,
+    });
+    driveLink = folder.webViewLink;
     await atualizarLinkDriveDoPost(t.postId, `Materiais — ${t.postTitulo}`, driveLink);
   }
 
-  // Se o cliente colou um link externo (Drive, Dropbox, WeTransfer), anexa
-  // ao campo Drive do post sem sobrescrever o que já tem.
   if (linkUrl) {
     try {
       await adicionarLinkDriveAoPost(
@@ -90,7 +132,7 @@ async function handle(req: Request, tarefaId: string) {
     }
   }
 
-  // Resumo no comentário do Notion — não escrevemos no corpo do post.
+  const totalArquivos = totalAcumulado + totalDessaCall;
   const partes: string[] = [`✅ Tarefa "${t.tarefaTitulo}" — recebida do cliente.`];
   if (totalArquivos > 0 && driveLink) {
     partes.push(`📎 ${totalArquivos} arquivo${totalArquivos > 1 ? 's' : ''} no Drive: ${driveLink}`);
