@@ -38,9 +38,15 @@ export function GraficoLinha({
   const linha = pontos.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
   const area = `${linha} L ${pontos[pontos.length - 1].x} ${H - PADY} L ${pontos[0].x} ${H - PADY} Z`;
 
-  const indicesEixo = dados.length <= 7
-    ? dados.map((_, i) => i)
-    : [0, Math.floor(dados.length / 2), dados.length - 1];
+  // ~6-8 labels distribuídos no eixo X (sempre inclui primeiro e último)
+  const indicesEixo = (() => {
+    if (dados.length <= 8) return dados.map((_, i) => i);
+    const passo = Math.ceil(dados.length / 6);
+    const out = new Set<number>();
+    for (let i = 0; i < dados.length; i += passo) out.add(i);
+    out.add(dados.length - 1);
+    return [...out].sort((a, b) => a - b);
+  })();
 
   const total = valores.reduce((a, b) => a + b, 0);
   const media = Math.round(total / dados.length);
@@ -89,7 +95,7 @@ export function GraficoLinha({
             x={pontos[i].x}
             y={H - 2}
             fontSize="10"
-            fill="#9898AA"
+            fill="rgba(21,21,33,0.45)"
             textAnchor={i === 0 ? 'start' : i === dados.length - 1 ? 'end' : 'middle'}
           >
             {fmtData(dados[i].dia)}
