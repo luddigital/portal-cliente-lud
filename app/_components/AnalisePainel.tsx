@@ -39,25 +39,41 @@ function Metric({
   anterior?: number;
 }) {
   const d = atual != null && anterior != null ? delta(atual, anterior) : null;
+  const positivo = atual != null && anterior != null && atual >= anterior;
   return (
-    <div className="card p-4">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
-        {label}
-      </div>
-      <div className="mt-2 text-[20px] font-semibold tracking-[-0.02em] text-ink">
-        {valor}
-      </div>
-      {d ? (
-        <div
-          className="mt-1 text-[11px] font-semibold"
-          style={{ color: d.cor }}
-        >
-          {d.txt}{' '}
-          <span className="font-normal text-t3">{d.sub}</span>
+    <div
+      className="relative overflow-hidden rounded-3xl border border-white/40 p-5 shadow-[0_4px_24px_rgba(21,21,33,0.04)]"
+      style={{
+        background:
+          'linear-gradient(135deg, #DBE3F7 0%, #E8DAF0 45%, #F5DCE2 100%)',
+      }}
+    >
+      {/* highlight glassy no canto */}
+      <div
+        className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full opacity-50 blur-2xl"
+        style={{ background: 'rgba(255,255,255,0.7)' }}
+      />
+      <div className="relative">
+        <div className="text-[14px] font-medium text-ink/80">{label}</div>
+        <div className="mt-3 text-[32px] font-semibold tracking-[-0.03em] text-ink leading-none sm:text-[36px]">
+          {valor}
         </div>
-      ) : (
-        <div className="mt-1 text-[11px] text-t3">&nbsp;</div>
-      )}
+        {d ? (
+          <div
+            className="mt-4 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
+            style={{
+              background: positivo
+                ? 'rgba(63, 122, 71, 0.85)'
+                : 'rgba(179, 58, 58, 0.85)',
+            }}
+          >
+            <span>{d.txt}</span>
+            <span aria-hidden>↗</span>
+          </div>
+        ) : (
+          <div className="mt-4 h-[24px]" />
+        )}
+      </div>
     </div>
   );
 }
@@ -149,7 +165,10 @@ type CriterioOrdem = 'interactions' | 'reach' | 'likes' | 'comments';
 
 function MediaCard({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem }) {
   const data = m.timestamp
-    ? new Date(m.timestamp).toLocaleDateString('pt-BR')
+    ? new Date(m.timestamp).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'short',
+      })
     : '';
   const valorDestaque = m[criterio];
   const labelDestaque: Record<CriterioOrdem, string> = {
@@ -163,34 +182,80 @@ function MediaCard({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem })
       href={m.permalink || '#'}
       target="_blank"
       rel="noopener noreferrer"
-      className="card flex gap-3 p-3 transition hover:border-navy/30"
+      className="group block overflow-hidden rounded-3xl border border-[rgba(21,21,33,0.08)] bg-white transition hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(21,21,33,0.12)]"
     >
-      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-bgSoft">
+      {/* foto grande no topo */}
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-bgSoft">
         {m.thumbnail ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={m.thumbnail} alt="" className="h-full w-full object-cover" />
-        ) : null}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="rounded bg-bgSoft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-t3">
-            {m.mediaType || 'post'}
+          <img
+            src={m.thumbnail}
+            alt=""
+            className="h-full w-full object-cover transition group-hover:scale-[1.02]"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[11px] text-t3">
+            Sem prévia
+          </div>
+        )}
+        {/* tipo + data no canto sup esquerdo */}
+        <div className="absolute left-3 top-3 flex items-center gap-1.5">
+          <span className="rounded-full bg-white/85 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink backdrop-blur">
+            {m.mediaType?.toLowerCase() || 'post'}
           </span>
-          <span className="text-[11px] text-t3">{data}</span>
+          <span className="rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur">
+            {data}
+          </span>
         </div>
-        <p className="mt-1 line-clamp-2 text-[12px] text-t2">
+        {/* destaque grande no canto inf direito */}
+        <div className="absolute bottom-3 right-3 rounded-2xl bg-white/90 px-3 py-2 text-right backdrop-blur">
+          <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-t3">
+            {labelDestaque[criterio]}
+          </div>
+          <div className="mt-0.5 text-[18px] font-semibold tracking-[-0.02em] text-ink leading-none">
+            {fmt(valorDestaque)}
+          </div>
+        </div>
+      </div>
+
+      {/* card colorido embaixo, igual ref 4 */}
+      <div
+        className="relative px-5 py-4 text-white"
+        style={{
+          background:
+            'linear-gradient(135deg, #2C3E66 0%, #4B5B8C 60%, #8B7AA3 100%)',
+        }}
+      >
+        <p className="line-clamp-2 text-[13px] font-medium leading-snug">
           {m.caption || 'Sem legenda'}
         </p>
-        <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] text-t3">
-          <span className="font-semibold text-navy">
-            {labelDestaque[criterio]}: {fmt(valorDestaque)}
-          </span>
-          <span>{fmt(m.likes)} curtidas</span>
-          <span>{fmt(m.comments)} comentários</span>
-          <span>{fmt(m.reach)} alcance</span>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <StatChip icon="♡" label="Curtidas" valor={fmt(m.likes)} />
+          <StatChip icon="💬" label="Comentários" valor={fmt(m.comments)} />
+          <StatChip icon="👁" label="Alcance" valor={fmt(m.reach)} />
         </div>
       </div>
     </a>
+  );
+}
+
+function StatChip({
+  icon,
+  label,
+  valor,
+}: {
+  icon: string;
+  label: string;
+  valor: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] backdrop-blur">
+      <span className="text-[12px] leading-none" aria-hidden>
+        {icon}
+      </span>
+      <span className="font-semibold">{valor}</span>
+      <span className="text-white/65">{label}</span>
+    </div>
   );
 }
 
@@ -337,8 +402,8 @@ export function AnalisePainel({ a }: { a: IgAnalytics }) {
             Nenhum post publicado no período.
           </p>
         ) : (
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            {ordenados.slice(0, 8).map((m) => (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {ordenados.slice(0, 9).map((m) => (
               <MediaCard key={m.id} m={m} criterio={criterio} />
             ))}
           </div>
