@@ -402,13 +402,22 @@ export default async function PostDetalhePage({
 
         {modo === 'material' && tarefaId && (() => {
           const sub = subtipoMaterial(tarefaTitulo);
-          // Junta os roteiros (callouts com detalhes) num texto único pro
-          // teleprompter — funciona pra qualquer conteúdo textual: voice over,
-          // legenda lida, narração de reels etc.
+          // Só usa o teleprompter pra callouts MARCADOS como voice over
+          // ("Texto para gravação de Voice Over", "Voz", "Narração" etc).
+          // Listas de materiais/equipamentos NÃO viram roteiro — ficam só
+          // como referência visual.
           const roteiroParaGravacao =
             sub === 'materiais' && post.materiaisNecessarios
               ? post.materiaisNecessarios
-                  .filter((m) => m.detalhes.length > 0)
+                  .filter((m) => {
+                    const cab = (m.cabecalho ?? '').toLowerCase();
+                    return (
+                      cab.includes('voice') ||
+                      cab.includes('voz') ||
+                      cab.includes('narração') ||
+                      cab.includes('narracao')
+                    );
+                  })
                   .map((m) => m.detalhes.join('\n'))
                   .join('\n\n')
                   .trim()

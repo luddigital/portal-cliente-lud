@@ -130,27 +130,57 @@ export function GravarVoiceOver({
 
   return (
     <div className="card overflow-hidden p-0">
-      {/* header */}
-      <div className="flex items-center justify-between border-b border-[rgba(21,21,33,0.06)] px-5 py-3">
-        <div>
+      {/* header com botão de gravar SEMPRE visível à direita */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(21,21,33,0.06)] px-5 py-3">
+        <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-            Teleprompter + gravação
+            Gravar voice over
           </div>
           <div className="mt-0.5 text-[13px] font-semibold text-ink">
             Frase {idx + 1} de {frases.length}
+            {gravando && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--prazo-atrasada)]">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                REC {fmtTempo(tempo)}
+              </span>
+            )}
+            {previewUrl && !gravando && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--prazo-em-dia)]">
+                ✓ Gravado · {fmtTempo(tempo)}
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2">
+          {!gravando && !previewUrl && (
+            <button
+              type="button"
+              onClick={iniciar}
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--prazo-atrasada)] px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-90"
+            >
+              <span className="h-2.5 w-2.5 rounded-full bg-white" /> Gravar
+            </button>
+          )}
           {gravando && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--prazo-atrasada-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--prazo-atrasada)]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-              REC {fmtTempo(tempo)}
-            </span>
+            <button
+              type="button"
+              onClick={parar}
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-90"
+            >
+              <span className="h-2.5 w-2.5 bg-white" /> Parar
+            </button>
           )}
           {previewUrl && !gravando && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--prazo-em-dia-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--prazo-em-dia)]">
-              ✓ Gravado · {fmtTempo(tempo)}
-            </span>
+            <>
+              <audio src={previewUrl} controls className="h-9 max-w-[200px]" />
+              <button
+                type="button"
+                onClick={regravar}
+                className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-3 py-1.5 text-[12px] font-medium text-ink transition hover:bg-bgSoft"
+              >
+                ↻ Regravar
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -203,54 +233,20 @@ export function GravarVoiceOver({
         </div>
       </div>
 
-      {/* controles de gravação */}
-      <div className="border-t border-[rgba(21,21,33,0.06)] bg-bgSoft/40 px-5 py-4">
+      {/* rodapé: dica + mensagem de erro */}
+      <div className="border-t border-[rgba(21,21,33,0.06)] bg-bgSoft/40 px-5 py-3">
         {erro && (
-          <p className="mb-3 rounded-md bg-[var(--prazo-atrasada-soft)] px-3 py-2 text-[12px] text-[var(--prazo-atrasada)]">
+          <p className="mb-2 rounded-md bg-[var(--prazo-atrasada-soft)] px-3 py-2 text-[12px] text-[var(--prazo-atrasada)]">
             {erro}
           </p>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-[11px] text-t3">
-            {gravando
-              ? 'Falando… avance as frases conforme for lendo.'
-              : previewUrl
-                ? 'Pronto! A gravação foi anexada ao envio. Se quiser refazer, clique abaixo.'
-                : 'Quando estiver pronta(o), clique pra gravar. O áudio fica anexado ao envio automaticamente.'}
-          </div>
-          <div className="flex items-center gap-2">
-            {previewUrl && !gravando && (
-              <>
-                <audio src={previewUrl} controls className="h-9 max-w-[200px]" />
-                <button
-                  type="button"
-                  onClick={regravar}
-                  className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-3 py-1.5 text-[12px] font-medium text-ink transition hover:bg-bgSoft"
-                >
-                  ↻ Regravar
-                </button>
-              </>
-            )}
-            {!gravando && !previewUrl && (
-              <button
-                type="button"
-                onClick={iniciar}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--prazo-atrasada)] px-4 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
-              >
-                <span className="h-2 w-2 rounded-full bg-white" /> Gravar
-              </button>
-            )}
-            {gravando && (
-              <button
-                type="button"
-                onClick={parar}
-                className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
-              >
-                <span className="h-2 w-2 bg-white" /> Parar
-              </button>
-            )}
-          </div>
-        </div>
+        <p className="text-[11px] text-t3">
+          {gravando
+            ? 'Falando… avance as frases conforme for lendo.'
+            : previewUrl
+              ? 'Pronto! A gravação já está anexada ao envio abaixo. Se quiser refazer, clique em ↻ Regravar.'
+              : 'Clique em Gravar pra começar. O áudio fica anexado ao envio automaticamente.'}
+        </p>
       </div>
     </div>
   );
