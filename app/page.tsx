@@ -10,6 +10,7 @@ import {
   type CategoriaTarefa,
 } from '@/lib/notion';
 import { ProjetoSwitcher } from './_components/ProjetoSwitcher';
+import { escolherProjetoPadrao } from '@/lib/projetoServico';
 import { EtapaBanner } from './_components/EtapaBanner';
 import { TaskCategoryCard } from './_components/TaskCategoryCard';
 import { CalendarNavigator } from './_components/CalendarNavigator';
@@ -43,14 +44,21 @@ export default async function Dashboard() {
   // Colaborador sem projetos vinculados vai pra área da equipe.
   if (session.colaboradorId && session.projetoIds.length === 0) redirect('/equipe/me');
 
-  // Cliente com 2+ projetos precisa escolher qual ver. Se o cookie de projeto
-  // ativo tá vazio ou inválido, manda pra página de escolha.
+  // Cliente com 2+ projetos: pré-seleciona via Instagram (ou primeiro da
+  // lista) e seta o cookie via /api/projetos/escolher. Switcher no header
+  // permite trocar depois — sem página intermediária de escolha.
   let projetoIdsAtivos = session.projetoIds;
   const projetoAtivo = getProjetoAtivo();
   const multiplos = session.projetoIds.length > 1;
+  const projetosCliente = multiplos
+    ? await findProjetosByEmail(session.email)
+    : [];
   if (multiplos) {
     if (!projetoAtivo || !session.projetoIds.includes(projetoAtivo)) {
-      redirect('/projetos');
+      const escolhido =
+        escolherProjetoPadrao(projetosCliente) ?? projetosCliente[0];
+      if (!escolhido) redirect('/login?err=notfound');
+      redirect(`/api/projetos/escolher?id=${escolhido.id}`);
     }
     projetoIdsAtivos = [projetoAtivo];
   }
@@ -59,12 +67,6 @@ export default async function Dashboard() {
   const year = hoje.getFullYear();
   const month = hoje.getMonth() + 1;
   const mesAtualLabel = MESES_PT[month - 1];
-
-  // Lista de projetos do cliente pra alimentar o switcher (já está cached).
-  // Só busca se tiver mais de um — pra cliente com 1 projeto não tem switcher.
-  const projetosCliente = multiplos
-    ? await findProjetosByEmail(session.email)
-    : [];
   const projetoAtivoId = projetoIdsAtivos[0] ?? '';
 
   return (

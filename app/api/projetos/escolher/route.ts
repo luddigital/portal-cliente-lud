@@ -22,7 +22,8 @@ async function validarESalvar(
 }
 
 /**
- * GET: redireciona após salvar — usado pela tela /projetos (link direto).
+ * GET: salva e redireciona pra / — usado quando precisamos pré-selecionar
+ *      um projeto via link (ex.: home faz redirect quando o cookie tá vazio).
  * POST: retorna JSON — usado pelo dropdown ProjetoSwitcher no header.
  */
 export async function GET(req: Request): Promise<Response> {
@@ -31,10 +32,10 @@ export async function GET(req: Request): Promise<Response> {
 
   const url = new URL(req.url);
   const id = url.searchParams.get('id')?.trim();
-  if (!id) return NextResponse.redirect(new URL('/projetos', req.url));
+  if (!id) return NextResponse.redirect(new URL('/', req.url));
 
   const r = await validarESalvar(session, id);
-  if (!r.ok) return NextResponse.redirect(new URL('/projetos', req.url));
+  if (!r.ok) return NextResponse.redirect(new URL('/', req.url));
   return NextResponse.redirect(new URL('/', req.url));
 }
 
