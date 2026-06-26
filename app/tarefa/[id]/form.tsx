@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { GravarVoiceOver } from '@/app/_components/GravarVoiceOver';
 
 // Limite por arquivo: Vercel funcoes serverless tem cap perto de 500MB de
 // request body. Cortamos pouco antes pra deixar margem de overhead. Arquivos
@@ -25,6 +26,7 @@ export function TarefaForm({
   textoBotao = 'Enviar materiais',
   tituloUpload = 'Fotos, vídeos e áudios',
   ajudaUpload = 'Você pode anexar vários arquivos — incluindo gravações de voice over.',
+  textoVoiceOver,
 }: {
   tarefaId: string;
   voltarPara?: string;
@@ -35,6 +37,7 @@ export function TarefaForm({
   textoBotao?: string;
   tituloUpload?: string;
   ajudaUpload?: string;
+  textoVoiceOver?: string;
 }) {
   const router = useRouter();
   const [texto, setTexto] = useState('');
@@ -47,7 +50,21 @@ export function TarefaForm({
   const [done, setDone] = useState<{ arquivos: number } | null>(null);
 
   function escolherArquivos(novos: File[]) {
-    setFila(novos.map((f) => ({ file: f, status: 'pendente' as const })));
+    setFila((prev) => [
+      // Mantém gravações de voice over que já estavam na fila — só substitui
+      // o que veio do file picker.
+      ...prev.filter((it) => it.file.name.startsWith('voice-over-')),
+      ...novos.map((f) => ({ file: f, status: 'pendente' as const })),
+    ]);
+    setError(null);
+  }
+
+  function adicionarGravacao(file: File) {
+    setFila((prev) => [
+      // Remove gravação anterior (se a pessoa regravou) e adiciona a nova
+      ...prev.filter((it) => !it.file.name.startsWith('voice-over-')),
+      { file, status: 'pendente' as const },
+    ]);
     setError(null);
   }
 
@@ -195,6 +212,10 @@ export function TarefaForm({
             className="input resize-y"
           />
         </div>
+      )}
+
+      {textoVoiceOver && textoVoiceOver.trim().length > 0 && (
+        <GravarVoiceOver texto={textoVoiceOver} onGravacao={adicionarGravacao} />
       )}
 
       <div className="card p-5">

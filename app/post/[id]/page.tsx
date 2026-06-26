@@ -399,16 +399,29 @@ export default async function PostDetalhePage({
 
         {modo === 'material' && tarefaId && (() => {
           const sub = subtipoMaterial(tarefaTitulo);
+          // Junta os roteiros (callouts com detalhes) num texto único pro
+          // teleprompter — funciona pra qualquer conteúdo textual: voice over,
+          // legenda lida, narração de reels etc.
+          const roteiroParaGravacao =
+            sub === 'materiais' && post.materiaisNecessarios
+              ? post.materiaisNecessarios
+                  .filter((m) => m.detalhes.length > 0)
+                  .map((m) => m.detalhes.join('\n'))
+                  .join('\n\n')
+                  .trim()
+              : '';
           const props =
             sub === 'materiais'
               ? {
                   mostrarTexto: false,
                   aceitarComentario: true,
                   aceitarLink: true,
-                  tituloUpload: 'Materiais + voice over',
-                  ajudaUpload:
-                    'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
+                  tituloUpload: 'Outros arquivos (opcional)',
+                  ajudaUpload: roteiroParaGravacao
+                    ? 'Fotos, vídeos e outros áudios. A gravação do voice over feita acima já está incluída.'
+                    : 'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
                   textoBotao: 'Enviar materiais',
+                  textoVoiceOver: roteiroParaGravacao || undefined,
                 }
               : sub === 'stories'
                 ? {
