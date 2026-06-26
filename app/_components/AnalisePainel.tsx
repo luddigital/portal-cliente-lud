@@ -22,7 +22,7 @@ function delta(
   const p = ((atual - anterior) / anterior) * 100;
   return {
     txt: fmtPct(p),
-    cor: p >= 0 ? 'var(--prazo-em-dia)' : 'var(--prazo-atrasada)',
+    cor: p >= 0 ? 'var(--prazo-em-dia)' : 'var(--prazo-atrasado)',
     sub: 'vs. período anterior',
   };
 }
@@ -53,7 +53,7 @@ function Metric({
             style={{
               background: positivo
                 ? 'var(--prazo-em-dia)'
-                : 'var(--prazo-atrasada)',
+                : 'var(--prazo-atrasado)',
             }}
           >
             <span>{d.txt}</span>
@@ -101,7 +101,7 @@ function CardSeguidores({ a }: { a: IgAnalytics }) {
               style={{
                 background: positivo
                   ? 'var(--prazo-em-dia)'
-                  : 'var(--prazo-atrasada)',
+                  : 'var(--prazo-atrasado)',
               }}
             >
               <span>{d.txt}</span>

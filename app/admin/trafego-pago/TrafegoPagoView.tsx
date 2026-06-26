@@ -224,7 +224,7 @@ function Card({
 
 function CartaoSugestao({ s }: { s: Sugestao }) {
   const cores = {
-    alerta: { bg: 'var(--prazo-atrasada-soft)', txt: 'var(--prazo-atrasada)', icon: '⚠️' },
+    alerta: { bg: 'var(--prazo-atrasado-soft)', txt: 'var(--prazo-atrasado)', icon: '⚠️' },
     atencao: { bg: 'var(--prazo-hoje-soft)', txt: 'var(--prazo-hoje)', icon: '👀' },
     positivo: { bg: 'var(--prazo-em-dia-soft)', txt: 'var(--prazo-em-dia)', icon: '🚀' },
     info: { bg: 'var(--bgSoft)', txt: 'var(--t2)', icon: '💡' },

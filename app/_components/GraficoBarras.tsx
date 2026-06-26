@@ -73,7 +73,7 @@ export function GraficoBarras({
   const indicesX = indicesEixoX(dados.length);
 
   const corPos = 'var(--prazo-em-dia)';
-  const corNeg = 'var(--prazo-atrasada)';
+  const corNeg = 'var(--prazo-atrasado)';
 
   // Centro x de cada barra (pra posicionar tooltip + linha)
   const centroX = (i: number) => PADX + i * stepX + stepX / 2;

@@ -139,7 +139,7 @@ export function GravarVoiceOver({
           <div className="mt-0.5 text-[13px] font-semibold text-ink">
             Frase {idx + 1} de {frases.length}
             {gravando && (
-              <span className="ml-2 inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--prazo-atrasada)]">
+              <span className="ml-2 inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--prazo-atrasado)]">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                 REC {fmtTempo(tempo)}
               </span>
@@ -156,7 +156,7 @@ export function GravarVoiceOver({
             <button
               type="button"
               onClick={iniciar}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--prazo-atrasada)] px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-90"
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--prazo-atrasado)] px-5 py-2.5 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-90"
             >
               <span className="h-2.5 w-2.5 rounded-full bg-white" /> Gravar
             </button>
@@ -236,7 +236,7 @@ export function GravarVoiceOver({
       {/* rodapé: dica + mensagem de erro */}
       <div className="border-t border-[rgba(21,21,33,0.06)] bg-bgSoft/40 px-5 py-3">
         {erro && (
-          <p className="mb-2 rounded-md bg-[var(--prazo-atrasada-soft)] px-3 py-2 text-[12px] text-[var(--prazo-atrasada)]">
+          <p className="mb-2 rounded-md bg-[var(--prazo-atrasado-soft)] px-3 py-2 text-[12px] text-[var(--prazo-atrasado)]">
             {erro}
           </p>
         )}

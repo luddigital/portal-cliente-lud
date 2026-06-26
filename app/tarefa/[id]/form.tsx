@@ -263,7 +263,7 @@ export function TarefaForm({
                   key={i}
                   className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 font-mono ${
                     it.status === 'erro' || grande
-                      ? 'bg-[var(--prazo-atrasada-soft)] text-[var(--prazo-atrasada)]'
+                      ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
                       : it.status === 'ok'
                         ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
                         : it.status === 'subindo'

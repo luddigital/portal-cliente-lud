@@ -30,8 +30,8 @@ function statusDoPrazo(iso: string | null): StatusPrazo | null {
   if (dias < 0) {
     return {
       label: dias === -1 ? 'Atrasada · 1 dia' : `Atrasada · ${-dias} dias`,
-      bg: 'var(--prazo-atrasada-soft)',
-      fg: 'var(--prazo-atrasada)',
+      bg: 'var(--prazo-atrasado-soft)',
+      fg: 'var(--prazo-atrasado)',
     };
   }
   if (dias === 0) return { label: 'Hoje', bg: 'var(--prazo-hoje-soft)', fg: 'var(--prazo-hoje)' };
@@ -116,7 +116,7 @@ export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
               <div
                 className="text-[13px] font-semibold tracking-[-0.01em]"
                 style={{
-                  color: ehGrupoAtrasadas ? 'var(--prazo-atrasada)' : 'var(--ink)',
+                  color: ehGrupoAtrasadas ? 'var(--prazo-atrasado)' : 'var(--ink)',
                 }}
               >
                 {g.titulo}
@@ -126,8 +126,8 @@ export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
                   <span
                     className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
                     style={{
-                      background: 'var(--prazo-atrasada-soft)',
-                      color: 'var(--prazo-atrasada)',
+                      background: 'var(--prazo-atrasado-soft)',
+                      color: 'var(--prazo-atrasado)',
                     }}
                   >
                     {atrasadasNoGrupo} atrasada{atrasadasNoGrupo > 1 ? 's' : ''}
@@ -137,10 +137,10 @@ export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
                   className="rounded-full px-2 py-0.5 text-[10px] font-bold"
                   style={{
                     background: ehGrupoAtrasadas
-                      ? 'var(--prazo-atrasada-soft)'
+                      ? 'var(--prazo-atrasado-soft)'
                       : 'var(--bgSoft)',
                     color: ehGrupoAtrasadas
-                      ? 'var(--prazo-atrasada)'
+                      ? 'var(--prazo-atrasado)'
                       : 'var(--t2)',
                   }}
                 >

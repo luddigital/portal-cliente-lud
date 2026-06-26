@@ -94,7 +94,7 @@ function CardTarefa({ t, fromSlug }: { t: TarefaColaborador; fromSlug: string })
   const corStatus = corDoStatus(t.status);
   const corPrazo =
     cat === 'atrasada'
-      ? 'text-[var(--prazo-atrasada)]'
+      ? 'text-[var(--prazo-atrasado)]'
       : cat === 'hoje'
         ? 'text-[var(--prazo-hoje)]'
         : 'text-t1';
@@ -176,7 +176,7 @@ function Secao({
   if (tarefas.length === 0) return null;
   const corBadge =
     tom === 'atrasada'
-      ? 'bg-[var(--prazo-atrasada-soft)] text-[var(--prazo-atrasada)]'
+      ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
       : tom === 'hoje'
         ? 'bg-[var(--prazo-hoje-soft)] text-[var(--prazo-hoje)]'
         : 'bg-bgSoft text-t2';
@@ -213,7 +213,7 @@ function CardStat({
 }) {
   const cor =
     tom === 'alerta'
-      ? 'text-[var(--prazo-atrasada)]'
+      ? 'text-[var(--prazo-atrasado)]'
       : tom === 'hoje'
         ? 'text-[var(--prazo-hoje)]'
         : tom === 'feitas'
