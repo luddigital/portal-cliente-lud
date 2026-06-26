@@ -95,6 +95,12 @@ export default async function Dashboard() {
             >
               <Sino projetoIds={projetoIdsAtivos} />
             </Suspense>
+            <Link
+              href="/boas-vindas"
+              className="text-[12px] text-mauve transition hover:text-ink"
+            >
+              Como funciona
+            </Link>
             <form action="/api/auth/logout" method="post">
               <button className="text-[12px] text-mauve transition hover:text-ink">Sair</button>
             </form>
