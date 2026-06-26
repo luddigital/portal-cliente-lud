@@ -402,23 +402,24 @@ export default async function PostDetalhePage({
 
         {modo === 'material' && tarefaId && (() => {
           const sub = subtipoMaterial(tarefaTitulo);
-          // Só usa o teleprompter pra callouts MARCADOS como voice over
-          // ("Texto para gravação de Voice Over", "Voz", "Narração" etc).
-          // Listas de materiais/equipamentos NÃO viram roteiro — ficam só
-          // como referência visual.
+          // Pega só a PROSA dos callouts pro teleprompter — descarta linhas
+          // que parecem itens de lista de materiais (começam com →, •, –,
+          // hífen etc) e também qualquer callout cujo cabeçalho mencione
+          // "materiais"/"fotos"/"kit" (lista de coisas, não roteiro).
+          const ehListaDeMateriais = (cab: string) => {
+            const c = cab.toLowerCase();
+            return /materia|fotos|vídeos|videos|kit|equipamento/.test(c);
+          };
+          const ehLinhaDeLista = (linha: string) => {
+            const t = linha.trim();
+            return /^[→•▸▪►⮕\-–]\s/.test(t);
+          };
           const roteiroParaGravacao =
             sub === 'materiais' && post.materiaisNecessarios
               ? post.materiaisNecessarios
-                  .filter((m) => {
-                    const cab = (m.cabecalho ?? '').toLowerCase();
-                    return (
-                      cab.includes('voice') ||
-                      cab.includes('voz') ||
-                      cab.includes('narração') ||
-                      cab.includes('narracao')
-                    );
-                  })
-                  .map((m) => m.detalhes.join('\n'))
+                  .filter((m) => !ehListaDeMateriais(m.cabecalho ?? ''))
+                  .flatMap((m) => m.detalhes)
+                  .filter((d) => d.trim() && !ehLinhaDeLista(d))
                   .join('\n\n')
                   .trim()
               : '';
