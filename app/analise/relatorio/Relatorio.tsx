@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import type { IgAnalytics, IgMediaItem } from '@/lib/instagram';
+import type { RelatorioNotas } from '@/lib/supabase';
 import { GraficoLinha } from '@/app/_components/GraficoLinha';
 import { GraficoBarras } from '@/app/_components/GraficoBarras';
 
@@ -90,9 +92,19 @@ function SlideHeader({
 export function Relatorio({
   analytics,
   projetoNome,
+  projetoId,
+  inicio,
+  fim,
+  notasIniciais,
+  editavel,
 }: {
   analytics: IgAnalytics;
   projetoNome: string;
+  projetoId: string;
+  inicio: string;
+  fim: string;
+  notasIniciais: RelatorioNotas;
+  editavel: boolean;
 }) {
   const a = analytics;
   const periodoLabel = fmtMesAno(a.period.until);
@@ -318,35 +330,16 @@ export function Relatorio({
           </Slide>
         ))}
 
-        {/* === SLIDE FINAL: APRENDIZADOS (placeholder editável depois) === */}
-        <Slide>
-          <SlideHeader projetoNome={projetoNome} periodoLabel={periodoLabel} />
-          <h2 className="text-[32px] font-semibold tracking-[-0.02em] text-ink">
-            Aprendizados & próximos passos
-          </h2>
-          <p className="mt-1 text-[13px] text-t2">
-            Use esse espaço pra anotar o que funcionou, o que não funcionou e o
-            que vamos testar no próximo mês.
-          </p>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            <Bloco titulo="✅ O que funcionou" placeholder="(adicione aqui)" />
-            <Bloco titulo="⚠️ O que não funcionou" placeholder="(adicione aqui)" />
-          </div>
-          <div className="mt-6">
-            <Bloco
-              titulo="🎯 Plano pro próximo mês"
-              placeholder="(adicione aqui)"
-              alto
-            />
-          </div>
-          <div className="mt-auto pt-12 text-center text-[11px] text-t3">
-            Relatório gerado pela{' '}
-            <span className="font-semibold text-ink">
-              Lud<span className="font-light text-mauve">.</span>
-            </span>{' '}
-            · {fmtDataLonga(new Date().toISOString().slice(0, 10))}
-          </div>
-        </Slide>
+        {/* === SLIDE FINAL: APRENDIZADOS (editável pela equipe Lud.) === */}
+        <NotasSlide
+          projetoNome={projetoNome}
+          periodoLabel={periodoLabel}
+          projetoId={projetoId}
+          inicio={inicio}
+          fim={fim}
+          notasIniciais={notasIniciais}
+          editavel={editavel}
+        />
       </div>
 
       {/* CSS print — cada .slide vira 1 página A4 paisagem */}
@@ -473,22 +466,185 @@ function MiniMetrica({ label, valor }: { label: string; valor: number }) {
   );
 }
 
-function Bloco({
+function NotasSlide({
+  projetoNome,
+  periodoLabel,
+  projetoId,
+  inicio,
+  fim,
+  notasIniciais,
+  editavel,
+}: {
+  projetoNome: string;
+  periodoLabel: string;
+  projetoId: string;
+  inicio: string;
+  fim: string;
+  notasIniciais: RelatorioNotas;
+  editavel: boolean;
+}) {
+  const [funcionou, setFuncionou] = useState(notasIniciais.funcionou);
+  const [naoFuncionou, setNaoFuncionou] = useState(notasIniciais.naoFuncionou);
+  const [plano, setPlano] = useState(notasIniciais.plano);
+  const [statusSalvar, setStatusSalvar] = useState<'limpo' | 'salvando' | 'salvo' | 'erro'>('limpo');
+  const [ultimoSalvo, setUltimoSalvo] = useState<string | null>(
+    notasIniciais.atualizadoEm,
+  );
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const primeiroRender = useRef(true);
+
+  // Auto-save com debounce de 800ms após a última digitada
+  useEffect(() => {
+    if (!editavel) return;
+    if (primeiroRender.current) {
+      primeiroRender.current = false;
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setStatusSalvar('limpo');
+    debounceRef.current = setTimeout(async () => {
+      setStatusSalvar('salvando');
+      try {
+        const r = await fetch('/api/relatorio/notas', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            projetoId,
+            inicio,
+            fim,
+            funcionou,
+            naoFuncionou,
+            plano,
+          }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(j.error ?? `HTTP ${r.status}`);
+        }
+        setStatusSalvar('salvo');
+        setUltimoSalvo(new Date().toISOString());
+      } catch {
+        setStatusSalvar('erro');
+      }
+    }, 800);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [funcionou, naoFuncionou, plano, projetoId, inicio, fim, editavel]);
+
+  const labelSalvar =
+    statusSalvar === 'salvando'
+      ? 'Salvando…'
+      : statusSalvar === 'salvo'
+        ? '✓ Salvo'
+        : statusSalvar === 'erro'
+          ? '⚠️ Erro ao salvar'
+          : ultimoSalvo
+            ? `Salvo às ${new Date(ultimoSalvo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+            : '';
+
+  return (
+    <Slide>
+      <SlideHeader projetoNome={projetoNome} periodoLabel={periodoLabel} />
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[32px] font-semibold tracking-[-0.02em] text-ink">
+          Aprendizados & próximos passos
+        </h2>
+        {editavel && (
+          <span
+            className="action-bar text-[11px]"
+            style={{
+              color:
+                statusSalvar === 'erro'
+                  ? 'var(--prazo-atrasado)'
+                  : statusSalvar === 'salvando'
+                    ? 'var(--prazo-chegando)'
+                    : 'var(--t3)',
+            }}
+          >
+            {labelSalvar}
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-[13px] text-t2">
+        {editavel
+          ? 'Equipe Lud. — escreve aqui o que vai entregar. Salva sozinho enquanto você digita.'
+          : 'O que funcionou, o que não funcionou e o plano pro próximo mês.'}
+      </p>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <BlocoEditavel
+          titulo="✅ O que funcionou"
+          valor={funcionou}
+          onChange={setFuncionou}
+          editavel={editavel}
+          placeholder="O que deu certo no período…"
+        />
+        <BlocoEditavel
+          titulo="⚠️ O que não funcionou"
+          valor={naoFuncionou}
+          onChange={setNaoFuncionou}
+          editavel={editavel}
+          placeholder="O que não engajou ou não converteu…"
+        />
+      </div>
+      <div className="mt-4">
+        <BlocoEditavel
+          titulo="🎯 Plano pro próximo mês"
+          valor={plano}
+          onChange={setPlano}
+          editavel={editavel}
+          placeholder="Próximos formatos, temas e testes…"
+          alto
+        />
+      </div>
+      <div className="mt-auto pt-10 text-center text-[11px] text-t3">
+        Relatório gerado pela{' '}
+        <span className="font-semibold text-ink">
+          Lud<span className="font-light text-mauve">.</span>
+        </span>{' '}
+        · {fmtDataLonga(new Date().toISOString().slice(0, 10))}
+      </div>
+    </Slide>
+  );
+}
+
+function BlocoEditavel({
   titulo,
+  valor,
+  onChange,
+  editavel,
   placeholder,
   alto = false,
 }: {
   titulo: string;
+  valor: string;
+  onChange: (v: string) => void;
+  editavel: boolean;
   placeholder: string;
   alto?: boolean;
 }) {
   return (
     <div
-      className="rounded-2xl border border-dashed border-[rgba(21,21,33,0.18)] bg-white p-4"
-      style={{ minHeight: alto ? 180 : 110 }}
+      className="rounded-2xl border border-[rgba(21,21,33,0.1)] bg-white p-4"
+      style={{ minHeight: alto ? 180 : 130 }}
     >
       <div className="text-[12px] font-semibold text-ink">{titulo}</div>
-      <div className="mt-1 text-[12px] italic text-t3">{placeholder}</div>
+      {editavel ? (
+        <textarea
+          value={valor}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="mt-1.5 w-full resize-none border-0 bg-transparent text-[12px] leading-[1.55] text-t1 placeholder:text-t3 placeholder:italic focus:outline-none"
+          rows={alto ? 8 : 5}
+        />
+      ) : valor ? (
+        <p className="mt-1.5 whitespace-pre-line text-[12px] leading-[1.55] text-t1">
+          {valor}
+        </p>
+      ) : (
+        <p className="mt-1.5 text-[12px] italic text-t3">— em branco —</p>
+      )}
     </div>
   );
 }

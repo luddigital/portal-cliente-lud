@@ -167,3 +167,82 @@ export async function listarSugestoesPendentes(
   if (error) throw new Error(`Supabase: ${error.message}`);
   return (data ?? []) as WhatsappSugestao[];
 }
+
+// ============================================================================
+// Notas editáveis do relatório de Instagram (saímos do Notion pra Supabase).
+// ============================================================================
+
+export type RelatorioNotas = {
+  funcionou: string;
+  naoFuncionou: string;
+  plano: string;
+  atualizadoEm: string | null;
+  atualizadoPor: string | null;
+};
+
+const NOTAS_VAZIAS: RelatorioNotas = {
+  funcionou: '',
+  naoFuncionou: '',
+  plano: '',
+  atualizadoEm: null,
+  atualizadoPor: null,
+};
+
+/** Lê as notas do relatório pra (projeto, período). Devolve vazio se não há. */
+export async function lerRelatorioNotas(
+  projetoId: string,
+  inicio: string,
+  fim: string,
+): Promise<RelatorioNotas> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('relatorio_notas')
+      .select('funcionou, nao_funcionou, plano, atualizado_em, atualizado_por')
+      .eq('projeto_id', projetoId)
+      .eq('inicio', inicio)
+      .eq('fim', fim)
+      .maybeSingle();
+    if (error) {
+      console.warn('[relatorio_notas] leitura falhou:', error.message);
+      return NOTAS_VAZIAS;
+    }
+    if (!data) return NOTAS_VAZIAS;
+    return {
+      funcionou: data.funcionou ?? '',
+      naoFuncionou: data.nao_funcionou ?? '',
+      plano: data.plano ?? '',
+      atualizadoEm: data.atualizado_em ?? null,
+      atualizadoPor: data.atualizado_por ?? null,
+    };
+  } catch (err: any) {
+    // Supabase pode não estar configurado em dev/preview — devolve vazio.
+    console.warn('[relatorio_notas] sem Supabase:', err?.message);
+    return NOTAS_VAZIAS;
+  }
+}
+
+/** Upsert das notas. Cria a linha se ainda não existe. */
+export async function salvarRelatorioNotas(
+  projetoId: string,
+  inicio: string,
+  fim: string,
+  notas: { funcionou: string; naoFuncionou: string; plano: string },
+  emailAutor: string,
+): Promise<void> {
+  const sb = await supabaseAdmin();
+  const { error } = await sb.from('relatorio_notas').upsert(
+    {
+      projeto_id: projetoId,
+      inicio,
+      fim,
+      funcionou: notas.funcionou,
+      nao_funcionou: notas.naoFuncionou,
+      plano: notas.plano,
+      atualizado_em: new Date().toISOString(),
+      atualizado_por: emailAutor,
+    },
+    { onConflict: 'projeto_id,inicio,fim' },
+  );
+  if (error) throw new Error(`Supabase: ${error.message}`);
+}

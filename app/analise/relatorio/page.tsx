@@ -2,7 +2,8 @@ import { notFound, redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { getIgAnalyticsDoProjeto, igConfigured } from '@/lib/instagram';
-import { getProjetoNome } from '@/lib/notion';
+import { getColaboradorByEmail, getProjetoNome } from '@/lib/notion';
+import { lerRelatorioNotas } from '@/lib/supabase';
 import { Relatorio } from './Relatorio';
 
 export const dynamic = 'force-dynamic';
@@ -38,9 +39,26 @@ export default async function RelatorioPage({
     ? parseDataLocalMs(searchParams.inicio)
     : diasAtrasMs(30);
 
-  const [analytics, projetoNome] = await Promise.all([
+  // Equipe Lud. (admin ou colaborador no Notion) pode editar; cliente é read-only.
+  let ehColaborador = !!session.colaboradorId;
+  if (!ehColaborador && !ehAdmin) {
+    try {
+      const colab = await getColaboradorByEmail(session.email);
+      ehColaborador = !!colab;
+    } catch {
+      /* mantém false */
+    }
+  }
+  const editavel = ehAdmin || ehColaborador;
+
+  // Datas ISO já normalizadas pras notas (Supabase chave: projetoId+inicio+fim)
+  const inicioISO = new Date(inicioMs).toISOString().slice(0, 10);
+  const fimISO = new Date(fimMs).toISOString().slice(0, 10);
+
+  const [analytics, projetoNome, notas] = await Promise.all([
     getIgAnalyticsDoProjeto(projetoId, inicioMs, fimMs),
     getProjetoNome(projetoId),
+    lerRelatorioNotas(projetoId, inicioISO, fimISO),
   ]);
 
   if (!analytics) {
@@ -57,5 +75,15 @@ export default async function RelatorioPage({
     );
   }
 
-  return <Relatorio analytics={analytics} projetoNome={projetoNome ?? 'Projeto'} />;
+  return (
+    <Relatorio
+      analytics={analytics}
+      projetoNome={projetoNome ?? 'Projeto'}
+      projetoId={projetoId}
+      inicio={inicioISO}
+      fim={fimISO}
+      notasIniciais={notas}
+      editavel={editavel}
+    />
+  );
 }
