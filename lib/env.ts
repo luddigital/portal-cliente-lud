@@ -170,5 +170,15 @@ export const env = {
     // Usadas no client (frontend) pra Realtime
     publicUrl: optSoft('NEXT_PUBLIC_SUPABASE_URL'),
     anonKey: optSoft('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
+    /**
+     * Lista de projetoIds (Notion page IDs, separados por vírgula) que devem
+     * ler do Supabase em vez do Notion. Funciona como feature flag de
+     * migração: começamos com 1 cliente piloto, validamos, daí expandimos.
+     * Os mesmos IDs também alimentam o botão de "Sincronizar" em /admin/sync.
+     */
+    projetosViaSupabase: optSoft('PROJETOS_VIA_SUPABASE')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
   },
 };
