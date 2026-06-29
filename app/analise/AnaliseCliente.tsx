@@ -121,6 +121,14 @@ export function AnaliseCliente({
             className="border-0 bg-transparent text-[12px] text-ink focus:outline-none"
           />
         </div>
+        <a
+          href={`/analise/relatorio?projetoId=${encodeURIComponent(projetoId)}&inicio=${since}&fim=${until}`}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
+        >
+          ↗ Gerar relatório
+        </a>
       </div>
 
       {carregando && (
