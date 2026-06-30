@@ -22,7 +22,13 @@ function diasAtrasISO(dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function AnaliseAdmin({ accounts }: { accounts: IgAccount[] }) {
+export function AnaliseAdmin({
+  accounts,
+  projetoPorIg,
+}: {
+  accounts: IgAccount[];
+  projetoPorIg: Record<string, string>;
+}) {
   const [igId, setIgId] = useState(accounts[0]?.igUserId ?? '');
   const [modo, setModo] = useState<'preset' | 'custom'>('preset');
   const [presetDias, setPresetDias] = useState(30);
@@ -131,6 +137,23 @@ export function AnaliseAdmin({ accounts }: { accounts: IgAccount[] }) {
             className="border-0 bg-transparent text-[12px] text-ink focus:outline-none"
           />
         </div>
+        {projetoPorIg[igId] ? (
+          <a
+            href={`/analise/relatorio?projetoId=${encodeURIComponent(projetoPorIg[igId])}&inicio=${since}&fim=${until}`}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
+          >
+            ↗ Gerar relatório
+          </a>
+        ) : (
+          <span
+            className="ml-auto inline-flex items-center gap-2 rounded-full bg-bgSoft px-4 py-2 text-[12px] text-t3"
+            title="Mapeie essa conta IG pra um projetoId em IG_ACCOUNTS pra liberar o relatório"
+          >
+            ↗ Gerar relatório (mapeie em IG_ACCOUNTS)
+          </span>
+        )}
       </div>
 
       {carregando && (

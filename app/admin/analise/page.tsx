@@ -1,4 +1,5 @@
 import { igConfigured, listIgAccounts } from '@/lib/instagram';
+import { env } from '@/lib/env';
 import { AnaliseAdmin } from './AnaliseAdmin';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,13 @@ async function Conteudo() {
       </p>
     );
   }
-  return <AnaliseAdmin accounts={accounts} />;
+  // Reverse map: igUserId → projetoId. Usado pelo botão "Gerar relatório"
+  // — o relatório precisa de projetoId (chave do banco + permissão).
+  const projetoPorIg: Record<string, string> = {};
+  for (const [projetoId, igUserId] of Object.entries(env.instagram.accounts)) {
+    projetoPorIg[igUserId] = projetoId;
+  }
+  return <AnaliseAdmin accounts={accounts} projetoPorIg={projetoPorIg} />;
 }
 
 export default async function AnalisePage() {
