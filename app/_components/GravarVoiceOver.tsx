@@ -31,10 +31,13 @@ export function GravarVoiceOver({
   texto,
   onGravacao,
 }: {
-  texto: string;
+  /** Roteiro (voice over). Quando vazio/ausente vira "mensagem de voz livre"
+   *  — só botão de gravar, sem teleprompter. */
+  texto?: string;
   onGravacao: (file: File) => void;
 }) {
-  const frases = dividirEmFrases(texto);
+  const frases = texto ? dividirEmFrases(texto) : [];
+  const modoLivre = frases.length === 0;
   const [idx, setIdx] = useState(0);
   const [gravando, setGravando] = useState(false);
   const [tempo, setTempo] = useState(0);
@@ -120,13 +123,10 @@ export function GravarVoiceOver({
     setIdx(0);
   }
 
-  if (frases.length === 0) {
-    return null;
-  }
-
-  const fraseAtual = frases[idx];
-  const fraseAnterior = idx > 0 ? frases[idx - 1] : null;
-  const fraseProxima = idx < frases.length - 1 ? frases[idx + 1] : null;
+  const fraseAtual = modoLivre ? null : frases[idx];
+  const fraseAnterior = !modoLivre && idx > 0 ? frases[idx - 1] : null;
+  const fraseProxima =
+    !modoLivre && idx < frases.length - 1 ? frases[idx + 1] : null;
 
   return (
     <div className="card overflow-hidden p-0">
@@ -134,10 +134,12 @@ export function GravarVoiceOver({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(21,21,33,0.06)] px-5 py-3">
         <div className="min-w-0">
           <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-            Gravar voice over
+            {modoLivre ? 'Mensagem de voz' : 'Gravar voice over'}
           </div>
           <div className="mt-0.5 text-[13px] font-semibold text-ink">
-            Frase {idx + 1} de {frases.length}
+            {modoLivre
+              ? 'Em vez de digitar, grava aí'
+              : `Frase ${idx + 1} de ${frases.length}`}
             {gravando && (
               <span className="ml-2 inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--prazo-atrasado)]">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
@@ -185,53 +187,55 @@ export function GravarVoiceOver({
         </div>
       </div>
 
-      {/* teleprompter */}
-      <div className="px-5 py-6 sm:px-8 sm:py-8">
-        {fraseAnterior && (
-          <p className="line-clamp-2 text-[14px] leading-relaxed text-t3/70">
-            {fraseAnterior}
+      {/* teleprompter — só quando há roteiro */}
+      {!modoLivre && (
+        <div className="px-5 py-6 sm:px-8 sm:py-8">
+          {fraseAnterior && (
+            <p className="line-clamp-2 text-[14px] leading-relaxed text-t3/70">
+              {fraseAnterior}
+            </p>
+          )}
+          <p className="mt-2 text-[20px] font-medium leading-snug text-ink sm:text-[22px]">
+            {fraseAtual}
           </p>
-        )}
-        <p className="mt-2 text-[20px] font-medium leading-snug text-ink sm:text-[22px]">
-          {fraseAtual}
-        </p>
-        {fraseProxima && (
-          <p className="mt-2 line-clamp-2 text-[14px] leading-relaxed text-t3/70">
-            {fraseProxima}
-          </p>
-        )}
+          {fraseProxima && (
+            <p className="mt-2 line-clamp-2 text-[14px] leading-relaxed text-t3/70">
+              {fraseProxima}
+            </p>
+          )}
 
-        {/* navegação de frases */}
-        <div className="mt-5 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setIdx((i) => Math.max(0, i - 1))}
-            disabled={idx === 0}
-            className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-4 py-2 text-[12px] font-medium text-ink transition hover:bg-bgSoft disabled:opacity-30"
-          >
-            ← Anterior
-          </button>
-          <div className="flex-1 px-2">
-            <div className="h-1 overflow-hidden rounded-full bg-bgSoft">
-              <div
-                className="h-full transition-all"
-                style={{
-                  width: `${((idx + 1) / frases.length) * 100}%`,
-                  background: 'var(--prazo-em-dia)',
-                }}
-              />
+          {/* navegação de frases */}
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setIdx((i) => Math.max(0, i - 1))}
+              disabled={idx === 0}
+              className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-4 py-2 text-[12px] font-medium text-ink transition hover:bg-bgSoft disabled:opacity-30"
+            >
+              ← Anterior
+            </button>
+            <div className="flex-1 px-2">
+              <div className="h-1 overflow-hidden rounded-full bg-bgSoft">
+                <div
+                  className="h-full transition-all"
+                  style={{
+                    width: `${((idx + 1) / frases.length) * 100}%`,
+                    background: 'var(--prazo-em-dia)',
+                  }}
+                />
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setIdx((i) => Math.min(frases.length - 1, i + 1))}
+              disabled={idx === frases.length - 1}
+              className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-4 py-2 text-[12px] font-medium text-ink transition hover:bg-bgSoft disabled:opacity-30"
+            >
+              Próxima →
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setIdx((i) => Math.min(frases.length - 1, i + 1))}
-            disabled={idx === frases.length - 1}
-            className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-4 py-2 text-[12px] font-medium text-ink transition hover:bg-bgSoft disabled:opacity-30"
-          >
-            Próxima →
-          </button>
         </div>
-      </div>
+      )}
 
       {/* rodapé: dica + mensagem de erro */}
       <div className="border-t border-[rgba(21,21,33,0.06)] bg-bgSoft/40 px-5 py-3">

@@ -448,6 +448,7 @@ export default async function PostDetalhePage({
                   ? {
                       mostrarTexto: true,
                       aceitarLink: true,
+                      permitirGravarVoz: true,
                       tituloUpload: 'Fotos, vídeos e áudios',
                       ajudaUpload:
                         'Anexe o que já tiver pra ajudar a equipe a montar o post.',

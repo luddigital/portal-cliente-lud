@@ -27,6 +27,7 @@ export function TarefaForm({
   tituloUpload = 'Fotos, vídeos e áudios',
   ajudaUpload = 'Você pode anexar vários arquivos — incluindo gravações de voice over.',
   textoVoiceOver,
+  permitirGravarVoz = false,
 }: {
   tarefaId: string;
   voltarPara?: string;
@@ -38,6 +39,8 @@ export function TarefaForm({
   tituloUpload?: string;
   ajudaUpload?: string;
   textoVoiceOver?: string;
+  /** Quando true, mostra o gravador mesmo sem roteiro — modo "mensagem de voz". */
+  permitirGravarVoz?: boolean;
 }) {
   const router = useRouter();
   const [texto, setTexto] = useState('');
@@ -214,9 +217,12 @@ export function TarefaForm({
         </div>
       )}
 
-      {textoVoiceOver && textoVoiceOver.trim().length > 0 && (
-        <GravarVoiceOver texto={textoVoiceOver} onGravacao={adicionarGravacao} />
-      )}
+      {(textoVoiceOver && textoVoiceOver.trim().length > 0) || permitirGravarVoz ? (
+        <GravarVoiceOver
+          texto={textoVoiceOver?.trim() || undefined}
+          onGravacao={adicionarGravacao}
+        />
+      ) : null}
 
       <div className="card p-5">
         <label className="label">{tituloUpload}</label>
