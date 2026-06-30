@@ -138,7 +138,7 @@ export function GravarVoiceOver({
           </div>
           <div className="mt-0.5 text-[13px] font-semibold text-ink">
             {modoLivre
-              ? 'Em vez de digitar, grava aí'
+              ? 'Grave um áudio se preferir'
               : `Frase ${idx + 1} de ${frases.length}`}
             {gravando && (
               <span className="ml-2 inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--prazo-atrasado)]">
