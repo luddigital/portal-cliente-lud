@@ -94,75 +94,188 @@ export function PostPreview({
 
   const [comentarioGeral, setComentarioGeral] = useState('');
 
-  // Marcações por timestamp (vídeo) — capturadas quando o vídeo é pausado
+  // Carrossel: marcação por card (t = índice). Reels/vídeo: por timestamp em s.
+  const isCarrossel = formatoTipo === 'post' && arquivos.length > 1;
   const [marcacoes, setMarcacoes] = useState<{ t: number; texto: string }[]>([]);
   const [pausadoEm, setPausadoEm] = useState<number | null>(null);
   const [textoPausa, setTextoPausa] = useState('');
+
+  // Textarea inline pra comentário do card ATIVO (só carrossel)
+  const [textoCardAtivo, setTextoCardAtivo] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [modo, setModo] = useState<Modo>('idle');
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<'aprovado' | 'alteracao' | null>(null);
 
+  // Status do rascunho: 'limpo' | 'salvando' | 'salvo' | 'erro'
+  const [statusRascunho, setStatusRascunho] = useState<
+    'limpo' | 'salvando' | 'salvo' | 'erro'
+  >('limpo');
+  const [ultimoSalvo, setUltimoSalvo] = useState<string | null>(null);
+
   const ativoArq = arquivos[ativo];
 
-  // Persistência do rascunho de comentário — se o cliente sai da página e
-  // volta, o que ele escreveu continua aqui (não some).
+  // Persistência do rascunho — Supabase (cross-device). Se falhar, cai pro
+  // localStorage como fallback do mesmo device (offline etc).
   const storageKey = tarefaId ? `lud:coment:${tarefaId}` : null;
   const rascunhoCarregado = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Load inicial: tenta Supabase, cai pra localStorage se der erro/vazio
   useEffect(() => {
-    if (!storageKey) {
+    if (!tarefaId) {
       rascunhoCarregado.current = true;
       return;
     }
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed.comentarioGeral === 'string') {
-          setComentarioGeral(parsed.comentarioGeral);
-        }
-        if (Array.isArray(parsed.marcacoes)) {
-          setMarcacoes(parsed.marcacoes);
-        }
-      }
-    } catch {
-      /* ignora rascunho corrompido */
-    }
-    rascunhoCarregado.current = true;
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!storageKey || !rascunhoCarregado.current) return;
-    try {
-      if (comentarioGeral.trim() === '' && marcacoes.length === 0) {
-        window.localStorage.removeItem(storageKey);
-      } else {
-        window.localStorage.setItem(
-          storageKey,
-          JSON.stringify({ comentarioGeral, marcacoes }),
+    let ativo = true;
+    (async () => {
+      try {
+        const r = await fetch(
+          `/api/rascunho/aprovacao?tarefaId=${encodeURIComponent(tarefaId)}`,
         );
+        if (!ativo) return;
+        if (r.ok) {
+          const j = await r.json();
+          const temSupabase =
+            (typeof j.comentarioGeral === 'string' && j.comentarioGeral.length > 0) ||
+            (Array.isArray(j.marcacoes) && j.marcacoes.length > 0);
+          if (temSupabase) {
+            setComentarioGeral(j.comentarioGeral ?? '');
+            setMarcacoes(Array.isArray(j.marcacoes) ? j.marcacoes : []);
+            if (j.atualizadoEm) setUltimoSalvo(j.atualizadoEm);
+            rascunhoCarregado.current = true;
+            return;
+          }
+        }
+      } catch {
+        /* Supabase indisponível — segue pro fallback */
       }
-    } catch {
-      /* localStorage indisponível — segue sem persistir */
+      // Fallback: localStorage
+      if (storageKey) {
+        try {
+          const raw = window.localStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed.comentarioGeral === 'string') {
+              setComentarioGeral(parsed.comentarioGeral);
+            }
+            if (Array.isArray(parsed.marcacoes)) {
+              setMarcacoes(parsed.marcacoes);
+            }
+          }
+        } catch {
+          /* ignora rascunho corrompido */
+        }
+      }
+      rascunhoCarregado.current = true;
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [tarefaId, storageKey]);
+
+  // Auto-save debounced no Supabase + espelho local
+  useEffect(() => {
+    if (!tarefaId || !rascunhoCarregado.current) return;
+    // Sempre espelha no localStorage (rápido, offline-friendly)
+    if (storageKey) {
+      try {
+        if (comentarioGeral.trim() === '' && marcacoes.length === 0) {
+          window.localStorage.removeItem(storageKey);
+        } else {
+          window.localStorage.setItem(
+            storageKey,
+            JSON.stringify({ comentarioGeral, marcacoes }),
+          );
+        }
+      } catch {
+        /* localStorage indisponível */
+      }
     }
-  }, [storageKey, comentarioGeral, marcacoes]);
+    // Debounce 800ms pro Supabase
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setStatusRascunho('limpo');
+    debounceRef.current = setTimeout(async () => {
+      setStatusRascunho('salvando');
+      try {
+        const r = await fetch('/api/rascunho/aprovacao', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ tarefaId, comentarioGeral, marcacoes }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        setStatusRascunho('salvo');
+        setUltimoSalvo(new Date().toISOString());
+      } catch {
+        setStatusRascunho('erro');
+      }
+    }, 800);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [tarefaId, storageKey, comentarioGeral, marcacoes]);
 
   function limparRascunho() {
-    if (!storageKey) return;
-    try {
-      window.localStorage.removeItem(storageKey);
-    } catch {
-      /* ok */
+    if (storageKey) {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        /* ok */
+      }
+    }
+    if (tarefaId) {
+      fetch(`/api/rascunho/aprovacao?tarefaId=${encodeURIComponent(tarefaId)}`, {
+        method: 'DELETE',
+      }).catch(() => {
+        /* silencioso */
+      });
     }
   }
 
-  // Limpa estado de pausa ao trocar de slide
+  // Adicionar/atualizar comentário no card ativo (carrossel). Chamado
+  // pelo botão + adicionar / Enter — limpa o textarea depois.
+  function salvarCardAtivo() {
+    const texto = textoCardAtivo.trim();
+    if (!texto) return;
+    setMarcacoes((m) => {
+      const outros = m.filter((x) => x.t !== ativo);
+      return [...outros, { t: ativo, texto }].sort((a, b) => a.t - b.t);
+    });
+    setTextoCardAtivo('');
+  }
+
+  // Auto-save do textoCardAtivo — cada tecla, debounced 500ms. Assim se o
+  // cliente digita e sai sem apertar "+ adicionar", não perde o comentário.
+  const cardAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isCarrossel) return;
+    if (cardAutoSaveRef.current) clearTimeout(cardAutoSaveRef.current);
+    cardAutoSaveRef.current = setTimeout(() => {
+      const texto = textoCardAtivo.trim();
+      setMarcacoes((m) => {
+        const outros = m.filter((x) => x.t !== ativo);
+        if (!texto) return outros;
+        return [...outros, { t: ativo, texto }].sort((a, b) => a.t - b.t);
+      });
+    }, 500);
+    return () => {
+      if (cardAutoSaveRef.current) clearTimeout(cardAutoSaveRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textoCardAtivo, ativo, isCarrossel]);
+
+  // Limpa estado de pausa ao trocar de slide; pré-carrega comentário existente
+  // desse card na textarea inline (se houver)
   useEffect(() => {
     setPausadoEm(null);
     setTextoPausa('');
-  }, [ativo]);
+    if (isCarrossel) {
+      const existente = marcacoes.find((m) => m.t === ativo);
+      setTextoCardAtivo(existente?.texto ?? '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ativo, isCarrossel]);
 
   function adicionarMarcacao() {
     if (pausadoEm === null) return;
@@ -176,16 +289,23 @@ export function PostPreview({
     setMarcacoes((m) => m.filter((_, i) => i !== idx));
   }
 
-  // Consolida o que vai pro Notion: marcações + comentário geral
+  // Consolida o que vai pro Notion: marcações + comentário geral. Formato
+  // depende do tipo: carrossel usa "Card N:", vídeo usa "[MM:SS]".
   const comentarioFinal = (() => {
     const partes: string[] = [];
     if (marcacoes.length > 0) {
       partes.push(
-        marcacoes.map((m) => `[${fmtTime(m.t)}] ${m.texto}`).join('\n'),
+        marcacoes
+          .map((m) =>
+            isCarrossel
+              ? `Card ${m.t + 1}: ${m.texto}`
+              : `[${fmtTime(m.t)}] ${m.texto}`,
+          )
+          .join('\n'),
       );
     }
     const geral = comentarioGeral.trim();
-    if (geral) partes.push(geral);
+    if (geral) partes.push(isCarrossel && marcacoes.length > 0 ? `Geral: ${geral}` : geral);
     return partes.join('\n\n').trim();
   })();
 
@@ -332,20 +452,58 @@ export function PostPreview({
       {tarefaId && (
         <div className="mt-6 lg:mt-0">
         <div className="card sticky bottom-2 sm:bottom-6 lg:bottom-auto lg:top-6 z-20 space-y-3 border border-[rgba(21,21,33,0.08)] bg-white p-4 sm:p-5 shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
+          {(comentarioGeral || marcacoes.length > 0) && !done && (
+            <div className="flex items-center justify-between gap-2 border-b border-[rgba(21,21,33,0.06)] pb-2 text-[10px] text-t3">
+              <span
+                style={{
+                  color:
+                    statusRascunho === 'erro'
+                      ? 'var(--prazo-atrasado)'
+                      : statusRascunho === 'salvando'
+                        ? 'var(--prazo-chegando)'
+                        : 'var(--t3)',
+                }}
+              >
+                {statusRascunho === 'salvando'
+                  ? '💾 Salvando…'
+                  : statusRascunho === 'erro'
+                    ? '⚠️ Erro ao salvar (rascunho fica local)'
+                    : statusRascunho === 'salvo'
+                      ? '✓ Rascunho salvo'
+                      : ultimoSalvo
+                        ? `Rascunho de ${new Date(ultimoSalvo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                        : '💾 Rascunho automático'}
+              </span>
+              <span className="text-t3">Volte quando quiser</span>
+            </div>
+          )}
+
           {marcacoes.length > 0 && (
             <ul className="flex flex-wrap gap-1.5">
               {marcacoes.map((m, i) => (
                 <li
                   key={i}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-bgSoft px-2.5 py-1 text-[11px] text-ink"
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] text-ink ${
+                    isCarrossel && m.t === ativo
+                      ? 'bg-[var(--cal-aprovacao-soft)]'
+                      : 'bg-bgSoft'
+                  }`}
                 >
-                  <span className="font-mono text-[10px] font-semibold text-mauve">
-                    {fmtTime(m.t)}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => isCarrossel && setAtivo(m.t)}
+                    className="font-mono text-[10px] font-semibold text-mauve transition hover:text-ink"
+                    title={isCarrossel ? 'Ir pra esse card' : undefined}
+                  >
+                    {isCarrossel ? `Card ${m.t + 1}` : fmtTime(m.t)}
+                  </button>
                   <span className="max-w-[200px] truncate">{m.texto}</span>
                   <button
                     type="button"
-                    onClick={() => removerMarcacao(i)}
+                    onClick={() => {
+                      removerMarcacao(i);
+                      if (isCarrossel && m.t === ativo) setTextoCardAtivo('');
+                    }}
                     className="text-t3 transition hover:text-hubRed"
                     aria-label="Remover marcação"
                   >
@@ -354,6 +512,44 @@ export function PostPreview({
                 </li>
               ))}
             </ul>
+          )}
+
+          {isCarrossel && (
+            <div className="rounded-xl border border-[rgba(21,21,33,0.1)] bg-bgSoft/60 p-2.5 space-y-2">
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="rounded bg-ink px-2 py-0.5 font-mono text-[10px] font-semibold text-white">
+                  Card {ativo + 1} de {arquivos.length}
+                </span>
+                <span className="text-t2">
+                  {marcacoes.some((m) => m.t === ativo)
+                    ? 'Editando comentário desse card'
+                    : 'Comentar nesse card'}
+                </span>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={textoCardAtivo}
+                  onChange={(e) => setTextoCardAtivo(e.target.value)}
+                  placeholder="O que ajustar nesse card?"
+                  className="input flex-1 text-[12px]"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && textoCardAtivo.trim()) {
+                      e.preventDefault();
+                      salvarCardAtivo();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={salvarCardAtivo}
+                  disabled={!textoCardAtivo.trim()}
+                  className="btn-ghost shrink-0 text-[12px] disabled:opacity-40"
+                >
+                  {marcacoes.some((m) => m.t === ativo) ? 'atualizar' : '+ adicionar'}
+                </button>
+              </div>
+            </div>
           )}
 
           {pausadoEm !== null && (

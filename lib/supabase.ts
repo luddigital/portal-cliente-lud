@@ -222,6 +222,89 @@ export async function lerRelatorioNotas(
   }
 }
 
+// ============================================================================
+// Rascunho da aprovação (comentário + marcações) — cross-device via Supabase
+// ============================================================================
+
+export type Marcacao = { t: number; texto: string };
+
+export type RascunhoAprovacao = {
+  comentarioGeral: string;
+  marcacoes: Marcacao[];
+  atualizadoEm: string | null;
+};
+
+const RASCUNHO_VAZIO: RascunhoAprovacao = {
+  comentarioGeral: '',
+  marcacoes: [],
+  atualizadoEm: null,
+};
+
+/** Lê o rascunho da aprovação. Devolve vazio se não há rascunho ou erro. */
+export async function lerRascunhoAprovacao(
+  tarefaId: string,
+  email: string,
+): Promise<RascunhoAprovacao> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('rascunho_aprovacao')
+      .select('comentario_geral, marcacoes, atualizado_em')
+      .eq('tarefa_id', tarefaId)
+      .eq('email', email)
+      .maybeSingle();
+    if (error) {
+      console.warn('[rascunho_aprovacao] leitura falhou:', error.message);
+      return RASCUNHO_VAZIO;
+    }
+    if (!data) return RASCUNHO_VAZIO;
+    return {
+      comentarioGeral: data.comentario_geral ?? '',
+      marcacoes: Array.isArray(data.marcacoes) ? data.marcacoes : [],
+      atualizadoEm: data.atualizado_em ?? null,
+    };
+  } catch (err: any) {
+    console.warn('[rascunho_aprovacao] sem Supabase:', err?.message);
+    return RASCUNHO_VAZIO;
+  }
+}
+
+export async function salvarRascunhoAprovacao(
+  tarefaId: string,
+  email: string,
+  comentarioGeral: string,
+  marcacoes: Marcacao[],
+): Promise<void> {
+  const sb = await supabaseAdmin();
+  const { error } = await sb.from('rascunho_aprovacao').upsert(
+    {
+      tarefa_id: tarefaId,
+      email,
+      comentario_geral: comentarioGeral,
+      marcacoes,
+      atualizado_em: new Date().toISOString(),
+    },
+    { onConflict: 'tarefa_id,email' },
+  );
+  if (error) throw new Error(`Supabase: ${error.message}`);
+}
+
+export async function limparRascunhoAprovacao(
+  tarefaId: string,
+  email: string,
+): Promise<void> {
+  try {
+    const sb = await supabaseAdmin();
+    await sb
+      .from('rascunho_aprovacao')
+      .delete()
+      .eq('tarefa_id', tarefaId)
+      .eq('email', email);
+  } catch {
+    /* silencioso — não travar aprovação por rascunho velho */
+  }
+}
+
 /** Upsert das notas. Cria a linha se ainda não existe. */
 export async function salvarRelatorioNotas(
   projetoId: string,
