@@ -209,7 +209,7 @@ export default async function PostDetalhePage({
   return (
     <div className="min-h-screen pb-32">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-3xl lg:max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-3xl lg:max-w-7xl items-center justify-between px-6 py-4">
           <Link
             href="/"
             className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink"
@@ -222,7 +222,7 @@ export default async function PostDetalhePage({
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl lg:max-w-6xl px-6 py-8 space-y-6">
+      <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />

@@ -2007,6 +2007,50 @@ function pareceMarcadorLegenda(b: any): boolean {
   return LEGENDA_KEYWORDS.some((k) => t === k);
 }
 
+/**
+ * Labels de seção que costumam aparecer DEPOIS da legenda no template
+ * do Notion (linha isolada com uma palavra). Quando batemos num paragraph
+ * que é só um desses labels, a legenda acaba ali — senão vaza pra dentro.
+ */
+const FIM_LEGENDA_KEYWORDS = new Set([
+  'briefing',
+  'briefing:',
+  'roteiro',
+  'roteiro:',
+  'voice over',
+  'voiceover',
+  'voice over:',
+  'voz over',
+  'copy',
+  'copy:',
+  'referências',
+  'referencias',
+  'referência',
+  'referencia',
+  'referências:',
+  'notas',
+  'notas:',
+  'nota',
+  'observações',
+  'observacoes',
+  'observação',
+  'obs',
+  'materiais',
+  'materiais:',
+  'tarefas',
+  'tarefas lud',
+  'tarefas lud.',
+]);
+
+function pareceFimDaLegenda(b: any): boolean {
+  const t = rtTexto(b).toLowerCase().replace(/[:.\s]+$/, '').trim();
+  if (!t) return false;
+  // Só considera se for uma linha curtinha (≤ 30 chars) — legenda de verdade
+  // sempre é maior que um label
+  if (t.length > 30) return false;
+  return FIM_LEGENDA_KEYWORDS.has(t);
+}
+
 function ehHeading(b: any): boolean {
   return b.type === 'heading_1' || b.type === 'heading_2' || b.type === 'heading_3';
 }
@@ -2033,6 +2077,8 @@ async function lerLegendaDoPost(postId: string): Promise<string | null> {
         const b = blocks[i];
         if (ehHeading(b) || pareceMarcadorLegenda(b)) break;
         if (!TIPOS_TEXTO_LEGENDA.has(b.type as string)) break;
+        // Para em labels de seção (Briefing, Roteiro, Copy, Notas...)
+        if (pareceFimDaLegenda(b)) break;
         const t = rtTexto(b);
         if (t) partes.push(t);
       }
