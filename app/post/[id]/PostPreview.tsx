@@ -94,6 +94,11 @@ export function PostPreview({
 
   const [comentarioGeral, setComentarioGeral] = useState('');
 
+  // Anexos que o cliente quer trocar (novas fotos/vídeos pra equipe usar
+  // no lugar de alguma do post). Só entram no submit de "Pedir alteração".
+  const [anexos, setAnexos] = useState<File[]>([]);
+  const anexoInputRef = useRef<HTMLInputElement | null>(null);
+
   // Carrossel: marcação por card (t = índice). Reels/vídeo: por timestamp em s.
   const isCarrossel = formatoTipo === 'post' && arquivos.length > 1;
   const [marcacoes, setMarcacoes] = useState<{ t: number; texto: string }[]>([]);
@@ -415,7 +420,7 @@ export function PostPreview({
     <div
       className={
         tarefaId
-          ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_clamp(340px,32%,420px)] lg:gap-6 lg:items-start'
+          ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_clamp(380px,40%,560px)] lg:gap-6 lg:items-start'
           : ''
       }
     >
@@ -592,7 +597,7 @@ export function PostPreview({
               {aprovacaoColaborativa ? 'Comentário da equipe' : 'Comentário geral (opcional)'}
             </label>
             <textarea
-              rows={aprovacaoColaborativa ? 6 : 3}
+              rows={aprovacaoColaborativa ? 8 : 5}
               value={comentarioGeral}
               onChange={(e) => setComentarioGeral(e.target.value)}
               placeholder={
@@ -600,7 +605,7 @@ export function PostPreview({
                   ? 'Escreve seu feedback. Vários da equipe podem opinar — só Aprovar/Reprovar fecham o post.'
                   : 'Algum recado pra equipe?'
               }
-              className="input resize-y text-[13px]"
+              className="input min-h-[120px] resize-y text-[13px]"
               disabled={loading || !!done}
             />
           </div>
