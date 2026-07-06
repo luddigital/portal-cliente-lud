@@ -361,14 +361,18 @@ export function PostPreview({
     setError(null);
     setModo('pedindoAlteracao');
     try {
+      // FormData permite anexar fotos/vídeos que o cliente quer trocar.
+      const fd = new FormData();
+      fd.set('comentario', comentarioFinal);
+      for (const f of anexos) fd.append('arquivos', f);
       const res = await fetch(`/api/tarefas/${tarefaId}/alterar`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ comentario: comentarioFinal }),
+        body: fd,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
       limparRascunho();
+      setAnexos([]);
       setDone('alteracao');
       setTimeout(() => router.push(voltarPara), 1800);
     } catch (e: any) {
@@ -609,6 +613,72 @@ export function PostPreview({
               disabled={loading || !!done}
             />
           </div>
+
+          {/* Anexar fotos/vídeos pra "Pedir alteração" — cliente pode
+              mandar novas mídias que quer trocar. Aparece sempre discreto;
+              só é enviado se ele clicar em Pedir alteração. */}
+          {!done && (
+            <div className="rounded-xl border border-dashed border-[rgba(21,21,33,0.15)] bg-bgSoft/40 p-3">
+              <input
+                ref={anexoInputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                onChange={(e) => {
+                  const arr = Array.from(e.target.files ?? []);
+                  setAnexos((prev) => [...prev, ...arr]);
+                  if (e.target) e.target.value = '';
+                }}
+                className="hidden"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-t3">
+                    Anexar fotos ou vídeos (opcional)
+                  </div>
+                  <p className="mt-0.5 text-[11px] leading-snug text-t3">
+                    Envie novas mídias caso queira trocar alguma foto/vídeo.
+                    Só entra na alteração — Aprovar ignora anexos.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => anexoInputRef.current?.click()}
+                  disabled={loading}
+                  className="btn-ghost shrink-0 text-[12px]"
+                >
+                  + escolher arquivos
+                </button>
+              </div>
+              {anexos.length > 0 && (
+                <ul className="mt-2 space-y-1 text-[12px] text-t2">
+                  {anexos.map((f, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5"
+                    >
+                      <span className="min-w-0 flex-1 truncate font-mono text-[11px]">
+                        {f.name}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-t3">
+                        {(f.size / 1024 / 1024).toFixed(1)} MB
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAnexos((prev) => prev.filter((_, j) => j !== i))
+                        }
+                        className="shrink-0 text-t3 transition hover:text-hubRed"
+                        aria-label="Remover anexo"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {error && <p className="text-[12px] font-medium text-hubRed">{error}</p>}
 
