@@ -207,9 +207,9 @@ export default async function PostDetalhePage({
       : `Em ${dias} dias`;
 
   return (
-    <div className="min-h-screen pb-32">
-      <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-3xl lg:max-w-7xl items-center justify-between px-6 py-4">
+    <div className="min-h-screen pb-32 lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden lg:pb-0">
+      <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white lg:shrink-0">
+        <div className="mx-auto flex max-w-3xl lg:max-w-7xl items-center justify-between px-6 py-4 lg:py-2.5">
           <Link
             href="/"
             className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink"
@@ -222,7 +222,7 @@ export default async function PostDetalhePage({
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6">
+      <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6 lg:h-[calc(100dvh-49px)] lg:overflow-y-auto lg:py-4 lg:space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
@@ -231,7 +231,7 @@ export default async function PostDetalhePage({
           <FormatoPill formatoTipo={formatoTipoDetectado} qtd={arquivos.length} />
         </div>
 
-        <h1 className="text-[22px] sm:text-[28px] font-semibold tracking-[-0.03em] text-ink">{post.titulo}</h1>
+        <h1 className="text-[22px] sm:text-[28px] lg:text-[20px] font-semibold tracking-[-0.03em] text-ink">{post.titulo}</h1>
 
         <div className="grid gap-2 text-[13px] sm:grid-cols-2">
           <InfoCard label="Data de postagem" value={fmtData(post.data)} />
