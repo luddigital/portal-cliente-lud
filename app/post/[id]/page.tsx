@@ -222,7 +222,7 @@ export default async function PostDetalhePage({
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6 lg:h-[calc(100dvh-49px)] lg:overflow-y-auto lg:py-4 lg:space-y-3">
+      <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6 lg:h-[calc(100dvh_-_49px)] lg:overflow-y-auto lg:py-4 lg:space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
