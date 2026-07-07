@@ -6,7 +6,7 @@ import {
   getTarefaComPost,
   invalidarCachesAposMudanca,
 } from '@/lib/notion';
-import { ensurePostFolder, uploadFile } from '@/lib/drive';
+import { ensurePostFolder } from '@/lib/drive';
 import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -14,9 +14,11 @@ export const maxDuration = 300;
 
 /**
  * Cliente pede alteração na aprovação. Aceita 2 formatos:
- *  - JSON  { comentario }                — modo antigo, sem arquivo
- *  - FormData { comentario, arquivos[] } — modo novo, permite anexar
- *    fotos/vídeos que ele quer trocar (sobe pro Drive do post).
+ *  - JSON  { comentario, arquivosCount?, driveLink? } — modo padrão.
+ *    Se veio com arquivosCount > 0, o /anexar já subiu os arquivos,
+ *    só falta registrar o link no post + fechar a tarefa.
+ *  - FormData { comentario, arquivos[] } — modo legado (fallback).
+ *    Mantido pra não quebrar clientes antigos ou casos com 1 arquivo pequeno.
  */
 export async function POST(
   req: Request,
@@ -29,21 +31,25 @@ export async function POST(
 
     const contentType = req.headers.get('content-type') ?? '';
     let comentario = '';
-    let arquivos: File[] = [];
+    let arquivosPreEnviados = 0;
+    let driveLinkPreEnviado: string | null = null;
+    let arquivosFormData: File[] = [];
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData();
       comentario = ((form.get('comentario') as string | null) ?? '').trim();
-      arquivos = form
+      arquivosFormData = form
         .getAll('arquivos')
-        .filter(
-          (f): f is File => f instanceof File && f.size > 0,
-        );
+        .filter((f): f is File => f instanceof File && f.size > 0);
     } else {
       const body = (await req.json().catch(() => ({}))) as {
         comentario?: string;
+        arquivosCount?: number;
+        driveLink?: string;
       };
       comentario = (body.comentario ?? '').trim();
+      arquivosPreEnviados = Math.max(0, Number(body.arquivosCount ?? 0));
+      driveLinkPreEnviado = body.driveLink ?? null;
     }
 
     if (comentario.length < 3) {
@@ -70,17 +76,18 @@ export async function POST(
       return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
     }
 
-    // Sobe os arquivos anexados (fotos/vídeos que o cliente quer trocar)
-    let driveLink: string | null = null;
-    let totalArquivos = 0;
-    if (arquivos.length > 0) {
+    // Modo legado: subir arquivos aqui mesmo (só chega se cliente antigo).
+    let driveLink: string | null = driveLinkPreEnviado;
+    let totalArquivos = arquivosPreEnviados;
+    if (arquivosFormData.length > 0) {
+      const { uploadFile } = await import('@/lib/drive');
       const folder = await ensurePostFolder({
         cliente: t.projetoNome,
         postTitulo: t.postTitulo,
         dataPostagem: t.postData,
       });
       driveLink = folder.webViewLink;
-      for (const file of arquivos) {
+      for (const file of arquivosFormData) {
         const buf = Buffer.from(await file.arrayBuffer());
         await uploadFile({
           folderId: folder.folderId,
@@ -90,6 +97,19 @@ export async function POST(
         });
         totalArquivos++;
       }
+    }
+
+    // Se veio pré-enviado sem link, resolve a pasta (idempotente).
+    if (totalArquivos > 0 && !driveLink) {
+      const folder = await ensurePostFolder({
+        cliente: t.projetoNome,
+        postTitulo: t.postTitulo,
+        dataPostagem: t.postData,
+      });
+      driveLink = folder.webViewLink;
+    }
+
+    if (totalArquivos > 0 && driveLink) {
       try {
         await adicionarLinkDriveAoPost(
           t.postId,
@@ -104,7 +124,6 @@ export async function POST(
       }
     }
 
-    // Cabeçalho do comentário sinaliza os anexos pra equipe encontrar
     const partes: string[] = [];
     if (totalArquivos > 0 && driveLink) {
       partes.push(

@@ -361,13 +361,61 @@ export function PostPreview({
     setError(null);
     setModo('pedindoAlteracao');
     try {
-      // FormData permite anexar fotos/vídeos que o cliente quer trocar.
-      const fd = new FormData();
-      fd.set('comentario', comentarioFinal);
-      for (const f of anexos) fd.append('arquivos', f);
+      // Se tem arquivos: sobe UM POR VEZ via /api/tarefas/[id]/anexar
+      // (limite 4.5MB do Vercel por request). Só depois disso registra
+      // a alteração — assim a tarefa NÃO fecha se algum arquivo falhar,
+      // e a cliente pode retentar sem perder o comentário.
+      const grandes = anexos.filter((f) => f.size > 4 * 1024 * 1024);
+      if (grandes.length > 0) {
+        throw new Error(
+          `Arquivo${grandes.length > 1 ? 's' : ''} muito grande${
+            grandes.length > 1 ? 's' : ''
+          }: ${grandes
+            .map((f) => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`)
+            .join(', ')}. Cada arquivo precisa ficar abaixo de 4MB — comprima antes de enviar.`,
+        );
+      }
+
+      let driveLink: string | null = null;
+      const anexosEnviados: number[] = [];
+      for (let i = 0; i < anexos.length; i++) {
+        const arquivo = anexos[i];
+        const upFd = new FormData();
+        upFd.append('arquivos', arquivo);
+        const upRes = await fetch(
+          `/api/tarefas/${tarefaId}/anexar`,
+          { method: 'POST', body: upFd },
+        );
+        const upData = await upRes.json().catch(() => ({}));
+        if (!upRes.ok) {
+          // Deixa arquivos que JÁ subiram no state — cliente pode remover
+          // manualmente pra retentar só os que faltam. Não fecha tarefa.
+          setAnexos((prev) =>
+            prev.filter((_, idx) => !anexosEnviados.includes(idx)),
+          );
+          throw new Error(
+            `Falhou enviar ${arquivo.name} (${(arquivo.size / 1024 / 1024).toFixed(
+              1,
+            )}MB). ${
+              upData.error ?? ''
+            } Já enviei ${anexosEnviados.length}/${anexos.length} arquivo${
+              anexos.length > 1 ? 's' : ''
+            }. Tente de novo com os que faltam ou reduza o tamanho.`,
+          );
+        }
+        if (upData.driveLink) driveLink = upData.driveLink as string;
+        anexosEnviados.push(i);
+      }
+
+      // Agora sim registra a alteração (JSON — comentário + contagem).
       const res = await fetch(`/api/tarefas/${tarefaId}/alterar`, {
         method: 'POST',
-        body: fd,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          comentario: comentarioFinal,
+          arquivosCount: anexosEnviados.length,
+          driveLink,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
@@ -651,31 +699,53 @@ export function PostPreview({
                 </button>
               </div>
               {anexos.length > 0 && (
-                <ul className="mt-2 space-y-1 text-[12px] text-t2">
-                  {anexos.map((f, i) => (
-                    <li
-                      key={i}
-                      className="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5"
-                    >
-                      <span className="min-w-0 flex-1 truncate font-mono text-[11px]">
-                        {f.name}
-                      </span>
-                      <span className="shrink-0 text-[10px] text-t3">
-                        {(f.size / 1024 / 1024).toFixed(1)} MB
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAnexos((prev) => prev.filter((_, j) => j !== i))
-                        }
-                        className="shrink-0 text-t3 transition hover:text-hubRed"
-                        aria-label="Remover anexo"
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="mt-2 space-y-1 text-[12px] text-t2">
+                    {anexos.map((f, i) => {
+                      const grande = f.size > 4 * 1024 * 1024;
+                      return (
+                        <li
+                          key={i}
+                          className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 ${
+                            grande
+                              ? 'border border-hubRed/40 bg-hubRed/5'
+                              : 'bg-white'
+                          }`}
+                        >
+                          <span className="min-w-0 flex-1 truncate font-mono text-[11px]">
+                            {f.name}
+                          </span>
+                          <span
+                            className={`shrink-0 text-[10px] ${
+                              grande ? 'font-semibold text-hubRed' : 'text-t3'
+                            }`}
+                          >
+                            {(f.size / 1024 / 1024).toFixed(1)} MB
+                            {grande && ' • acima do limite'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAnexos((prev) =>
+                                prev.filter((_, j) => j !== i),
+                              )
+                            }
+                            className="shrink-0 text-t3 transition hover:text-hubRed"
+                            aria-label="Remover anexo"
+                          >
+                            ×
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {anexos.some((f) => f.size > 4 * 1024 * 1024) && (
+                    <p className="mt-1.5 text-[11px] leading-snug text-hubRed">
+                      Cada arquivo precisa ficar abaixo de 4MB. Comprima
+                      (ou tire foto em qualidade menor) antes de enviar.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}

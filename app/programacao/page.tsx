@@ -6,7 +6,10 @@ import {
   listAllProjetos,
   listPostsDoMes,
 } from '@/lib/notion';
+import { classificarProjeto } from '@/lib/projetoServico';
 import { ProgramacaoView } from './ProgramacaoView';
+
+const SERVICOS_SOCIAL = new Set(['Instagram', 'TikTok', 'Stories']);
 
 export const dynamic = 'force-dynamic';
 
@@ -31,15 +34,19 @@ export default async function ProgramacaoPage({
   }
   if (!ehAdmin && !ehColaborador) redirect('/');
 
-  const projetos = await listAllProjetos();
+  // Só social media: Instagram, TikTok e Stories. Tráfego Pago, sites,
+  // consultoria etc. não têm calendário de posts pra programar.
+  const projetos = (await listAllProjetos()).filter((p) =>
+    SERVICOS_SOCIAL.has(classificarProjeto(p.nome)),
+  );
   if (projetos.length === 0) {
     return (
       <main className="mx-auto max-w-2xl px-6 py-20 text-center">
         <h1 className="text-[18px] font-semibold text-ink">
-          Nenhum projeto ativo
+          Nenhum projeto de social media ativo
         </h1>
         <p className="mt-2 text-[13px] text-t2">
-          Não achamos projetos com status "Ativo" pra programar.
+          A programação só cobre projetos de Instagram, TikTok e Stories.
         </p>
       </main>
     );
