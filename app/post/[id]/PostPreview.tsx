@@ -958,7 +958,7 @@ function Carousel({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 lg:mx-auto lg:max-w-[60vh]">
       <div className="relative">
         <div
           ref={trackRef}
