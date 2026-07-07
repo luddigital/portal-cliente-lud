@@ -2862,6 +2862,20 @@ export async function concluirTarefa(tarefaId: string): Promise<void> {
   });
 }
 
+/** Atualiza o Status do post (Agendado, Postado, etc). Usado pelo botão
+ *  "Programar" da página /programacao. */
+export async function atualizarStatusPost(
+  postId: string,
+  status: string,
+): Promise<void> {
+  await notion.pages.update({
+    page_id: postId,
+    properties: {
+      [env.notion.postProps.status]: { status: { name: status } },
+    },
+  });
+}
+
 export async function comentarPost(postId: string, texto: string): Promise<void> {
   // Notion limita cada rich_text item em 2000 chars — quebramos em pedaços.
   const LIMITE = 1900;

@@ -3,15 +3,40 @@ import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import {
   getColaboradorByEmail,
+  getPostComDetalhes,
   listAllProjetos,
   listPostsDoMes,
 } from '@/lib/notion';
+import { extractDriveFolderId, listFolderFiles } from '@/lib/drive';
 import { classificarProjeto } from '@/lib/projetoServico';
 import { ProgramacaoView } from './ProgramacaoView';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 const SERVICOS_SOCIAL = new Set(['Instagram', 'TikTok', 'Stories']);
 
-export const dynamic = 'force-dynamic';
+/** Pega o fileId da primeira imagem do post (via Drive folder link). */
+async function primeiraThumbnail(postId: string): Promise<string | null> {
+  try {
+    const detail = await getPostComDetalhes(postId);
+    if (!detail?.driveLinks?.length) return null;
+    for (const link of detail.driveLinks) {
+      const folderId = extractDriveFolderId(link.url);
+      if (!folderId) continue;
+      const files = await listFolderFiles(folderId);
+      const imagem = files.find(
+        (f) => !f.isFolder && (f.mimeType?.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(f.name)),
+      );
+      if (imagem) return imagem.id;
+      const primeiro = files.find((f) => !f.isFolder);
+      if (primeiro) return primeiro.id;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default async function ProgramacaoPage({
   searchParams,
@@ -21,7 +46,6 @@ export default async function ProgramacaoPage({
   const session = await getSession();
   if (!session) redirect('/login');
 
-  // Só equipe Lud. (admin ou colaborador registrado)
   const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
   let ehColaborador = !!session.colaboradorId;
   if (!ehColaborador && !ehAdmin) {
@@ -34,8 +58,6 @@ export default async function ProgramacaoPage({
   }
   if (!ehAdmin && !ehColaborador) redirect('/');
 
-  // Só social media: Instagram, TikTok e Stories. Tráfego Pago, sites,
-  // consultoria etc. não têm calendário de posts pra programar.
   const projetos = (await listAllProjetos()).filter((p) =>
     SERVICOS_SOCIAL.has(classificarProjeto(p.nome)),
   );
@@ -62,6 +84,13 @@ export default async function ProgramacaoPage({
 
   const posts = await listPostsDoMes([projetoIdSelecionado], year, month);
 
+  // Batch fetch de thumbnails — 1 Drive folder lookup por post, em paralelo.
+  // Cada chamada é cached por post; recarregar a mesma página é instantâneo.
+  const thumbEntries = await Promise.all(
+    posts.map(async (p) => [p.id, await primeiraThumbnail(p.id)] as const),
+  );
+  const thumbnails: Record<string, string | null> = Object.fromEntries(thumbEntries);
+
   return (
     <ProgramacaoView
       projetos={projetos}
@@ -69,6 +98,7 @@ export default async function ProgramacaoPage({
       year={year}
       month={month}
       posts={posts}
+      thumbnails={thumbnails}
     />
   );
 }
