@@ -2,6 +2,60 @@
 
 App separado pros clientes da Lud. enviarem materiais (fotos, vídeos, informações) direto pros posts do calendário. Tudo vai automaticamente pro Drive e pro Notion.
 
+Rodando em produção: https://portal-cliente-lud.vercel.app
+
+## Onboarding rápido pra dev novo
+
+Se você é um dev entrando no projeto (não montando do zero), este é o caminho:
+
+```bash
+git clone <url-do-repo>
+cd portal-cliente
+npm install
+npm i -g vercel     # se não tiver
+vercel link         # associa o repo ao projeto na Vercel — precisa você ser membro do team oi-5696s-projects
+vercel env pull .env.local
+npm run dev         # http://localhost:3000
+```
+
+Login local: qualquer email listado em `ADMIN_EMAILS` (variável no `.env.local`). Você mesmo se adiciona lá se precisar.
+
+Se `vercel env pull` não funcionar (sem acesso), peça pra Luiza (`oi@lud.digital`) as env vars via 1Password / Bitwarden — nunca por WhatsApp/Slack.
+
+### Arquitetura em 60 segundos
+
+- **Next.js 14 App Router** (React Server Components + Client Components onde precisa de interatividade)
+- **`app/`** — rotas. Nomes em português:
+  - `app/(cliente)` — telas do cliente (dashboard, tarefa, post, análise)
+  - `app/admin/*` — telas da equipe interna Lud. (aprovações, análise, envio de materiais, entregas)
+  - `app/api/*` — endpoints (uploads, aprovações, sync, drive proxy)
+- **`lib/notion.ts`** — TODA lógica de Notion (query, cache, tarefas, posts, aprovações). Arquivo grande. Cache via `unstable_cache` com tags (`TAG_TAREFAS`, `TAG_POSTS`, `TAG_CLIENTES`) + camada in-memory (`makeCache`).
+- **`lib/drive.ts`** — Google Drive (OAuth, criar pastas, upload)
+- **`lib/instagram.ts`** — Meta Graph API (analytics)
+- **`lib/auth.ts`** — JWT session (`jose`), magic link por email
+- **`lib/sync.ts`** — sync gradual Notion → Supabase (em progresso, feature flag por cliente)
+- **`app/_components`** — componentes compartilhados entre telas
+
+### Deploy
+
+- Vercel. Cada `git push` na `main` faz deploy automático se o repo estiver conectado (Vercel dashboard → Git). Caso contrário: `npm run deploy:prod` (roda `vercel deploy --prod --yes`).
+- Preview branch por PR também rola quando GitHub↔Vercel tá plugado.
+
+### Gotchas conhecidas
+
+- **Limite de 4.5MB de body em serverless Vercel.** Uploads grandes precisam ir um arquivo por request (padrão em `/api/tarefas/[id]/anexar`) ou upload direto browser→Drive (não implementado ainda).
+- **Notion tem rate limit apertado** (3 req/s por integration). `lib/notion.ts` usa `comRetry()` com backoff exponencial em 429/503/502/504. Não remova.
+- **Notion sort por `last_edited_time` mente** em databases grandes (2k+ rows). Sempre filtre por janela de 90 dias + ordene local.
+- **`makeCache` em vez de `React.cache()`** — a versão do React foi mordendo em route handlers; `makeCache` é in-memory + TTL + dedup de in-flight.
+- **`unstable_cache` com tag** invalida via `revalidateTag()` em `invalidarCachesAposMudanca()`. Sempre chame depois de mutar Notion.
+- **Vercel serverless functions maxDuration** — está em 300s onde precisa (uploads, sync). Não abaixa.
+- **`.env.local` NUNCA sobe** — `.gitignore` cobre `.env*` e você já viu, mas confere de novo antes de commit.
+
+### Como pedir ajuda
+
+- Bugs em produção: `console.error` cai no Vercel Logs (Vercel dashboard → project → Logs). Filtra por rota.
+- Contexto de decisões: converse com Luiza. Muitas escolhas (portais de admin, sync gradual, etc) têm contexto que não tá no código.
+
 ## Fluxo
 
 1. Cliente entra com email (magic link). O email é matched contra `E-mail da empresa` na database **Clientes** do Notion. A partir do cliente, a relação `Projetos` define quais projetos ele vê.

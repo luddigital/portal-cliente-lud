@@ -8,6 +8,7 @@ import {
   getTarefaComPost,
   findTarefaClienteProntaDoPost,
   lerComentariosDoPost,
+  listarTarefasDoPost,
   type RelacaoItem,
 } from '@/lib/notion';
 import {
@@ -19,6 +20,7 @@ import {
 import { env } from '@/lib/env';
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
+import { TarefasDoPostPanel } from './TarefasDoPostPanel';
 import { TarefaForm } from '../../tarefa/[id]/form';
 import { HistoricoBox } from '../../_components/HistoricoBox';
 
@@ -69,6 +71,12 @@ function fmtData(iso: string | null): string {
 async function HistoricoComentarios({ postId }: { postId: string }) {
   const comentarios = await lerComentariosDoPost(postId);
   return <HistoricoBox comentarios={comentarios} />;
+}
+
+/** Painel admin de Tarefas do post — visível só pra equipe interna. */
+async function TarefasDoPostSection({ postId }: { postId: string }) {
+  const tarefas = await listarTarefasDoPost(postId);
+  return <TarefasDoPostPanel tarefas={tarefas} />;
 }
 
 function diffDias(iso: string | null): number | null {
@@ -459,6 +467,17 @@ export default async function PostDetalhePage({
             <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} {...props} />
           );
         })()}
+
+        {/* Painel admin de Tarefas do post — só equipe interna vê */}
+        {ehAdmin && (
+          <Suspense
+            fallback={
+              <div className="h-[120px] rounded-2xl bg-bgSoft animate-pulse" />
+            }
+          >
+            <TarefasDoPostSection postId={post.id} />
+          </Suspense>
+        )}
 
         {/* histórico de comentários — discreto, no fim da página */}
         <Suspense fallback={null}>

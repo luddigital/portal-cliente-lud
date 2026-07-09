@@ -1472,6 +1472,114 @@ export async function getAprovacoesAgrupadas(): Promise<GrupoAprovacao[]> {
     .sort((a, b) => a.categoria.localeCompare(b.categoria, 'pt-BR'));
 }
 
+/**
+ * Lista TODAS as tarefas de um post (abertas + concluídas), pra painel admin
+ * no /post/[id]. Diferente de getEntregaDetalhe, não filtra por Pronto nem por
+ * status — mostra o histórico completo pra equipe agir manualmente.
+ */
+export type TarefaDoPost = {
+  tarefaId: string;
+  titulo: string;
+  status: string | null;
+  prazo: string | null;
+  finalizada: string | null;
+  pessoaNome: string | null;
+  pessoaAvatar: string | null;
+  ordemUm: string | null; // '01', '02', '03'
+  categoria: 'aprovacao' | 'alteracao' | 'briefing' | 'arte' | 'copy' | 'outro';
+  aberta: boolean;
+};
+
+function categoriaDaTarefa2(titulo: string): TarefaDoPost['categoria'] {
+  const t = (titulo ?? '').toLowerCase().trim();
+  if (t.startsWith('aprovação')) return 'aprovacao';
+  if (t.startsWith('alteração')) return 'alteracao';
+  if (t.includes('briefing') || t.includes('copy')) return 'copy';
+  if (t.includes('arte')) return 'arte';
+  return 'outro';
+}
+
+async function _listarTarefasDoPostUncached(
+  postId: string,
+): Promise<TarefaDoPost[]> {
+  const out: TarefaDoPost[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await comRetry(() =>
+      notion.databases.query({
+        database_id: env.notion.tarefasDbId,
+        start_cursor: cursor,
+        page_size: 100,
+        filter: {
+          property: env.notion.taskProps.post,
+          relation: { contains: postId },
+        },
+      }),
+    );
+    for (const t of res.results as any[]) {
+      if (t.archived) continue;
+      const titleProp = Object.values(t.properties).find(
+        (p: any) => p.type === 'title',
+      ) as any;
+      const titulo = txt(titleProp?.title) || '';
+      const status =
+        getProp(t, env.notion.taskProps.status)?.status?.name ?? null;
+      const finalizada =
+        getProp(t, 'Finalizada em ')?.date?.start ??
+        getProp(t, 'Finalizada em')?.date?.start ??
+        null;
+      const prazo =
+        getProp(t, 'Data Entrega')?.date?.start ??
+        getProp(t, 'Data Inicial')?.date?.start ??
+        null;
+      const pessoa = getProp(t, 'Pessoa')?.people?.[0] ?? null;
+      const ordemUm = getProp(t, 'Ordem (1)')?.select?.name ?? null;
+      const aberta = !STATUS_TAREFA_FECHADOS.includes(status ?? '') && !finalizada;
+      out.push({
+        tarefaId: t.id,
+        titulo,
+        status,
+        prazo,
+        finalizada,
+        pessoaNome: pessoa?.name ?? null,
+        pessoaAvatar: pessoa?.avatar_url ?? null,
+        ordemUm,
+        categoria: categoriaDaTarefa2(titulo),
+        aberta,
+      });
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+
+  // Ordena: abertas primeiro (por prazo asc), depois fechadas (por finalizada desc)
+  out.sort((a, b) => {
+    if (a.aberta !== b.aberta) return a.aberta ? -1 : 1;
+    if (a.aberta) {
+      if (!a.prazo && !b.prazo) return 0;
+      if (!a.prazo) return 1;
+      if (!b.prazo) return -1;
+      return a.prazo.localeCompare(b.prazo);
+    }
+    if (!a.finalizada && !b.finalizada) return 0;
+    if (!a.finalizada) return 1;
+    if (!b.finalizada) return -1;
+    return b.finalizada.localeCompare(a.finalizada);
+  });
+  return out;
+}
+
+const _listarTarefasDoPostCached = unstable_cache(
+  _listarTarefasDoPostUncached,
+  ['listar-tarefas-do-post-v1'],
+  { revalidate: 30, tags: [TAG_TAREFAS] },
+);
+
+export async function listarTarefasDoPost(
+  postId: string,
+): Promise<TarefaDoPost[]> {
+  return _listarTarefasDoPostCached(postId);
+}
+
 export async function getResumoTarefasCliente(
   projetoIds: string[],
 ): Promise<ResumoTarefasCliente> {

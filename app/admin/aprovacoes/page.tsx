@@ -138,8 +138,14 @@ async function Conteudo() {
 }
 
 function TarefaRow({ tarefa: t }: { tarefa: TarefaDaEntrega }) {
+  const href = t.postId
+    ? `/post/${t.postId}?tarefa=${t.tarefaId}`
+    : `/tarefa/${t.tarefaId}`;
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+    <Link
+      href={href}
+      className="flex items-center justify-between gap-3 px-4 py-2.5 transition hover:bg-bgSoft/60"
+    >
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] text-ink">
           {t.postTitulo || t.titulo}
@@ -153,6 +159,7 @@ function TarefaRow({ tarefa: t }: { tarefa: TarefaDaEntrega }) {
           {t.status}
         </span>
       )}
-    </div>
+      <span className="shrink-0 text-[16px] text-t3">›</span>
+    </Link>
   );
 }
