@@ -289,6 +289,42 @@ export async function getIgAnalyticsDoProjeto(
  *   - { dias: 30 } → últimos N dias
  *   - { since: '2024-01-01', until: '2024-01-31' } → range customizado
  */
+/** Soma métricas de vários períodos consecutivos. Nota: reach e
+ *  engagedAccounts somam contas únicas de cada janela — se um mesmo perfil
+ *  entrou em 2 janelas, entra 2× no total. Padrão do mercado (Metricool,
+ *  Sprout, Buffer fazem o mesmo). */
+function somarInsights(pedacos: IgPeriodInsights[]): IgPeriodInsights {
+  return pedacos.reduce<IgPeriodInsights>(
+    (acc, p) => ({
+      reach: acc.reach + p.reach,
+      interactions: acc.interactions + p.interactions,
+      engagedAccounts: acc.engagedAccounts + p.engagedAccounts,
+      profileViews: acc.profileViews + p.profileViews,
+      novosSeguidores: acc.novosSeguidores + p.novosSeguidores,
+    }),
+    {
+      reach: 0,
+      interactions: 0,
+      engagedAccounts: 0,
+      profileViews: 0,
+      novosSeguidores: 0,
+    },
+  );
+}
+
+/** Divide um intervalo em pedaços de até 30 dias — cap da Graph API. */
+function chunks30d(inicioU: number, fimU: number): [number, number][] {
+  const CHUNK = 30 * 86400;
+  const out: [number, number][] = [];
+  let cursor = inicioU;
+  while (cursor < fimU) {
+    const proximo = Math.min(cursor + CHUNK, fimU);
+    out.push([cursor, proximo]);
+    cursor = proximo;
+  }
+  return out;
+}
+
 export async function getIgAnalytics(
   igUserId: string,
   opts: { dias?: number; since?: string; until?: string } = {},
@@ -298,37 +334,39 @@ export async function getIgAnalytics(
     ? parseDataLocal(opts.since)
     : new Date(fim.getTime() - (opts.dias ?? 30) * 86400000);
 
-  // A Graph API recusa janelas de insights de conta com mais de 30 dias
-  // (2.592.000 s entre since e until). Como `until` vai pro fim do dia, uma
-  // janela "de 30 dias" estoura o limite por alguns segundos — o que fazia a
-  // API errar e o código devolver 0 em tudo. Fixamos o fim e recuamos o início
-  // o mínimo necessário pra caber na janela, preservando a data escolhida.
-  const LIMITE_S = 30 * 86400;
   const fimU = Math.floor(fim.getTime() / 1000);
-  const inicioAtualU = Math.max(
-    Math.floor(inicioPedido.getTime() / 1000),
-    fimU - LIMITE_S,
-  );
+  const inicioAtualU = Math.floor(inicioPedido.getTime() / 1000);
   const dias = Math.max(1, Math.round((fimU - inicioAtualU) / 86400));
   const inicioAnteriorU = inicioAtualU - dias * 86400;
+
+  // Divide em pedaços de 30 dias — Graph API não aceita janela maior. Cada
+  // pedaço é fetchado em paralelo, somamos KPIs e concatenamos séries.
+  const pedacosAtual = chunks30d(inicioAtualU, fimU);
+  const pedacosAnterior = chunks30d(inicioAnteriorU, inicioAtualU);
   const s = (n: number) => n.toString();
 
   const account = await getAccount(igUserId);
   const [
-    atual,
-    anterior,
+    insightsAtual,
+    insightsAnterior,
     topMedia,
-    serieAlcance,
-    serieSeguidores,
-    serieEngajamento,
+    fatiasAlcance,
+    fatiasSeguidores,
+    fatiasEngajamento,
   ] = await Promise.all([
-    getPeriodInsights(igUserId, s(inicioAtualU), s(fimU)),
-    getPeriodInsights(igUserId, s(inicioAnteriorU), s(inicioAtualU)),
+    Promise.all(pedacosAtual.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
+    Promise.all(pedacosAnterior.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
     getTopMedia(igUserId, inicioAtualU, 20),
-    timeSeries(igUserId, 'reach', s(inicioAtualU), s(fimU)),
-    timeSeries(igUserId, 'follower_count', s(inicioAtualU), s(fimU)),
-    timeSeries(igUserId, 'accounts_engaged', s(inicioAtualU), s(fimU)),
+    Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'reach', s(a), s(b)))),
+    Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'follower_count', s(a), s(b)))),
+    Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'accounts_engaged', s(a), s(b)))),
   ]);
+
+  const atual = somarInsights(insightsAtual);
+  const anterior = somarInsights(insightsAnterior);
+  const serieAlcance = fatiasAlcance.flat();
+  const serieSeguidores = fatiasSeguidores.flat();
+  const serieEngajamento = fatiasEngajamento.flat();
 
   return {
     account,
