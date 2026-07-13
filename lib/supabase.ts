@@ -289,6 +289,85 @@ export async function salvarRascunhoAprovacao(
   if (error) throw new Error(`Supabase: ${error.message}`);
 }
 
+// ============================================================================
+// Objetivos da semana — texto livre por projeto, editado em /gestao
+// ============================================================================
+
+export type ObjetivosSemana = {
+  texto: string;
+  atualizadoEm: string | null;
+  atualizadoPor: string | null;
+};
+
+/** Lê o texto de objetivos de UM projeto. Vazio se não há. */
+export async function lerObjetivosSemana(
+  projetoId: string,
+): Promise<ObjetivosSemana> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('objetivos_semana')
+      .select('texto, atualizado_em, atualizado_por')
+      .eq('projeto_id', projetoId)
+      .maybeSingle();
+    if (error || !data) return { texto: '', atualizadoEm: null, atualizadoPor: null };
+    return {
+      texto: data.texto ?? '',
+      atualizadoEm: data.atualizado_em ?? null,
+      atualizadoPor: data.atualizado_por ?? null,
+    };
+  } catch {
+    return { texto: '', atualizadoEm: null, atualizadoPor: null };
+  }
+}
+
+/** Batch: lê objetivos de vários projetos numa query só. */
+export async function lerObjetivosSemanaBatch(
+  projetoIds: string[],
+): Promise<Record<string, ObjetivosSemana>> {
+  const vazio: Record<string, ObjetivosSemana> = {};
+  for (const id of projetoIds) {
+    vazio[id] = { texto: '', atualizadoEm: null, atualizadoPor: null };
+  }
+  if (projetoIds.length === 0) return vazio;
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('objetivos_semana')
+      .select('projeto_id, texto, atualizado_em, atualizado_por')
+      .in('projeto_id', projetoIds);
+    if (error || !data) return vazio;
+    for (const row of data) {
+      vazio[row.projeto_id] = {
+        texto: row.texto ?? '',
+        atualizadoEm: row.atualizado_em ?? null,
+        atualizadoPor: row.atualizado_por ?? null,
+      };
+    }
+    return vazio;
+  } catch {
+    return vazio;
+  }
+}
+
+export async function salvarObjetivosSemana(
+  projetoId: string,
+  texto: string,
+  emailAutor: string,
+): Promise<void> {
+  const sb = await supabaseAdmin();
+  const { error } = await sb.from('objetivos_semana').upsert(
+    {
+      projeto_id: projetoId,
+      texto,
+      atualizado_em: new Date().toISOString(),
+      atualizado_por: emailAutor,
+    },
+    { onConflict: 'projeto_id' },
+  );
+  if (error) throw new Error(`Supabase: ${error.message}`);
+}
+
 export async function limparRascunhoAprovacao(
   tarefaId: string,
   email: string,
