@@ -514,17 +514,15 @@ export function PostPreview({
               <span
                 style={{
                   color:
-                    statusRascunho === 'erro'
-                      ? 'var(--prazo-atrasado)'
-                      : statusRascunho === 'salvando'
-                        ? 'var(--prazo-chegando)'
-                        : 'var(--t3)',
+                    statusRascunho === 'salvando'
+                      ? 'var(--prazo-chegando)'
+                      : 'var(--t3)',
                 }}
               >
                 {statusRascunho === 'salvando'
                   ? '💾 Salvando…'
                   : statusRascunho === 'erro'
-                    ? '⚠️ Erro ao salvar (rascunho fica local)'
+                    ? '✓ Salvo neste dispositivo'
                     : statusRascunho === 'salvo'
                       ? '✓ Rascunho salvo'
                       : ultimoSalvo
