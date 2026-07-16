@@ -9,6 +9,22 @@ function fmt(n: number): string {
   return n.toLocaleString('pt-BR');
 }
 
+/** Traduz media_type da Graph API pra label amigável. Reels são VIDEO
+ *  na API mas dá pra distinguir da caption (#reels) ou aspect. Fallback:
+ *  vídeo comum. */
+function formatoLabel(mediaType: string | undefined, caption?: string): string {
+  const t = (mediaType ?? '').toUpperCase();
+  if (t === 'CAROUSEL_ALBUM') return 'Carrossel';
+  if (t === 'IMAGE') return 'Foto';
+  if (t === 'REELS') return 'Reels';
+  if (t === 'VIDEO') {
+    const c = (caption ?? '').toLowerCase();
+    if (/#reels?\b|\breels?\b/.test(c)) return 'Reels';
+    return 'Vídeo';
+  }
+  return 'Post';
+}
+
 function fmtPct(p: number): string {
   const sinal = p >= 0 ? '+' : '';
   return `${sinal}${p.toFixed(1)}%`;
@@ -158,7 +174,7 @@ function MediaCard({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem })
         {/* tipo + data no canto sup esquerdo */}
         <div className="absolute left-3 top-3 flex items-center gap-1.5">
           <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink backdrop-blur">
-            {m.mediaType?.toLowerCase() || 'post'}
+            {formatoLabel(m.mediaType, m.caption)}
           </span>
           <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-t2 backdrop-blur">
             {data}
