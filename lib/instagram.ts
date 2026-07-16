@@ -185,14 +185,21 @@ async function timeSeries(
   since: string,
   until: string,
 ): Promise<IgPontoSerie[]> {
+  // A partir da API v22, `metric_type=time_series` foi deprecado pra
+  // várias métricas. Pro follower_count especialmente ele passa a devolver
+  // erro/vazio. Pra outras métricas o padrão é time_series então omitir
+  // funciona igual.
+  const params: Record<string, string> = {
+    metric,
+    period: 'day',
+    since,
+    until,
+  };
+  if (metric !== 'follower_count') {
+    params.metric_type = 'time_series';
+  }
   try {
-    const json = await graph<any>(`${igUserId}/insights`, {
-      metric,
-      metric_type: 'time_series',
-      period: 'day',
-      since,
-      until,
-    });
+    const json = await graph<any>(`${igUserId}/insights`, params);
     const node = json?.data?.[0];
     const arr: any[] = node?.values ?? [];
     return arr.map((v) => ({
@@ -249,7 +256,7 @@ async function getMediaOrdenada(
 ): Promise<IgMediaItem[]> {
   const json = await graph<{ data: any[] }>(`${igUserId}/media`, {
     fields:
-      'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
+      'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
     limit: '50',
   });
   const recentes = (json.data ?? []).filter((m) => {
@@ -260,10 +267,15 @@ async function getMediaOrdenada(
   const comInsights = await Promise.all(
     recentes.map(async (m): Promise<IgMediaItem> => {
       const ins = await getMediaInsights(m.id, m.media_type ?? '');
+      // Reels vêm da API como media_type=VIDEO + media_product_type=REELS.
+      // Consolidamos: se é reel, mediaType efetivo vira REELS pra formatoLabel
+      // e pra a chamada de insights (que aceita views/shares só em vídeo/reel).
+      const mediaType =
+        m.media_product_type === 'REELS' ? 'REELS' : (m.media_type ?? '');
       return {
         id: m.id,
         caption: m.caption ?? '',
-        mediaType: m.media_type ?? '',
+        mediaType,
         thumbnail: m.thumbnail_url ?? m.media_url ?? null,
         permalink: m.permalink ?? '',
         timestamp: m.timestamp ?? '',
