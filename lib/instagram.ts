@@ -30,6 +30,12 @@ export type IgMediaItem = {
   comments: number;
   reach: number;
   interactions: number;
+  /** Salvamentos (posts, carrosséis e reels). */
+  saved: number;
+  /** Compartilhamentos (mais confiável em reels). */
+  shares: number;
+  /** Views/plays de vídeo. 0 se não é vídeo. */
+  views: number;
 };
 
 export type IgPontoSerie = { dia: string; valor: number };
@@ -39,7 +45,10 @@ export type IgAnalytics = {
   period: { since: string; until: string; dias: number };
   atual: IgPeriodInsights;
   anterior: IgPeriodInsights;
+  /** Melhores conteúdos (mais engajamento) do período. */
   topMedia: IgMediaItem[];
+  /** Piores conteúdos (menor engajamento) do período. */
+  topPiores: IgMediaItem[];
   taxaEngajamento: number;
   /** Reach diário no período. */
   serieAlcance: IgPontoSerie[];
@@ -197,28 +206,46 @@ async function timeSeries(
 
 async function getMediaInsights(
   mediaId: string,
-): Promise<{ reach: number; interactions: number }> {
+  mediaType: string,
+): Promise<{
+  reach: number;
+  interactions: number;
+  saved: number;
+  shares: number;
+  views: number;
+}> {
+  // shares/views só fazem sentido em vídeo/reels. IMAGE e CAROUSEL_ALBUM
+  // não têm shares (a API rejeita a métrica).
+  const ehVideo = mediaType === 'VIDEO' || mediaType === 'REELS';
+  const metrics = ehVideo
+    ? 'reach,total_interactions,saved,shares,views'
+    : 'reach,total_interactions,saved';
   try {
-    const json = await graph<any>(`${mediaId}/insights`, {
-      metric: 'reach,total_interactions',
-    });
+    const json = await graph<any>(`${mediaId}/insights`, { metric: metrics });
     let reach = 0;
     let interactions = 0;
+    let saved = 0;
+    let shares = 0;
+    let views = 0;
     for (const m of json?.data ?? []) {
       const v = m?.values?.[0]?.value ?? 0;
       if (m.name === 'reach') reach = v;
-      if (m.name === 'total_interactions') interactions = v;
+      else if (m.name === 'total_interactions') interactions = v;
+      else if (m.name === 'saved') saved = v;
+      else if (m.name === 'shares') shares = v;
+      else if (m.name === 'views') views = v;
     }
-    return { reach, interactions };
+    return { reach, interactions, saved, shares, views };
   } catch {
-    return { reach: 0, interactions: 0 };
+    return { reach: 0, interactions: 0, saved: 0, shares: 0, views: 0 };
   }
 }
 
-async function getTopMedia(
+/** Traz todos os posts do período ordenados por engajamento (desc).
+ *  Fatiar depois pra pegar melhores e piores separadamente. */
+async function getMediaOrdenada(
   igUserId: string,
   sinceUnix: number,
-  limit: number,
 ): Promise<IgMediaItem[]> {
   const json = await graph<{ data: any[] }>(`${igUserId}/media`, {
     fields:
@@ -232,7 +259,7 @@ async function getTopMedia(
 
   const comInsights = await Promise.all(
     recentes.map(async (m): Promise<IgMediaItem> => {
-      const ins = await getMediaInsights(m.id);
+      const ins = await getMediaInsights(m.id, m.media_type ?? '');
       return {
         id: m.id,
         caption: m.caption ?? '',
@@ -244,13 +271,19 @@ async function getTopMedia(
         comments: m.comments_count ?? 0,
         reach: ins.reach,
         interactions: ins.interactions,
+        saved: ins.saved,
+        shares: ins.shares,
+        views: ins.views,
       };
     }),
   );
 
+  // Filtra posts sem engajamento nenhum (0 reach + 0 interactions) — geralmente
+  // são posts arquivados/deletados ou insights que não chegaram. Não fazem
+  // sentido nem no "melhor" nem no "pior".
   return comInsights
-    .sort((a, b) => b.interactions - a.interactions || b.reach - a.reach)
-    .slice(0, limit);
+    .filter((m) => m.reach > 0 || m.interactions > 0)
+    .sort((a, b) => b.interactions - a.interactions || b.reach - a.reach);
 }
 
 function parseDataLocal(iso: string, fimDoDia = false): Date {
@@ -349,14 +382,14 @@ export async function getIgAnalytics(
   const [
     insightsAtual,
     insightsAnterior,
-    topMedia,
+    mediaOrdenada,
     fatiasAlcance,
     fatiasSeguidores,
     fatiasEngajamento,
   ] = await Promise.all([
     Promise.all(pedacosAtual.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
     Promise.all(pedacosAnterior.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
-    getTopMedia(igUserId, inicioAtualU, 20),
+    getMediaOrdenada(igUserId, inicioAtualU),
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'reach', s(a), s(b)))),
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'follower_count', s(a), s(b)))),
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'accounts_engaged', s(a), s(b)))),
@@ -368,6 +401,15 @@ export async function getIgAnalytics(
   const serieSeguidores = fatiasSeguidores.flat();
   const serieEngajamento = fatiasEngajamento.flat();
 
+  // Melhores = top 3 do sorted desc. Piores = últimos 3 do sorted desc =
+  // primeiros 3 do sorted asc. Só se tiver 6+ posts pra fazer sentido —
+  // com menos, todos viram "top".
+  const topMedia = mediaOrdenada.slice(0, 20);
+  const topPiores =
+    mediaOrdenada.length >= 6
+      ? [...mediaOrdenada].reverse().slice(0, 3)
+      : [];
+
   return {
     account,
     period: {
@@ -378,6 +420,7 @@ export async function getIgAnalytics(
     atual,
     anterior,
     topMedia,
+    topPiores,
     taxaEngajamento: atual.reach > 0 ? atual.interactions / atual.reach : 0,
     serieAlcance,
     serieSeguidores,

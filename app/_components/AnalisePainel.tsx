@@ -200,6 +200,15 @@ function MediaCard({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem })
           <StatChip icon="♡" label="curtidas" valor={fmt(m.likes)} />
           <StatChip icon="💬" label="comentários" valor={fmt(m.comments)} />
           <StatChip icon="👁" label="alcance" valor={fmt(m.reach)} />
+          {m.saved > 0 && (
+            <StatChip icon="🔖" label="salvos" valor={fmt(m.saved)} />
+          )}
+          {m.shares > 0 && (
+            <StatChip icon="↗" label="compart." valor={fmt(m.shares)} />
+          )}
+          {m.views > 0 && (
+            <StatChip icon="▶" label="views" valor={fmt(m.views)} />
+          )}
         </div>
       </div>
     </a>
@@ -376,6 +385,26 @@ export function AnalisePainel({ a }: { a: IgAnalytics }) {
           </div>
         )}
       </div>
+
+      {/* piores conteúdos */}
+      {a.topPiores && a.topPiores.length > 0 && (
+        <div>
+          <div className="mb-2">
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
+              Piores conteúdos
+            </h2>
+            <p className="text-[12px] text-t2">
+              Menos engajamento no período — vale entender o padrão pra não
+              repetir.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {a.topPiores.map((m) => (
+              <MediaCard key={m.id} m={m} criterio={criterio} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
