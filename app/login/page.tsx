@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+const EMAIL_STORAGE_KEY = 'lud:email';
 
 export default function LoginPage({ searchParams }: { searchParams: { err?: string } }) {
   const [email, setEmail] = useState('');
+  const [emailLembrado, setEmailLembrado] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,24 +19,55 @@ export default function LoginPage({ searchParams }: { searchParams: { err?: stri
       : 'Link inválido.'
     : null;
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  // Ao abrir a página, checa se tem email lembrado do último login. Isso
+  // ajuda usuários de Safari privado / iOS agressivo que perdem o cookie
+  // toda vez — em vez de digitar de novo, aparece "Continuar como X".
+  useEffect(() => {
+    try {
+      const salvo = window.localStorage.getItem(EMAIL_STORAGE_KEY);
+      if (salvo && salvo.includes('@')) setEmailLembrado(salvo);
+    } catch {
+      /* localStorage indisponível — segue */
+    }
+  }, []);
+
+  async function enviarLink(paraEmail: string) {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/auth/send-link', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: paraEmail }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Erro ao enviar link');
+      // Lembra o email pro próximo login (só depois de sucesso)
+      try {
+        window.localStorage.setItem(EMAIL_STORAGE_KEY, paraEmail);
+      } catch {
+        /* ok */
+      }
       setSent(true);
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    await enviarLink(email);
+  }
+
+  function esquecerEmail() {
+    try {
+      window.localStorage.removeItem(EMAIL_STORAGE_KEY);
+    } catch {
+      /* ok */
+    }
+    setEmailLembrado(null);
   }
 
   return (
@@ -72,11 +106,45 @@ export default function LoginPage({ searchParams }: { searchParams: { err?: stri
           <p className="mt-1 text-[13px] text-mauve">Use o email cadastrado com a Lud.</p>
 
           {sent ? (
-            <div className="mt-8 rounded-xl bg-white p-6 text-center">
+            <div className="mt-8 space-y-3 rounded-xl bg-white p-6 text-center">
               <div className="text-[14px] font-semibold text-ink">Link enviado ✨</div>
-              <p className="mt-2 text-[12px] text-mauve">
+              <p className="text-[12px] text-mauve">
                 Confira sua caixa de entrada. O link expira em 15 minutos.
               </p>
+              <div className="mt-3 rounded-lg bg-bgSoft p-3 text-left">
+                <p className="text-[11px] font-semibold text-ink">📱 Se estiver no iPhone / iPad:</p>
+                <p className="mt-1 text-[11px] leading-[1.5] text-t2">
+                  Aperta <b>e segura</b> o botão do link no email → escolhe{' '}
+                  <b>&quot;Abrir em Safari&quot;</b>. Assim a sessão fica salva —
+                  se você clicar direto às vezes ela some.
+                </p>
+              </div>
+            </div>
+          ) : emailLembrado ? (
+            <div className="mt-7 space-y-3">
+              <button
+                type="button"
+                onClick={() => enviarLink(emailLembrado)}
+                disabled={loading}
+                className="btn-primary w-full justify-center"
+              >
+                {loading ? 'Enviando…' : `Continuar como ${emailLembrado}`}
+              </button>
+              <p className="text-center text-[11px] text-t3">
+                Vamos mandar o link mágico pra esse email.
+              </p>
+              <button
+                type="button"
+                onClick={esquecerEmail}
+                className="w-full text-center text-[11px] text-mauve transition hover:text-ink"
+              >
+                usar outro email
+              </button>
+              {(error || errFromUrl) && (
+                <p className="text-center text-[11px] font-medium text-crimson">
+                  {error || errFromUrl}
+                </p>
+              )}
             </div>
           ) : (
             <form onSubmit={submit} className="mt-7">
