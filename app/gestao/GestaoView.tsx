@@ -118,10 +118,19 @@ export function GestaoView({
                     className="card group flex items-start gap-3 p-3 transition hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)]"
                   >
                     <div
-                      className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[16px]"
+                      className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl text-[16px]"
                       style={{ background: cor.bg, color: cor.fg }}
                     >
-                      {p.icon ?? '📱'}
+                      {p.icon && /^https?:\/\//.test(p.icon) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.icon}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span>{p.icon ?? '📱'}</span>
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-semibold text-ink">
