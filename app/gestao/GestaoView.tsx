@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import type { PostCalendario, ProjetoListItem } from '@/lib/notion';
+import type { EntregaItem, PostCalendario, ProjetoListItem } from '@/lib/notion';
 import type { ObjetivosSemana } from '@/lib/supabase';
 import { classificarProjeto } from '@/lib/projetoServico';
 
@@ -36,11 +36,15 @@ export function GestaoView({
   projetos,
   postsHoje,
   objetivosIniciais,
+  entregasAtrasadas,
+  entregasSemana,
   podeEditar,
 }: {
   projetos: ProjetoListItem[];
   postsHoje: PostCalendario[];
   objetivosIniciais: Record<string, ObjetivosSemana>;
+  entregasAtrasadas: EntregaItem[];
+  entregasSemana: EntregaItem[];
   podeEditar: boolean;
 }) {
   const hoje = new Date();
@@ -142,6 +146,105 @@ export function GestaoView({
           )}
         </section>
 
+        {/* Entregas com atraso — o que a equipe precisa destravar agora */}
+        {entregasAtrasadas.length > 0 && (
+          <section>
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className="text-[13px] font-semibold uppercase tracking-[0.1em] text-[var(--prazo-atrasado)]">
+                ⚠️ Entregas com atraso
+              </h2>
+              <span className="text-[11px] text-t3">
+                {entregasAtrasadas.length} {entregasAtrasadas.length === 1 ? 'entrega' : 'entregas'}
+              </span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {entregasAtrasadas.map((e) => (
+                <Link
+                  key={e.id}
+                  href={`/admin/entrega/${e.id}`}
+                  className="card group flex items-start gap-3 p-3 transition hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)]"
+                >
+                  <div
+                    className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[13px] font-semibold"
+                    style={{
+                      background: 'var(--prazo-atrasado-soft)',
+                      color: 'var(--prazo-atrasado)',
+                    }}
+                  >
+                    {e.atrasadas}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold text-ink">
+                      {e.nome}
+                    </div>
+                    {e.proximaEntregaTexto && (
+                      <div className="mt-0.5 truncate text-[11px] text-t3">
+                        próxima: {e.proximaEntregaTexto}
+                      </div>
+                    )}
+                    <div className="mt-1 text-[10px] text-t2">
+                      {e.atrasadas} {e.atrasadas === 1 ? 'tarefa atrasada' : 'tarefas atrasadas'}
+                      {e.totalTarefas > 0 && ` · ${e.totalTarefas} tarefas totais`}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Entregas dos próximos 7 dias — planning */}
+        {entregasSemana.length > 0 && (
+          <section>
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className="text-[13px] font-semibold uppercase tracking-[0.1em] text-t3">
+                Entregas da semana
+              </h2>
+              <span className="text-[11px] text-t3">
+                {entregasSemana.length} {entregasSemana.length === 1 ? 'entrega' : 'entregas'}
+              </span>
+            </div>
+            <div className="card divide-y divide-[rgba(21,21,33,0.06)] p-0">
+              {entregasSemana.map((e) => (
+                <Link
+                  key={e.id}
+                  href={`/admin/entrega/${e.id}`}
+                  className="group flex items-center gap-3 p-3 transition hover:bg-bgSoft/60"
+                >
+                  <div
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-bgSoft text-[11px] font-mono font-semibold text-ink"
+                    title="Próxima data"
+                  >
+                    {e.proximaData ?? '—'}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold text-ink">
+                      {e.nome}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-t3">
+                      {e.proximaEntregaTexto ?? e.frequencia ?? '—'}
+                      {e.atrasadas > 0 && (
+                        <span
+                          className="ml-2 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                          style={{
+                            background: 'var(--prazo-atrasado-soft)',
+                            color: 'var(--prazo-atrasado)',
+                          }}
+                        >
+                          {e.atrasadas} atrasada{e.atrasadas === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-semibold text-mauve transition group-hover:text-ink">
+                    abrir
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Objetivos da semana — 1 card editável por projeto */}
         <section>
           <div className="mb-3 flex items-baseline justify-between">
@@ -209,12 +312,16 @@ export function GestaoView({
           <h3 className="text-[13px] font-semibold text-ink">Falta ainda</h3>
           <ul className="mt-2 space-y-1.5 text-[12px] leading-[1.6] text-t2">
             <li>
-              <b>Fase 1:</b> Tarefas agregadas da equipe (por colaborador) +
-              Entregas processo SM (do banco do Notion).
+              <b>Tarefas agregadas por colaborador</b> — quem tá com mais coisa
+              travada nessa semana.
             </li>
             <li>
-              <b>Fase 2:</b> Reuniões (próximas + histórico) e gráficos de
-              saúde geral dos projetos.
+              <b>Reuniões</b> — próximas + histórico do banco de Reuniões do
+              Notion.
+            </li>
+            <li>
+              <b>Gráficos de saúde</b> — proporção aprovado / em alteração /
+              agendado por projeto, tendência semanal.
             </li>
           </ul>
         </section>

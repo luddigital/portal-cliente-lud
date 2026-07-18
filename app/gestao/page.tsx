@@ -4,7 +4,9 @@ import { env } from '@/lib/env';
 import {
   getColaboradorByEmail,
   listAllProjetos,
+  listEntregas,
   listPostsDoMes,
+  type EntregaItem,
 } from '@/lib/notion';
 import { classificarProjeto } from '@/lib/projetoServico';
 import { lerObjetivosSemanaBatch } from '@/lib/supabase';
@@ -46,20 +48,41 @@ export default async function GestaoPage() {
   const mes = hoje.getMonth() + 1;
   const isoHoje = hoje.toISOString().slice(0, 10);
 
-  const [postsDoMes, objetivos] = await Promise.all([
+  const [postsDoMes, objetivos, entregas] = await Promise.all([
     projetoIds.length > 0
       ? listPostsDoMes(projetoIds, ano, mes)
       : Promise.resolve([]),
     lerObjetivosSemanaBatch(projetoIds),
+    listEntregas().catch(() => [] as EntregaItem[]),
   ]);
 
   const postsHoje = postsDoMes.filter((p) => p.data === isoHoje);
+
+  // Fatias: entregas com pelo menos 1 tarefa atrasada, e entregas cuja
+  // próxima data cai nos próximos 7 dias (planning da semana).
+  function proximaISO(e: EntregaItem): string | null {
+    if (!e.proximaData) return null;
+    const m = e.proximaData.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!m) return null;
+    return `${m[3]}-${m[2]}-${m[1]}`;
+  }
+  const entregasAtrasadas = entregas.filter((e) => e.atrasadas > 0).slice(0, 10);
+  const emUmaSemanaMs = Date.now() + 7 * 86_400_000;
+  const emUmaSemanaISO = new Date(emUmaSemanaMs).toISOString().slice(0, 10);
+  const entregasSemana = entregas
+    .filter((e) => {
+      const iso = proximaISO(e);
+      return iso !== null && iso >= isoHoje && iso <= emUmaSemanaISO;
+    })
+    .slice(0, 12);
 
   return (
     <GestaoView
       projetos={projetos}
       postsHoje={postsHoje}
       objetivosIniciais={objetivos}
+      entregasAtrasadas={entregasAtrasadas}
+      entregasSemana={entregasSemana}
       podeEditar={ehAdmin || ehColaborador}
     />
   );
