@@ -16,25 +16,32 @@ export const maxDuration = 60;
 
 const SERVICOS_SOCIAL = new Set(['Instagram', 'TikTok', 'Stories']);
 
-/** Pega o fileId da primeira imagem do post (via Drive folder link). */
-async function primeiraThumbnail(postId: string): Promise<string | null> {
+/** Traz thumb + legenda do post numa passada só (aproveita o getPostComDetalhes,
+ *  que já vem cacheado). */
+async function postExtras(
+  postId: string,
+): Promise<{ fileId: string | null; legenda: string | null }> {
   try {
     const detail = await getPostComDetalhes(postId);
-    if (!detail?.driveLinks?.length) return null;
-    for (const link of detail.driveLinks) {
-      const folderId = extractDriveFolderId(link.url);
-      if (!folderId) continue;
-      const files = await listFolderFiles(folderId);
-      const imagem = files.find(
-        (f) => !f.isFolder && (f.mimeType?.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(f.name)),
-      );
-      if (imagem) return imagem.id;
-      const primeiro = files.find((f) => !f.isFolder);
-      if (primeiro) return primeiro.id;
+    if (!detail) return { fileId: null, legenda: null };
+    const legenda = detail.legenda ?? null;
+    let fileId: string | null = null;
+    if (detail.driveLinks?.length) {
+      for (const link of detail.driveLinks) {
+        const folderId = extractDriveFolderId(link.url);
+        if (!folderId) continue;
+        const files = await listFolderFiles(folderId);
+        const imagem = files.find(
+          (f) => !f.isFolder && (f.mimeType?.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(f.name)),
+        );
+        if (imagem) { fileId = imagem.id; break; }
+        const primeiro = files.find((f) => !f.isFolder);
+        if (primeiro) { fileId = primeiro.id; break; }
+      }
     }
-    return null;
+    return { fileId, legenda };
   } catch {
-    return null;
+    return { fileId: null, legenda: null };
   }
 }
 
@@ -84,12 +91,17 @@ export default async function ProgramacaoPage({
 
   const posts = await listPostsDoMes([projetoIdSelecionado], year, month);
 
-  // Batch fetch de thumbnails — 1 Drive folder lookup por post, em paralelo.
-  // Cada chamada é cached por post; recarregar a mesma página é instantâneo.
-  const thumbEntries = await Promise.all(
-    posts.map(async (p) => [p.id, await primeiraThumbnail(p.id)] as const),
+  // Batch: thumb + legenda por post em paralelo. Cacheado por post via
+  // getPostComDetalhes — recarregar o mesmo mês é instantâneo.
+  const extras = await Promise.all(
+    posts.map(async (p) => [p.id, await postExtras(p.id)] as const),
   );
-  const thumbnails: Record<string, string | null> = Object.fromEntries(thumbEntries);
+  const thumbnails: Record<string, string | null> = Object.fromEntries(
+    extras.map(([id, e]) => [id, e.fileId]),
+  );
+  const legendas: Record<string, string | null> = Object.fromEntries(
+    extras.map(([id, e]) => [id, e.legenda]),
+  );
 
   return (
     <ProgramacaoView
@@ -99,6 +111,7 @@ export default async function ProgramacaoPage({
       month={month}
       posts={posts}
       thumbnails={thumbnails}
+      legendas={legendas}
     />
   );
 }

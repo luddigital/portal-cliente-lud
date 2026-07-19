@@ -64,6 +64,7 @@ export function ProgramacaoView({
   month,
   posts,
   thumbnails,
+  legendas,
 }: {
   projetos: ProjetoListItem[];
   projetoIdSelecionado: string;
@@ -71,6 +72,7 @@ export function ProgramacaoView({
   month: number;
   posts: PostCalendario[];
   thumbnails: Record<string, string | null>;
+  legendas: Record<string, string | null>;
 }) {
   const router = useRouter();
   const [postAberto, setPostAberto] = useState<PostCalendario | null>(null);
@@ -121,6 +123,13 @@ export function ProgramacaoView({
     });
     window.location.href = `/programacao?${params.toString()}`;
   }
+
+  // Dia de hoje (só marca ring se o mês/ano em tela é o atual)
+  const agora = new Date();
+  const hojeMarcado =
+    agora.getFullYear() === year && agora.getMonth() + 1 === month
+      ? agora.getDate()
+      : null;
 
   // Calendário com posts nos dias
   const primeiro = new Date(year, month - 1, 1);
@@ -265,18 +274,28 @@ export function ProgramacaoView({
               ))}
               {celulas.map((dia, i) => {
                 const doDia = dia ? postsPorDia.get(dia) ?? [] : [];
+                const ehHoje = dia === hojeMarcado;
                 return (
                   <div
                     key={i}
                     className={`min-h-[96px] rounded-lg border p-1.5 ${
                       dia
-                        ? 'border-[rgba(21,21,33,0.06)] bg-white'
+                        ? ehHoje
+                          ? 'border-transparent bg-white ring-2 ring-inset ring-[var(--cal-agendado)]'
+                          : 'border-[rgba(21,21,33,0.06)] bg-white'
                         : 'border-transparent bg-bgSoft/40'
                     }`}
                   >
                     {dia && (
                       <>
-                        <div className="mb-1 text-[11px] font-semibold text-t2">{dia}</div>
+                        <div
+                          className={`mb-1 text-[11px] font-semibold ${
+                            ehHoje ? 'text-[var(--cal-agendado)]' : 'text-t2'
+                          }`}
+                        >
+                          {dia}
+                          {ehHoje && <span className="ml-1 text-[9px] font-bold uppercase">hoje</span>}
+                        </div>
                         <div className="space-y-0.5">
                           {doDia.slice(0, 3).map((p) => {
                             const info = BUCKET_INFO[balde(p)];
@@ -357,6 +376,7 @@ export function ProgramacaoView({
                   key={p.id}
                   post={p}
                   thumbnailFileId={thumbnails[p.id] ?? null}
+                  legenda={legendas[p.id] ?? null}
                   bucket="pronto"
                   onProgramar={() => setPostAberto(p)}
                 />
@@ -366,6 +386,7 @@ export function ProgramacaoView({
                   key={p.id}
                   post={p}
                   thumbnailFileId={thumbnails[p.id] ?? null}
+                  legenda={legendas[p.id] ?? null}
                   bucket="ajuste"
                 />
               ))}
@@ -545,16 +566,22 @@ function Filtro({ ativo, onClick, children }: { ativo: boolean; onClick: () => v
 function PostCard({
   post,
   thumbnailFileId,
+  legenda,
   bucket,
   onProgramar,
 }: {
   post: PostCalendario;
   thumbnailFileId: string | null;
+  legenda: string | null;
   bucket: Bucket;
   onProgramar?: () => void;
 }) {
   const info = BUCKET_INFO[bucket];
   const bloqueado = bucket === 'ajuste';
+  const legendaResumida = legenda ? legenda.trim().slice(0, 240) : '';
+  const legendaHashtags = legenda
+    ? (legenda.match(/#[\p{L}0-9_]+/gu) ?? []).slice(0, 6).join(' ')
+    : '';
 
   return (
     <div className="card grid gap-4 p-4 sm:grid-cols-[112px_1fr_auto]">
@@ -583,6 +610,22 @@ function PostCard({
           {post.projetoNome && <span>🎯 {post.projetoNome}</span>}
           {post.etapaLabel && <span>🔧 {post.etapaLabel}</span>}
         </div>
+        {legendaResumida && (
+          <div className="mt-2 rounded-lg bg-bgSoft/60 px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+              Legenda
+            </span>
+            <p className="mt-1 line-clamp-3 whitespace-pre-line text-[12px] leading-[1.55] text-t2">
+              {legendaResumida}
+              {legenda && legenda.length > 240 && '…'}
+            </p>
+            {legendaHashtags && (
+              <p className="mt-1 truncate text-[11px] text-[var(--cal-aprovacao)]">
+                {legendaHashtags}
+              </p>
+            )}
+          </div>
+        )}
         {post.tarefaAtualTitulo && (
           <div className="mt-2 rounded-lg bg-bgSoft/60 px-3 py-2 text-[12px] text-t2">
             <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">Próximo passo</span>
