@@ -102,7 +102,9 @@ export function ProgramacaoView({
 
   const projetoNome = projetos.find((p) => p.id === projetoIdSelecionado)?.nome ?? 'Projeto';
 
-  // Nav de mês
+  // Nav de mês / projeto — navegação hard (window.location) porque
+  // router.push com searchParams no App Router às vezes não re-renderiza
+  // o Server Component. Full nav sempre re-avalia o page.tsx.
   function irPara(deltaMes: number) {
     let novoMes = month + deltaMes;
     let novoAno = year;
@@ -111,13 +113,13 @@ export function ProgramacaoView({
     const params = new URLSearchParams({
       projetoId: projetoIdSelecionado, year: String(novoAno), month: String(novoMes),
     });
-    router.push(`/programacao?${params.toString()}`);
+    window.location.href = `/programacao?${params.toString()}`;
   }
   function trocarProjeto(id: string) {
     const params = new URLSearchParams({
       projetoId: id, year: String(year), month: String(month),
     });
-    router.push(`/programacao?${params.toString()}`);
+    window.location.href = `/programacao?${params.toString()}`;
   }
 
   // Calendário com posts nos dias
