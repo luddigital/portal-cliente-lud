@@ -120,16 +120,16 @@ export function ProgramacaoView({
     router.push(`/programacao?${params.toString()}`);
   }
 
-  // Mini calendário
+  // Calendário com posts nos dias
   const primeiro = new Date(year, month - 1, 1);
   const ultimoDia = new Date(year, month, 0).getDate();
   const offset = primeiro.getDay();
   const totalCelulas = Math.ceil((offset + ultimoDia) / 7) * 7;
-  const postsPorDia = new Map<number, Bucket[]>();
+  const postsPorDia = new Map<number, PostCalendario[]>();
   for (const p of posts) {
     const [, , d] = p.data.split('-').map(Number);
     if (!postsPorDia.has(d)) postsPorDia.set(d, []);
-    postsPorDia.get(d)!.push(balde(p));
+    postsPorDia.get(d)!.push(p);
   }
   const celulas = Array.from({ length: totalCelulas }, (_, i) => {
     const dia = i - offset + 1;
@@ -252,37 +252,50 @@ export function ProgramacaoView({
             </div>
           </div>
 
-          {/* Mini calendário */}
+          {/* Calendário do mês com títulos */}
           <div className="card p-4">
             <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-t3">
               {MESES[month - 1]} {year} · datas de publicação
             </h3>
             <div className="grid grid-cols-7 gap-1">
               {DIAS_SEMANA.map((d) => (
-                <div key={d} className="text-center text-[10px] font-semibold text-t3">{d}</div>
+                <div key={d} className="px-2 py-1 text-[10px] font-semibold text-t3">{d}</div>
               ))}
               {celulas.map((dia, i) => {
-                const buckets = dia ? postsPorDia.get(dia) ?? [] : [];
+                const doDia = dia ? postsPorDia.get(dia) ?? [] : [];
                 return (
                   <div
                     key={i}
-                    className={`aspect-square rounded-lg border p-1.5 text-[10px] ${
+                    className={`min-h-[96px] rounded-lg border p-1.5 ${
                       dia
-                        ? 'border-[rgba(21,21,33,0.06)] bg-white text-t2'
+                        ? 'border-[rgba(21,21,33,0.06)] bg-white'
                         : 'border-transparent bg-bgSoft/40'
                     }`}
                   >
                     {dia && (
                       <>
-                        <div>{dia}</div>
-                        <div className="mt-1 flex flex-wrap gap-0.5">
-                          {buckets.slice(0, 4).map((b, k) => (
-                            <span
-                              key={k}
-                              className="block h-1.5 w-1.5 rounded-sm"
-                              style={{ background: BUCKET_INFO[b].fg }}
-                            />
-                          ))}
+                        <div className="mb-1 text-[11px] font-semibold text-t2">{dia}</div>
+                        <div className="space-y-0.5">
+                          {doDia.slice(0, 3).map((p) => {
+                            const info = BUCKET_INFO[balde(p)];
+                            return (
+                              <button
+                                type="button"
+                                key={p.id}
+                                onClick={() => setPostAberto(p)}
+                                className="block w-full truncate rounded-md px-1 py-0.5 text-left text-[9.5px] font-medium leading-tight transition hover:opacity-80"
+                                style={{ background: info.bg, color: info.fg }}
+                                title={tituloSeguro(p.titulo)}
+                              >
+                                {tituloSeguro(p.titulo)}
+                              </button>
+                            );
+                          })}
+                          {doDia.length > 3 && (
+                            <div className="px-1 text-[9px] text-t3">
+                              +{doDia.length - 3}
+                            </div>
+                          )}
                         </div>
                       </>
                     )}
@@ -295,6 +308,7 @@ export function ProgramacaoView({
               <LegendaSwatch cor="var(--cal-agendado)" label="Programado" />
               <LegendaSwatch cor="var(--prazo-chegando)" label="Aguardando" />
               <LegendaSwatch cor="var(--prazo-atrasado)" label="Ajuste" />
+              <LegendaSwatch cor="var(--t3)" label="Em produção" />
             </div>
           </div>
         </section>
@@ -356,6 +370,46 @@ export function ProgramacaoView({
             </div>
           )}
         </section>
+
+        {/* ============ SEÇÃO EM PRODUÇÃO ============ */}
+        {cats.outro.length > 0 && (
+          <section>
+            <div className="mb-1 flex items-baseline gap-2">
+              <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
+                Em produção
+              </h2>
+              <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-t3">
+                {cats.outro.length}
+              </span>
+            </div>
+            <p className="mb-4 max-w-prose text-[12px] leading-[1.55] text-t3">
+              Posts do mês que ainda estão sendo produzidos (briefing, copy, curadoria, arte ou aprovação em andamento). Aparecem aqui até a arte ser aprovada e caírem em <b className="text-t2">Prontos para programar</b>.
+            </p>
+            <div className="card divide-y divide-[rgba(21,21,33,0.06)] p-0">
+              <div className="grid grid-cols-[1.6fr_1fr_1fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+                <span>Post</span>
+                <span>Formato</span>
+                <span>Data</span>
+                <span>Etapa</span>
+              </div>
+              {cats.outro.map((p) => (
+                <div key={p.id} className="grid grid-cols-[1.6fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
+                  <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
+                    {tituloSeguro(p.titulo)}
+                  </Link>
+                  <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
+                  <span className="text-t2">{fmtDiaLongo(p.data)}</span>
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                    style={{ background: 'var(--bgSoft)', color: 'var(--t2)' }}
+                  >
+                    {p.etapaLabel || p.tarefaAtualTitulo || 'Em produção'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ============ SEÇÃO 3: COMO PROGRAMAR ============ */}
         <section>
