@@ -431,11 +431,11 @@ export function ProgramacaoView({
             </div>
           ) : (
             <div className="card divide-y divide-[rgba(21,21,33,0.06)] p-0">
-              <div className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+              <div className="grid grid-cols-[1fr_1.5fr_0.8fr_1fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+                <span>Etapa</span>
                 <span>Post</span>
                 <span>Formato</span>
                 <span>Data</span>
-                <span>Etapa</span>
                 <span>Ação</span>
               </div>
               {areaProgramacao.map((p) => {
@@ -444,19 +444,19 @@ export function ProgramacaoView({
                 const bloqueado = b === 'ajuste';
                 const label = labelChip(p, b);
                 return (
-                  <div key={p.id} className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
-                    <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
-                      {tituloSeguro(p.titulo)}
-                    </Link>
-                    <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
-                    <span className="text-t2">{fmtDiaLongo(p.data)}</span>
+                  <div key={p.id} className="grid grid-cols-[1fr_1.5fr_0.8fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
                     <span
-                      className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                      className="max-w-full truncate justify-self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
                       style={{ background: cores.bg, color: cores.fg }}
                       title={label}
                     >
                       {label}
                     </span>
+                    <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
+                      {tituloSeguro(p.titulo)}
+                    </Link>
+                    <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
+                    <span className="text-t2">{fmtDiaLongo(p.data)}</span>
                     {bloqueado ? (
                       <button
                         type="button"
@@ -496,30 +496,30 @@ export function ProgramacaoView({
               Posts do mês que ainda estão sendo produzidos (briefing, copy, curadoria, arte ou aprovação em andamento). Aparecem aqui até a arte ser aprovada e caírem em <b className="text-t2">Prontos para programar</b>.
             </p>
             <div className="card divide-y divide-[rgba(21,21,33,0.06)] p-0">
-              <div className="grid grid-cols-[1.6fr_1fr_1fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+              <div className="grid grid-cols-[1fr_1.6fr_1fr_1fr] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+                <span>Etapa</span>
                 <span>Post</span>
                 <span>Formato</span>
                 <span>Data</span>
-                <span>Etapa</span>
               </div>
               {cats.outro.map((p) => {
                 const b = balde(p);
                 const cores = coresChip(p, b);
                 const label = labelChip(p, b);
                 return (
-                <div key={p.id} className="grid grid-cols-[1.6fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
-                  <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
-                    {tituloSeguro(p.titulo)}
-                  </Link>
-                  <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
-                  <span className="text-t2">{fmtDiaLongo(p.data)}</span>
+                <div key={p.id} className="grid grid-cols-[1fr_1.6fr_1fr_1fr] items-center gap-3 px-4 py-3 text-[13px]">
                   <span
-                    className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                    className="max-w-full truncate justify-self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
                     style={{ background: cores.bg, color: cores.fg }}
                     title={label}
                   >
                     {label}
                   </span>
+                  <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
+                    {tituloSeguro(p.titulo)}
+                  </Link>
+                  <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
+                  <span className="text-t2">{fmtDiaLongo(p.data)}</span>
                 </div>
                 );
               })}
