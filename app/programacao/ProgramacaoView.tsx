@@ -304,15 +304,19 @@ export function ProgramacaoView({
                                 type="button"
                                 key={p.id}
                                 onClick={() => setPostAberto(p)}
-                                className="block w-full rounded-md px-1.5 py-1 text-left transition hover:opacity-80"
-                                style={{ background: info.bg, color: info.fg }}
-                                title={tituloSeguro(p.titulo)}
+                                className="block w-full rounded-md border-l-[3px] px-1.5 py-1 text-left transition hover:opacity-80"
+                                style={{
+                                  background: info.bg,
+                                  color: info.fg,
+                                  borderLeftColor: info.fg,
+                                }}
+                                title={`${tituloSeguro(p.titulo)} · ${info.label}`}
                               >
                                 <span className="block truncate text-[10px] font-medium leading-tight">
                                   {tituloSeguro(p.titulo)}
                                 </span>
-                                <span className="mt-0.5 block text-[8.5px] font-semibold uppercase tracking-[0.05em] opacity-70">
-                                  {FORMATO_LABELS[p.tipo] ?? 'Post'}
+                                <span className="mt-0.5 block truncate text-[8.5px] font-semibold uppercase tracking-[0.05em] opacity-80">
+                                  {info.label} · {FORMATO_LABELS[p.tipo] ?? 'Post'}
                                 </span>
                               </button>
                             );
