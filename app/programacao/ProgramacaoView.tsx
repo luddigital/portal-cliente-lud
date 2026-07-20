@@ -76,7 +76,7 @@ export function ProgramacaoView({
 }) {
   const router = useRouter();
   const [postAberto, setPostAberto] = useState<PostCalendario | null>(null);
-  const [filtroFmt, setFiltroFmt] = useState<'todos' | 'post' | 'reels' | 'story'>('todos');
+  const [mostrarComoProgramar, setMostrarComoProgramar] = useState(false);
 
   // Buckets
   const cats = useMemo(() => {
@@ -97,10 +97,11 @@ export function ProgramacaoView({
   const prontosCount = cats.pronto.length;
   const encaminhados = publicadosCount + programadosCount + prontosCount;
 
-  const prontosFiltrados = useMemo(() => {
-    if (filtroFmt === 'todos') return cats.pronto;
-    return cats.pronto.filter((p) => p.tipo === filtroFmt);
-  }, [cats.pronto, filtroFmt]);
+  // Área de programação = prontos + em ajuste (bloqueados). Sem filtros.
+  const areaProgramacao = useMemo(
+    () => [...cats.pronto, ...cats.ajuste].sort((a, b) => (a.data > b.data ? 1 : -1)),
+    [cats.pronto, cats.ajuste],
+  );
 
   const projetoNome = projetos.find((p) => p.id === projetoIdSelecionado)?.nome ?? 'Projeto';
 
@@ -342,62 +343,71 @@ export function ProgramacaoView({
           </div>
         </section>
 
-        {/* ============ SEÇÃO 2: PRONTOS ============ */}
+        {/* ============ ÁREA DE PROGRAMAÇÃO ============ */}
         <section>
-          <div className="mb-1 flex items-baseline gap-2">
-            <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
-              Prontos para programar
-            </h2>
-            <span className="rounded-full bg-[var(--cal-aprovacao-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
-              Seção 2
-            </span>
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
+                Área de programação
+              </h2>
+              <span className="rounded-full bg-[var(--cal-aprovacao-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
+                Seção 2
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMostrarComoProgramar(true)}
+              className="rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-3 py-1 text-[11px] font-medium text-t2 transition hover:text-ink"
+            >
+              ❓ Como programar
+            </button>
           </div>
           <p className="mb-4 max-w-prose text-[12px] leading-[1.55] text-t3">
-            Posts com arte aprovada aguardando agendamento. Botão <b className="text-t2">Programar</b> muda o status pra <b className="text-t2">Agendado</b> no Notion. Cards em ajuste ficam bloqueados.
+            Posts com arte aprovada aguardando agendamento. Clique em <b className="text-t2">Programar</b> pra abrir a página de configuração (horário, plataformas, legenda). Cards em ajuste ficam bloqueados.
           </p>
 
-          {/* Filtros */}
-          <div className="mb-4 flex flex-wrap gap-2">
-            <Filtro ativo={filtroFmt === 'todos'} onClick={() => setFiltroFmt('todos')}>
-              Todos ({cats.pronto.length})
-            </Filtro>
-            <Filtro ativo={filtroFmt === 'reels'} onClick={() => setFiltroFmt('reels')}>
-              Reels ({cats.pronto.filter((p) => p.tipo === 'reels').length})
-            </Filtro>
-            <Filtro ativo={filtroFmt === 'post'} onClick={() => setFiltroFmt('post')}>
-              Carrossel ({cats.pronto.filter((p) => p.tipo === 'post').length})
-            </Filtro>
-            <Filtro ativo={filtroFmt === 'story'} onClick={() => setFiltroFmt('story')}>
-              Stories ({cats.pronto.filter((p) => p.tipo === 'story').length})
-            </Filtro>
-          </div>
-
-          {/* Cards + ajustes juntos (ajuste aparece como card bloqueado) */}
-          {prontosFiltrados.length === 0 && cats.ajuste.length === 0 ? (
+          {areaProgramacao.length === 0 ? (
             <div className="card p-6 text-center text-[13px] text-t3">
-              Nenhum post aguardando programação nesse filtro.
+              Nenhum post pronto pra programar neste mês.
             </div>
           ) : (
-            <div className="space-y-3">
-              {prontosFiltrados.map((p) => (
-                <PostCard
-                  key={p.id}
-                  post={p}
-                  thumbnailFileId={thumbnails[p.id] ?? null}
-                  legenda={legendas[p.id] ?? null}
-                  bucket="pronto"
-                  onProgramar={() => setPostAberto(p)}
-                />
-              ))}
-              {filtroFmt === 'todos' && cats.ajuste.map((p) => (
-                <PostCard
-                  key={p.id}
-                  post={p}
-                  thumbnailFileId={thumbnails[p.id] ?? null}
-                  legenda={legendas[p.id] ?? null}
-                  bucket="ajuste"
-                />
-              ))}
+            <div className="card divide-y divide-[rgba(21,21,33,0.06)] p-0">
+              <div className="grid grid-cols-[1.6fr_1fr_1fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+                <span>Post</span>
+                <span>Formato</span>
+                <span>Data</span>
+                <span>Ação</span>
+              </div>
+              {areaProgramacao.map((p) => {
+                const b = balde(p);
+                const info = BUCKET_INFO[b];
+                const bloqueado = b === 'ajuste';
+                return (
+                  <div key={p.id} className="grid grid-cols-[1.6fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
+                    <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
+                      {tituloSeguro(p.titulo)}
+                    </Link>
+                    <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
+                    <span className="text-t2">{fmtDiaLongo(p.data)}</span>
+                    {bloqueado ? (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                        style={{ background: info.bg, color: info.fg }}
+                        title="Post em alteração — não dá pra programar até resolver"
+                      >
+                        Ajuste pendente
+                      </span>
+                    ) : (
+                      <Link
+                        href={`/programacao/${p.id}`}
+                        className="rounded-full bg-[var(--cal-aprovacao)] px-3 py-1 text-[11px] font-semibold text-white transition hover:opacity-90"
+                      >
+                        📅 Programar →
+                      </Link>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
@@ -442,70 +452,42 @@ export function ProgramacaoView({
           </section>
         )}
 
-        {/* ============ SEÇÃO 3: COMO PROGRAMAR ============ */}
-        <section>
+        {/* ============ PROGRAMADOS (visual cinza — já foi) ============ */}
+        <section className="opacity-75 transition hover:opacity-100">
           <div className="mb-1 flex items-baseline gap-2">
-            <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
-              Como programar um post
-            </h2>
-            <span className="rounded-full bg-[var(--cal-aprovacao-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
-              Seção 3
+            <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-t2">Programados</h2>
+            <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-t3">
+              histórico
             </span>
           </div>
-          <p className="mb-4 max-w-prose text-[12px] leading-[1.55] text-t3">
-            Passo a passo padrão da Lud. — sempre visível pra quem está aprendendo o processo ou cobrindo alguém.
+          <p className="mb-3 max-w-prose text-[11px] leading-[1.55] text-t3">
+            Já agendados, esperando a data chegar.
           </p>
-          <div className="card p-5">
-            <ol className="space-y-3">
-              {[
-                <><b className="text-ink">Confirme o status Aprovado.</b> Só programe posts com arte e copy aprovadas pelo cliente. Cards em ajuste ficam bloqueados.</>,
-                <><b className="text-ink">Confira data e horário</b> previstos no calendário do mês. Se precisar mudar, ajuste aqui e registre o motivo.</>,
-                <><b className="text-ink">Revise a copy final</b> — legenda sem travessão, CTA no fim e de 5 a 12 hashtags.</>,
-                <><b className="text-ink">Selecione o canal e formato</b> — Feed, Reels ou Stories. Confirme se a arte está no tamanho certo.</>,
-                <><b className="text-ink">Anexe arte + copy aprovadas.</b> O sistema puxa direto do material curado, sem copy-paste manual.</>,
-                <><b className="text-ink">Defina data e horário</b> de publicação e confirme. O status muda pra <span style={{ color: 'var(--cal-agendado)' }} className="font-semibold">Programado</span>.</>,
-                <><b className="text-ink">No dia, verifique a publicação.</b> Foi ao ar? Marque como <span style={{ color: 'var(--prazo-em-dia)' }} className="font-semibold">Publicado</span> e feche o ciclo.</>,
-              ].map((li, i) => (
-                <li key={i} className="flex items-start gap-3 border-b border-dashed border-[rgba(21,21,33,0.06)] pb-3 text-[13px] leading-[1.55] text-t2 last:border-b-0 last:pb-0">
-                  <span
-                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                    style={{ background: 'var(--cal-aprovacao-soft)', color: 'var(--cal-aprovacao)' }}
-                  >
-                    {i + 1}
-                  </span>
-                  <span>{li}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
+          <PostTabelaCinza
+            posts={cats.programado}
+            vazioLabel="Nenhum post agendado neste mês."
+            acaoLabel="Reprogramar"
+            onAcao={(p) => setPostAberto(p)}
+          />
         </section>
 
-        {/* ============ SEÇÃO 4: PROGRAMADOS ============ */}
-        <section>
+        {/* ============ PUBLICADOS (visual cinza — já foi) ============ */}
+        <section className="opacity-75 transition hover:opacity-100">
           <div className="mb-1 flex items-baseline gap-2">
-            <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">Programados</h2>
-            <span className="rounded-full bg-[var(--cal-aprovacao-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
-              Seção 4
+            <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-t2">Publicados</h2>
+            <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-t3">
+              já foi
             </span>
           </div>
-          <p className="mb-4 max-w-prose text-[12px] leading-[1.55] text-t3">
-            Já agendados, esperando a data chegar. Confere de relance o que vai ao ar e quando.
+          <p className="mb-3 max-w-prose text-[11px] leading-[1.55] text-t3">
+            Fechou o ciclo — alimenta a próxima <b className="text-t2">Análise de Resultados</b>.
           </p>
-          <PostTabela posts={cats.programado} vazioLabel="Nenhum post agendado neste mês." acaoLabel="Reprogramar" onAcao={(p) => setPostAberto(p)} />
-        </section>
-
-        {/* ============ SEÇÃO 5: PUBLICADOS ============ */}
-        <section>
-          <div className="mb-1 flex items-baseline gap-2">
-            <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">Publicados</h2>
-            <span className="rounded-full bg-[var(--cal-aprovacao-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
-              Seção 5
-            </span>
-          </div>
-          <p className="mb-4 max-w-prose text-[12px] leading-[1.55] text-t3">
-            O que já foi ao ar no mês. Fecha o ciclo da programação e alimenta a próxima <b className="text-t2">Análise de Resultados</b>.
-          </p>
-          <PostTabela posts={cats.publicado} vazioLabel="Nenhum post publicado neste mês ainda." acaoLabel="Abrir" onAcao={(p) => setPostAberto(p)} />
+          <PostTabelaCinza
+            posts={cats.publicado}
+            vazioLabel="Nenhum post publicado neste mês ainda."
+            acaoLabel="Abrir"
+            onAcao={(p) => setPostAberto(p)}
+          />
 
           {cats.publicado.length > 0 && encaminhados === total && total > 0 && (
             <div
@@ -526,6 +508,71 @@ export function ProgramacaoView({
           onProgramado={() => { setPostAberto(null); router.refresh(); }}
         />
       )}
+
+      {mostrarComoProgramar && (
+        <ComoProgramarModal onClose={() => setMostrarComoProgramar(false)} />
+      )}
+    </div>
+  );
+}
+
+function ComoProgramarModal({ onClose }: { onClose: () => void }) {
+  const passos: React.ReactNode[] = [
+    <><b className="text-ink">Confirme o status Aprovado.</b> Só programe posts com arte e copy aprovadas pelo cliente. Cards em ajuste ficam bloqueados.</>,
+    <><b className="text-ink">Confira data e horário</b> previstos no calendário do mês. Se precisar mudar, ajuste na página de programação e registre o motivo.</>,
+    <><b className="text-ink">Revise a copy final</b> — legenda sem travessão, CTA no fim e de 5 a 12 hashtags.</>,
+    <><b className="text-ink">Selecione o canal e formato</b> — Feed, Reels ou Stories. Confirme se a arte está no tamanho certo.</>,
+    <><b className="text-ink">Anexe arte + copy aprovadas.</b> O sistema puxa direto do material curado, sem copy-paste manual.</>,
+    <><b className="text-ink">Defina horário</b> e confirme. O status muda pra <span style={{ color: 'var(--cal-agendado)' }} className="font-semibold">Programado</span>.</>,
+    <><b className="text-ink">No dia, verifique a publicação.</b> Foi ao ar? Marque como <span style={{ color: 'var(--prazo-em-dia)' }} className="font-semibold">Publicado</span> e feche o ciclo.</>,
+  ];
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[rgba(21,21,33,0.06)] px-5 py-4">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+              Educação
+            </div>
+            <h3 className="text-[16px] font-semibold text-ink">Como programar um post</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-t3 transition hover:bg-bgSoft hover:text-ink"
+            aria-label="Fechar"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto p-5">
+          <p className="mb-4 text-[12px] text-t3">
+            Passo a passo padrão da Lud. — use quando estiver aprendendo ou cobrindo alguém.
+          </p>
+          <ol className="space-y-3">
+            {passos.map((li, i) => (
+              <li
+                key={i}
+                className="flex items-start gap-3 border-b border-dashed border-[rgba(21,21,33,0.06)] pb-3 text-[13px] leading-[1.55] text-t2 last:border-b-0 last:pb-0"
+              >
+                <span
+                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                  style={{ background: 'var(--cal-aprovacao-soft)', color: 'var(--cal-aprovacao)' }}
+                >
+                  {i + 1}
+                </span>
+                <span>{li}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
     </div>
   );
 }
@@ -711,6 +758,54 @@ function PostTabela({
             className="text-[12px] font-semibold text-[var(--cal-aprovacao)] transition hover:opacity-80"
           >
             {acaoLabel} →
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Versão cinza/apagada da PostTabela — pra Programados e Publicados
+ *  (indicam "já foi"). Menor destaque visual que a área ativa em cima. */
+function PostTabelaCinza({
+  posts,
+  vazioLabel,
+  acaoLabel,
+  onAcao,
+}: {
+  posts: PostCalendario[];
+  vazioLabel: string;
+  acaoLabel: string;
+  onAcao: (p: PostCalendario) => void;
+}) {
+  if (posts.length === 0) {
+    return (
+      <div className="rounded-2xl border border-[rgba(21,21,33,0.06)] bg-bgSoft/30 p-5 text-center text-[12px] text-t3">
+        {vazioLabel}
+      </div>
+    );
+  }
+  return (
+    <div className="divide-y divide-[rgba(21,21,33,0.04)] rounded-2xl border border-[rgba(21,21,33,0.06)] bg-bgSoft/30 p-0">
+      <div className="grid grid-cols-[1.6fr_1fr_1fr_auto] gap-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+        <span>Post</span>
+        <span>Formato</span>
+        <span>Data</span>
+        <span></span>
+      </div>
+      {posts.map((p) => (
+        <div key={p.id} className="grid grid-cols-[1.6fr_1fr_1fr_auto] items-center gap-3 px-4 py-2.5 text-[12.5px]">
+          <Link href={`/post/${p.id}`} className="min-w-0 truncate text-t2 hover:text-ink">
+            {tituloSeguro(p.titulo)}
+          </Link>
+          <span className="text-t3">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
+          <span className="text-t3">{fmtDiaLongo(p.data)}</span>
+          <button
+            type="button"
+            onClick={() => onAcao(p)}
+            className="text-[11px] font-medium text-t3 transition hover:text-ink"
+          >
+            {acaoLabel}
           </button>
         </div>
       ))}

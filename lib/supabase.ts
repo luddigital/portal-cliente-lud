@@ -368,6 +368,71 @@ export async function salvarObjetivosSemana(
   if (error) throw new Error(`Supabase: ${error.message}`);
 }
 
+// ============================================================================
+// Config de programação por post — horário + plataformas + formato + legenda
+// ============================================================================
+
+export type ProgramacaoConfig = {
+  horario: string;
+  plataformas: string[];
+  formato: string;
+  legenda: string;
+  atualizadoEm: string | null;
+  atualizadoPor: string | null;
+};
+
+const CONFIG_VAZIA: ProgramacaoConfig = {
+  horario: '',
+  plataformas: [],
+  formato: '',
+  legenda: '',
+  atualizadoEm: null,
+  atualizadoPor: null,
+};
+
+export async function lerConfigProgramacao(postId: string): Promise<ProgramacaoConfig> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('programacao_config')
+      .select('horario, plataformas, formato, legenda, atualizado_em, atualizado_por')
+      .eq('post_id', postId)
+      .maybeSingle();
+    if (error || !data) return CONFIG_VAZIA;
+    return {
+      horario: data.horario ?? '',
+      plataformas: Array.isArray(data.plataformas) ? data.plataformas : [],
+      formato: data.formato ?? '',
+      legenda: data.legenda ?? '',
+      atualizadoEm: data.atualizado_em ?? null,
+      atualizadoPor: data.atualizado_por ?? null,
+    };
+  } catch {
+    return CONFIG_VAZIA;
+  }
+}
+
+export async function salvarConfigProgramacao(
+  postId: string,
+  config: { horario: string; plataformas: string[]; formato: string; legenda: string },
+  emailAutor: string,
+): Promise<void> {
+  const sb = await supabaseAdmin();
+  const { error } = await sb.from('programacao_config').upsert(
+    {
+      post_id: postId,
+      horario: config.horario,
+      plataformas: config.plataformas,
+      formato: config.formato,
+      legenda: config.legenda,
+      atualizado_em: new Date().toISOString(),
+      atualizado_por: emailAutor,
+    },
+    { onConflict: 'post_id' },
+  );
+  if (error) throw new Error(`Supabase: ${error.message}`);
+}
+
 export async function limparRascunhoAprovacao(
   tarefaId: string,
   email: string,
