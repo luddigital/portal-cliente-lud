@@ -296,7 +296,7 @@ export function ProgramacaoView({
                           {dia}
                           {ehHoje && <span className="ml-1 text-[9px] font-bold uppercase">hoje</span>}
                         </div>
-                        <div className="space-y-0.5">
+                        <div className="space-y-1">
                           {doDia.slice(0, 3).map((p) => {
                             const info = BUCKET_INFO[balde(p)];
                             return (
@@ -304,11 +304,16 @@ export function ProgramacaoView({
                                 type="button"
                                 key={p.id}
                                 onClick={() => setPostAberto(p)}
-                                className="block w-full truncate rounded-md px-1 py-0.5 text-left text-[9.5px] font-medium leading-tight transition hover:opacity-80"
+                                className="block w-full rounded-md px-1.5 py-1 text-left transition hover:opacity-80"
                                 style={{ background: info.bg, color: info.fg }}
                                 title={tituloSeguro(p.titulo)}
                               >
-                                {tituloSeguro(p.titulo)}
+                                <span className="block truncate text-[10px] font-medium leading-tight">
+                                  {tituloSeguro(p.titulo)}
+                                </span>
+                                <span className="mt-0.5 block text-[8.5px] font-semibold uppercase tracking-[0.05em] opacity-70">
+                                  {FORMATO_LABELS[p.tipo] ?? 'Post'}
+                                </span>
                               </button>
                             );
                           })}
