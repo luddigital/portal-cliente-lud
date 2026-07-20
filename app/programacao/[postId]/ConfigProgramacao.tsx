@@ -281,7 +281,7 @@ export function ConfigProgramacao({
                   ? '✓ Programado'
                   : loading === 'confirmar'
                     ? 'Confirmando…'
-                    : '📅 Confirmar programação'}
+                    : 'Confirmar programação'}
               </button>
               <button
                 type="button"
@@ -293,7 +293,7 @@ export function ConfigProgramacao({
                   ? '✓ Salvo'
                   : loading === 'rascunho'
                     ? 'Salvando…'
-                    : '📝 Deixar em rascunho'}
+                    : 'Deixar em rascunho'}
               </button>
             </div>
             <p className="text-[11px] text-t3">

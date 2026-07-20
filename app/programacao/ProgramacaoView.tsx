@@ -39,6 +39,24 @@ function labelChip(p: PostCalendario, bucket: Bucket): string {
   return BUCKET_INFO[bucket].label;
 }
 
+/** Cor específica por Status Geral do Notion. Diferentes estágios ganham
+ *  cores distintas mesmo caindo no mesmo balde (ex: "Postado" e "Conferir
+ *  Postagem" caem em publicado, mas visualmente se distinguem). Fallback:
+ *  cor do balde. */
+function coresChip(p: PostCalendario, bucket: Bucket): { bg: string; fg: string } {
+  const sg = (p.statusGeral ?? '').trim().toLowerCase();
+  if (sg.includes('postado')) return { bg: 'var(--prazo-em-dia-soft)', fg: 'var(--prazo-em-dia)' };
+  if (sg.includes('conferir postagem')) return { bg: 'var(--cal-agendado-soft)', fg: 'var(--cal-agendado)' };
+  if (sg === 'programar') return { bg: 'var(--prazo-chegando-soft)', fg: 'var(--prazo-chegando)' };
+  if (sg.includes('aprova')) return { bg: 'var(--cal-aprovacao-soft)', fg: 'var(--cal-aprovacao)' };
+  if (sg.includes('altera')) return { bg: 'var(--prazo-atrasado-soft)', fg: 'var(--prazo-atrasado)' };
+  if (sg.includes('arte')) return { bg: '#EFE9F5', fg: '#7A5AA6' };
+  if (sg.includes('copy') || sg.includes('briefing')) return { bg: '#E7ECF3', fg: '#4A6280' };
+  if (sg.includes('curador')) return { bg: '#F5EEE1', fg: '#8A6E3E' };
+  if (sg.includes('material') || sg.includes('info')) return { bg: '#EEEEEE', fg: '#5A5A5A' };
+  return BUCKET_INFO[bucket];
+}
+
 /** Classifica o post em um dos 5 baldes visíveis na página. */
 function balde(p: PostCalendario): Bucket {
   if (p.cor === 'publicado') return 'publicado';
@@ -315,7 +333,7 @@ export function ProgramacaoView({
                         <div className="space-y-1">
                           {doDia.slice(0, 3).map((p) => {
                             const b = balde(p);
-                            const info = BUCKET_INFO[b];
+                            const cores = coresChip(p, b);
                             const label = labelChip(p, b);
                             return (
                               <button
@@ -323,7 +341,7 @@ export function ProgramacaoView({
                                 key={p.id}
                                 onClick={() => setPostAberto(p)}
                                 className="block w-full rounded-md px-1.5 py-1 text-left transition hover:opacity-80"
-                                style={{ background: info.bg, color: info.fg }}
+                                style={{ background: cores.bg, color: cores.fg }}
                                 title={`${tituloSeguro(p.titulo)} · ${label}`}
                               >
                                 <span className="block truncate text-[10px] font-medium leading-tight">
@@ -331,7 +349,7 @@ export function ProgramacaoView({
                                 </span>
                                 <span
                                   className="mt-1 inline-block max-w-full truncate rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase tracking-[0.06em] text-white"
-                                  style={{ background: info.fg }}
+                                  style={{ background: cores.fg }}
                                 >
                                   {label}
                                 </span>
@@ -376,7 +394,7 @@ export function ProgramacaoView({
               onClick={() => setMostrarComoProgramar(true)}
               className="rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-3 py-1 text-[11px] font-medium text-t2 transition hover:text-ink"
             >
-              ❓ Como programar
+              Como programar
             </button>
           </div>
           <p className="mb-4 max-w-prose text-[12px] leading-[1.55] text-t3">
@@ -398,7 +416,7 @@ export function ProgramacaoView({
               </div>
               {areaProgramacao.map((p) => {
                 const b = balde(p);
-                const info = BUCKET_INFO[b];
+                const cores = coresChip(p, b);
                 const bloqueado = b === 'ajuste';
                 const label = labelChip(p, b);
                 return (
@@ -410,7 +428,7 @@ export function ProgramacaoView({
                     <span className="text-t2">{fmtDiaLongo(p.data)}</span>
                     <span
                       className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
-                      style={{ background: info.bg, color: info.fg }}
+                      style={{ background: cores.bg, color: cores.fg }}
                       title={label}
                     >
                       {label}
@@ -429,7 +447,7 @@ export function ProgramacaoView({
                         href={`/programacao/${p.id}`}
                         className="rounded-full bg-[var(--cal-aprovacao)] px-3 py-1 text-[11px] font-semibold text-white transition hover:opacity-90"
                       >
-                        📅 Programar →
+                        Programar →
                       </Link>
                     )}
                   </div>
@@ -462,7 +480,7 @@ export function ProgramacaoView({
               </div>
               {cats.outro.map((p) => {
                 const b = balde(p);
-                const info = BUCKET_INFO[b];
+                const cores = coresChip(p, b);
                 const label = labelChip(p, b);
                 return (
                 <div key={p.id} className="grid grid-cols-[1.6fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
@@ -473,7 +491,7 @@ export function ProgramacaoView({
                   <span className="text-t2">{fmtDiaLongo(p.data)}</span>
                   <span
                     className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
-                    style={{ background: info.bg, color: info.fg }}
+                    style={{ background: cores.bg, color: cores.fg }}
                     title={label}
                   >
                     {label}
@@ -694,9 +712,9 @@ function PostCard({
           {tituloSeguro(post.titulo)}
         </h3>
         <div className="mt-1.5 flex flex-wrap gap-3 text-[11px] text-t3">
-          <span>📅 <b className="text-t2">{fmtDiaLongo(post.data)}</b></span>
-          {post.projetoNome && <span>🎯 {post.projetoNome}</span>}
-          {post.etapaLabel && <span>🔧 {post.etapaLabel}</span>}
+          <span><b className="text-t2">{fmtDiaLongo(post.data)}</b></span>
+          {post.projetoNome && <span>{post.projetoNome}</span>}
+          {post.etapaLabel && <span>{post.etapaLabel}</span>}
         </div>
         {legendaResumida && (
           <div className="mt-2 rounded-lg bg-bgSoft/60 px-3 py-2">
@@ -870,7 +888,7 @@ function PostModal({
     if (bucket === 'publicado') return { label: '↻ Reagendar', ativo: true };
     if (bucket === 'programado') return { label: '↻ Reprogramar', ativo: true };
     if (bucket === 'ajuste') return { label: 'Em alteração', ativo: false };
-    return { label: '📅 Programar', ativo: true };
+    return { label: 'Programar', ativo: true };
   })();
 
   return (
