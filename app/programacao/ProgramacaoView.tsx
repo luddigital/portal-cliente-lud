@@ -312,7 +312,7 @@ export function ProgramacaoView({
                                   {tituloSeguro(p.titulo)}
                                 </span>
                                 <span
-                                  className="mt-1 inline-block rounded-sm px-1 py-[1px] text-[8px] font-bold uppercase tracking-[0.06em] text-white"
+                                  className="mt-1 inline-block rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase tracking-[0.06em] text-white"
                                   style={{ background: info.fg }}
                                 >
                                   {info.label}
