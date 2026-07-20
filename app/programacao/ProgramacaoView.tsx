@@ -19,7 +19,7 @@ const BUCKET_INFO: Record<Bucket, { label: string; bg: string; fg: string }> = {
   programado:{ label: 'Programado',              bg: 'var(--cal-agendado-soft)',   fg: 'var(--cal-agendado)'   },
   publicado: { label: 'Publicado',               bg: 'var(--prazo-em-dia-soft)',   fg: 'var(--prazo-em-dia)'   },
   ajuste:    { label: 'Ajuste pendente',         bg: 'var(--prazo-atrasado-soft)', fg: 'var(--prazo-atrasado)' },
-  outro:     { label: 'Em produção',             bg: 'var(--bgSoft)',              fg: 'var(--t2)'             },
+  outro:     { label: 'Em produção',             bg: 'var(--prazo-hoje-soft)',     fg: 'var(--prazo-hoje)'     },
 };
 
 const FORMATO_LABELS: Record<PostCalendario['tipo'], string> = {
@@ -334,7 +334,7 @@ export function ProgramacaoView({
               <LegendaSwatch cor="var(--cal-agendado)" label="Programado" />
               <LegendaSwatch cor="var(--prazo-chegando)" label="Aguardando" />
               <LegendaSwatch cor="var(--prazo-atrasado)" label="Ajuste" />
-              <LegendaSwatch cor="var(--t3)" label="Em produção" />
+              <LegendaSwatch cor="var(--prazo-hoje)" label="Em produção" />
             </div>
           </div>
         </section>
