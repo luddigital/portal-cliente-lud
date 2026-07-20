@@ -368,12 +368,17 @@ export function ProgramacaoView({
                 );
               })}
             </div>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-t2">
-              <LegendaSwatch cor="var(--prazo-em-dia)" label="Publicado" />
-              <LegendaSwatch cor="var(--cal-agendado)" label="Programado" />
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-t2">
+              <LegendaSwatch cor="var(--prazo-em-dia)" label="Postado" />
+              <LegendaSwatch cor="var(--cal-agendado)" label="Conferir Postagem" />
               <LegendaSwatch cor="var(--prazo-chegando)" label="Programar" />
-              <LegendaSwatch cor="var(--prazo-atrasado)" label="Ajuste" />
-              <LegendaSwatch cor="var(--prazo-hoje)" label="Em produção" />
+              <LegendaSwatch cor="var(--cal-aprovacao)" label="Em Aprovação" />
+              <LegendaSwatch cor="var(--prazo-atrasado)" label="Em Alteração" />
+              <LegendaSwatch cor="#7A5AA6" label="Arte" />
+              <LegendaSwatch cor="#4A6280" label="Copy / Briefing" />
+              <LegendaSwatch cor="#8A6E3E" label="Curadoria" />
+              <LegendaSwatch cor="#5A5A5A" label="Material / Info" />
+              <LegendaSwatch cor="var(--prazo-hoje)" label="Em produção (outros)" />
             </div>
           </div>
         </section>

@@ -8,16 +8,16 @@ import type { ProgramacaoConfig } from '@/lib/supabase';
 type Plataforma = {
   id: string;
   nome: string;
-  emoji: string;
+  sigla: string;
   disponivel: boolean;
 };
 
 const PLATAFORMAS: Plataforma[] = [
-  { id: 'instagram', nome: 'Instagram', emoji: '📷', disponivel: true },
-  { id: 'facebook',  nome: 'Facebook',  emoji: '👥', disponivel: true },
-  { id: 'tiktok',    nome: 'TikTok',    emoji: '🎵', disponivel: false },
-  { id: 'youtube',   nome: 'YouTube Shorts', emoji: '▶',  disponivel: false },
-  { id: 'threads',   nome: 'Threads',   emoji: '🧵', disponivel: false },
+  { id: 'instagram', nome: 'Instagram',       sigla: 'IG', disponivel: true },
+  { id: 'facebook',  nome: 'Facebook',        sigla: 'FB', disponivel: true },
+  { id: 'tiktok',    nome: 'TikTok',          sigla: 'TT', disponivel: false },
+  { id: 'youtube',   nome: 'YouTube Shorts',  sigla: 'YT', disponivel: false },
+  { id: 'threads',   nome: 'Threads',         sigla: 'TH', disponivel: false },
 ];
 
 const FORMATOS: { id: string; nome: string }[] = [
@@ -219,13 +219,13 @@ export function ConfigProgramacao({
                       }`}
                     >
                       <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[16px]"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold tracking-[0.06em]"
                         style={{
                           background: ativo && p.disponivel ? 'var(--cal-aprovacao)' : 'var(--bgSoft)',
                           color: ativo && p.disponivel ? '#fff' : 'var(--t2)',
                         }}
                       >
-                        {p.emoji}
+                        {p.sigla}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-[13px] font-semibold text-ink">
