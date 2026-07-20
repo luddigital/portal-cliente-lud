@@ -1870,14 +1870,22 @@ async function listPostsDoMesUncached(
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
   } while (cursor);
 
-  // Busca a tarefa atual ativa de cada post, em batch
-  const idsParaBuscarEtapa = out
-    .filter((p) => p.status !== 'Postado')
-    .map((p) => p.id);
+  // "Publicado" na visão do usuário = Status raw = Postado OU a fórmula
+  // Status Geral considera concluído ('Postado' ou 'Conferir Postagem'). A
+  // fórmula é o que aparece na tag verde do calendário do Notion — precisa
+  // bater com o portal.
+  function ehPublicado(p: PostCalendario): boolean {
+    if (p.status === 'Postado') return true;
+    const sg = (p.statusGeral ?? '').trim();
+    return sg === 'Postado' || sg === 'Conferir Postagem';
+  }
+
+  // Busca a tarefa atual ativa de cada post, em batch — só pros não-publicados
+  const idsParaBuscarEtapa = out.filter((p) => !ehPublicado(p)).map((p) => p.id);
   const etapaPorPost = await getEtapaAtualPorPost(idsParaBuscarEtapa);
 
   for (const p of out) {
-    if (p.status === 'Postado') {
+    if (ehPublicado(p)) {
       p.etapa = 'publicado';
       p.tarefaAtualTitulo = null;
     } else {
