@@ -817,38 +817,26 @@ function PostModal({
   post,
   thumbnailFileId,
   onClose,
-  onProgramado,
 }: {
   post: PostCalendario;
   thumbnailFileId: string | null;
   onClose: () => void;
   onProgramado: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [feito, setFeito] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
   const bucket = balde(post);
   const info = BUCKET_INFO[bucket];
 
-  async function programar() {
-    setLoading(true);
-    setErro(null);
-    try {
-      const r = await fetch('/api/programar/post', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ postId: post.id, status: 'Agendado' }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
-      setFeito(true);
-      setTimeout(onProgramado, 900);
-    } catch (e: any) {
-      setErro(e?.message ?? 'erro');
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Label do botão conforme estado:
+  // - publicado    → Reagendar (mudar data/hora de algo que já foi)
+  // - programado   → Reprogramar
+  // - pronto/outro → Programar
+  // - ajuste       → botão desabilitado
+  const acao = (() => {
+    if (bucket === 'publicado') return { label: '↻ Reagendar', ativo: true };
+    if (bucket === 'programado') return { label: '↻ Reprogramar', ativo: true };
+    if (bucket === 'ajuste') return { label: 'Em alteração', ativo: false };
+    return { label: '📅 Programar', ativo: true };
+  })();
 
   return (
     <div
@@ -885,21 +873,21 @@ function PostModal({
             </div>
           </div>
 
-          {erro && (
-            <p className="rounded-md bg-[var(--prazo-atrasado-soft)] px-3 py-2 text-[11px] text-[var(--prazo-atrasado)]">
-              ⚠️ {erro}
-            </p>
-          )}
-
           <div className="flex flex-wrap gap-2">
-            {bucket !== 'publicado' && (
-              <button
-                type="button"
-                onClick={programar}
-                disabled={loading || feito}
+            {acao.ativo ? (
+              <Link
+                href={`/programacao/${post.id}`}
                 className="btn-primary flex-1 justify-center whitespace-nowrap"
               >
-                {feito ? '✓ Programado' : loading ? 'Programando…' : bucket === 'programado' ? '↻ Reprogramar' : '📅 Programar'}
+                {acao.label}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="btn-primary flex-1 cursor-not-allowed justify-center whitespace-nowrap opacity-40"
+              >
+                {acao.label}
               </button>
             )}
             <Link
