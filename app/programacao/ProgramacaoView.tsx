@@ -28,6 +28,17 @@ const FORMATO_LABELS: Record<PostCalendario['tipo'], string> = {
   story: 'Stories',
 };
 
+/** Label específico pra chip/pill do post — reflete o Status Geral do
+ *  Notion (que aparece nos chips coloridos do calendário lá) ou a tarefa
+ *  atual como fallback. Mantém a cor do balde pra agrupar visualmente. */
+function labelChip(p: PostCalendario, bucket: Bucket): string {
+  const sg = (p.statusGeral ?? '').trim();
+  if (sg) return sg;
+  const t = (p.tarefaAtualTitulo ?? '').trim();
+  if (t) return t;
+  return BUCKET_INFO[bucket].label;
+}
+
 /** Classifica o post em um dos 5 baldes visíveis na página. */
 function balde(p: PostCalendario): Bucket {
   if (p.cor === 'publicado') return 'publicado';
@@ -303,7 +314,9 @@ export function ProgramacaoView({
                         </div>
                         <div className="space-y-1">
                           {doDia.slice(0, 3).map((p) => {
-                            const info = BUCKET_INFO[balde(p)];
+                            const b = balde(p);
+                            const info = BUCKET_INFO[b];
+                            const label = labelChip(p, b);
                             return (
                               <button
                                 type="button"
@@ -311,16 +324,16 @@ export function ProgramacaoView({
                                 onClick={() => setPostAberto(p)}
                                 className="block w-full rounded-md px-1.5 py-1 text-left transition hover:opacity-80"
                                 style={{ background: info.bg, color: info.fg }}
-                                title={`${tituloSeguro(p.titulo)} · ${info.label}`}
+                                title={`${tituloSeguro(p.titulo)} · ${label}`}
                               >
                                 <span className="block truncate text-[10px] font-medium leading-tight">
                                   {tituloSeguro(p.titulo)}
                                 </span>
                                 <span
-                                  className="mt-1 inline-block rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase tracking-[0.06em] text-white"
+                                  className="mt-1 inline-block max-w-full truncate rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase tracking-[0.06em] text-white"
                                   style={{ background: info.fg }}
                                 >
-                                  {info.label}
+                                  {label}
                                 </span>
                               </button>
                             );
@@ -376,31 +389,41 @@ export function ProgramacaoView({
             </div>
           ) : (
             <div className="card divide-y divide-[rgba(21,21,33,0.06)] p-0">
-              <div className="grid grid-cols-[1.6fr_1fr_1fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+              <div className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
                 <span>Post</span>
                 <span>Formato</span>
                 <span>Data</span>
+                <span>Etapa</span>
                 <span>Ação</span>
               </div>
               {areaProgramacao.map((p) => {
                 const b = balde(p);
                 const info = BUCKET_INFO[b];
                 const bloqueado = b === 'ajuste';
+                const label = labelChip(p, b);
                 return (
-                  <div key={p.id} className="grid grid-cols-[1.6fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
+                  <div key={p.id} className="grid grid-cols-[1.5fr_0.8fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
                     <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
                       {tituloSeguro(p.titulo)}
                     </Link>
                     <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
                     <span className="text-t2">{fmtDiaLongo(p.data)}</span>
+                    <span
+                      className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                      style={{ background: info.bg, color: info.fg }}
+                      title={label}
+                    >
+                      {label}
+                    </span>
                     {bloqueado ? (
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
-                        style={{ background: info.bg, color: info.fg }}
+                      <button
+                        type="button"
+                        disabled
+                        className="cursor-not-allowed rounded-full bg-bgSoft px-3 py-1 text-[11px] font-semibold text-t3"
                         title="Post em alteração — não dá pra programar até resolver"
                       >
-                        Ajuste pendente
-                      </span>
+                        Bloqueado
+                      </button>
                     ) : (
                       <Link
                         href={`/programacao/${p.id}`}
@@ -437,7 +460,11 @@ export function ProgramacaoView({
                 <span>Data</span>
                 <span>Etapa</span>
               </div>
-              {cats.outro.map((p) => (
+              {cats.outro.map((p) => {
+                const b = balde(p);
+                const info = BUCKET_INFO[b];
+                const label = labelChip(p, b);
+                return (
                 <div key={p.id} className="grid grid-cols-[1.6fr_1fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
                   <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
                     {tituloSeguro(p.titulo)}
@@ -445,13 +472,15 @@ export function ProgramacaoView({
                   <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
                   <span className="text-t2">{fmtDiaLongo(p.data)}</span>
                   <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
-                    style={{ background: 'var(--bgSoft)', color: 'var(--t2)' }}
+                    className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                    style={{ background: info.bg, color: info.fg }}
+                    title={label}
                   >
-                    {p.etapaLabel || p.tarefaAtualTitulo || 'Em produção'}
+                    {label}
                   </span>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
@@ -830,6 +859,8 @@ function PostModal({
   const bucket = balde(post);
   const info = BUCKET_INFO[bucket];
 
+  const chipLabel = labelChip(post, bucket);
+
   // Label do botão conforme estado:
   // - publicado    → Reagendar (mudar data/hora de algo que já foi)
   // - programado   → Reprogramar
@@ -856,7 +887,7 @@ function PostModal({
           <img src={`/api/drive/preview/${thumbnailFileId}`} alt="" className="h-48 w-full object-cover" />
         ) : (
           <div className="flex h-20 items-center justify-center" style={{ background: info.bg, color: info.fg }}>
-            <span className="text-[11px] font-bold uppercase tracking-[0.1em]">{info.label}</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.1em]">{chipLabel}</span>
           </div>
         )}
         <div className="space-y-4 p-5">
@@ -865,7 +896,7 @@ function PostModal({
               className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
               style={{ background: info.bg, color: info.fg }}
             >
-              {info.label}
+              {chipLabel}
             </span>
             <h3 className="mt-2 text-[16px] font-semibold leading-snug text-ink">
               {tituloSeguro(post.titulo)}
