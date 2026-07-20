@@ -28,13 +28,23 @@ const FORMATO_LABELS: Record<PostCalendario['tipo'], string> = {
   story: 'Stories',
 };
 
+/** Remove emojis, símbolos e espaços do começo/fim da string.
+ *  A fórmula Status Geral do Notion vem com prefixo tipo "✅ Postado" —
+ *  a gente quer só o texto. */
+function semEmoji(s: string): string {
+  return s
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{So}\p{Sk}️‍]+/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Label específico pra chip/pill do post — reflete o Status Geral do
  *  Notion (que aparece nos chips coloridos do calendário lá) ou a tarefa
  *  atual como fallback. Mantém a cor do balde pra agrupar visualmente. */
 function labelChip(p: PostCalendario, bucket: Bucket): string {
-  const sg = (p.statusGeral ?? '').trim();
+  const sg = semEmoji(p.statusGeral ?? '');
   if (sg) return sg;
-  const t = (p.tarefaAtualTitulo ?? '').trim();
+  const t = semEmoji(p.tarefaAtualTitulo ?? '');
   if (t) return t;
   return BUCKET_INFO[bucket].label;
 }
