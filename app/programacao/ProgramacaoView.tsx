@@ -15,7 +15,7 @@ const DIAS_SEMANA = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
 type Bucket = 'pronto' | 'programado' | 'publicado' | 'ajuste' | 'outro';
 
 const BUCKET_INFO: Record<Bucket, { label: string; bg: string; fg: string }> = {
-  pronto:    { label: 'Aguardando programação', bg: 'var(--prazo-chegando-soft)', fg: 'var(--prazo-chegando)' },
+  pronto:    { label: 'Programar',               bg: 'var(--prazo-chegando-soft)', fg: 'var(--prazo-chegando)' },
   programado:{ label: 'Programado',              bg: 'var(--cal-agendado-soft)',   fg: 'var(--cal-agendado)'   },
   publicado: { label: 'Publicado',               bg: 'var(--prazo-em-dia-soft)',   fg: 'var(--prazo-em-dia)'   },
   ajuste:    { label: 'Ajuste pendente',         bg: 'var(--prazo-atrasado-soft)', fg: 'var(--prazo-atrasado)' },
@@ -33,8 +33,12 @@ function balde(p: PostCalendario): Bucket {
   if (p.cor === 'publicado') return 'publicado';
   if (p.cor === 'agendado') return 'programado';
   if (p.cor === 'alteracao') return 'ajuste';
+  // "Programar" — vem do Status Geral (fórmula Notion) OU da tarefa atual
+  // com "programar" no título. Reflete o estado "arte aprovada, aguardando
+  // agendamento" que a equipe da Lud. usa no Notion.
+  const sg = (p.statusGeral ?? '').trim().toLowerCase();
   const t = (p.tarefaAtualTitulo ?? '').toLowerCase();
-  if (t.includes('programar')) return 'pronto';
+  if (sg === 'programar' || t.includes('programar')) return 'pronto';
   return 'outro';
 }
 
@@ -234,7 +238,7 @@ export function ProgramacaoView({
           {/* Tiles */}
           <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Tile cor="var(--t3)"                 label="Total no calendário"    valor={total} />
-            <Tile cor="var(--prazo-chegando)"     label="Prontos p/ programar"    valor={prontosCount} />
+            <Tile cor="var(--prazo-chegando)"     label="Programar"               valor={prontosCount} />
             <Tile cor="var(--cal-agendado)"       label="Programados"             valor={programadosCount} />
             <Tile cor="var(--prazo-em-dia)"       label="Publicados"              valor={publicadosCount} />
           </div>
@@ -260,7 +264,7 @@ export function ProgramacaoView({
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-t2">
               <LegendaSwatch cor="var(--prazo-em-dia)" label={`Publicados ${publicadosCount}`} />
               <LegendaSwatch cor="var(--cal-agendado)" label={`Programados ${programadosCount}`} />
-              <LegendaSwatch cor="var(--prazo-chegando)" label={`Aguardando ${prontosCount}`} />
+              <LegendaSwatch cor="var(--prazo-chegando)" label={`Programar ${prontosCount}`} />
             </div>
           </div>
 
@@ -336,7 +340,7 @@ export function ProgramacaoView({
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-t2">
               <LegendaSwatch cor="var(--prazo-em-dia)" label="Publicado" />
               <LegendaSwatch cor="var(--cal-agendado)" label="Programado" />
-              <LegendaSwatch cor="var(--prazo-chegando)" label="Aguardando" />
+              <LegendaSwatch cor="var(--prazo-chegando)" label="Programar" />
               <LegendaSwatch cor="var(--prazo-atrasado)" label="Ajuste" />
               <LegendaSwatch cor="var(--prazo-hoje)" label="Em produção" />
             </div>
