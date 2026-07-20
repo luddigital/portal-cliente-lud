@@ -67,17 +67,26 @@ function coresChip(p: PostCalendario, bucket: Bucket): { bg: string; fg: string 
   return BUCKET_INFO[bucket];
 }
 
-/** Classifica o post em um dos 5 baldes visíveis na página. */
+/** Classifica o post em um dos 5 baldes visíveis na página.
+ *
+ *  Prioridade: statusGeral (fórmula do Notion — o que aparece na tag verde
+ *  do calendário lá) tem precedência sobre `p.cor`, que vem da etapa
+ *  derivada de tarefas. Assim o balde bate com o que a equipe vê no Notion,
+ *  mesmo quando a etapa interna (producao/etc) discorda. */
 function balde(p: PostCalendario): Bucket {
+  const sg = (p.statusGeral ?? '').trim().toLowerCase();
+  const t = (p.tarefaAtualTitulo ?? '').toLowerCase();
+
+  // 1. Status Geral do Notion tem precedência
+  if (sg.includes('postado')) return 'publicado';
+  if (sg.includes('conferir postagem')) return 'publicado';
+  if (sg === 'programar' || t.includes('programar')) return 'pronto';
+  if (sg.includes('altera')) return 'ajuste';
+
+  // 2. Fallback pela cor derivada da etapa
   if (p.cor === 'publicado') return 'publicado';
   if (p.cor === 'agendado') return 'programado';
   if (p.cor === 'alteracao') return 'ajuste';
-  // "Programar" — vem do Status Geral (fórmula Notion) OU da tarefa atual
-  // com "programar" no título. Reflete o estado "arte aprovada, aguardando
-  // agendamento" que a equipe da Lud. usa no Notion.
-  const sg = (p.statusGeral ?? '').trim().toLowerCase();
-  const t = (p.tarefaAtualTitulo ?? '').toLowerCase();
-  if (sg === 'programar' || t.includes('programar')) return 'pronto';
   return 'outro';
 }
 
