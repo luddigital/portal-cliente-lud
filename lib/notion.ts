@@ -1871,13 +1871,18 @@ async function listPostsDoMesUncached(
   } while (cursor);
 
   // "Publicado" na visão do usuário = Status raw = Postado OU a fórmula
-  // Status Geral considera concluído ('Postado' ou 'Conferir Postagem'). A
-  // fórmula é o que aparece na tag verde do calendário do Notion — precisa
-  // bater com o portal.
+  // Status Geral considera concluído. A fórmula pode vir com emoji ou
+  // espaços extras, então usamos matching tolerante (contains + lowercase).
   function ehPublicado(p: PostCalendario): boolean {
-    if (p.status === 'Postado') return true;
-    const sg = (p.statusGeral ?? '').trim();
-    return sg === 'Postado' || sg === 'Conferir Postagem';
+    const raw = (p.status ?? '').trim().toLowerCase();
+    if (raw === 'postado') return true;
+    const sg = (p.statusGeral ?? '').trim().toLowerCase();
+    if (!sg) return false;
+    // Casos típicos: "Postado", "✅ Postado", "Conferir Postagem",
+    // "🕐 Conferir Postagem"
+    if (sg.includes('postado')) return true;
+    if (sg.includes('conferir postagem')) return true;
+    return false;
   }
 
   // Busca a tarefa atual ativa de cada post, em batch — só pros não-publicados
