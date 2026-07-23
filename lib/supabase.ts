@@ -373,6 +373,7 @@ export async function salvarObjetivosSemana(
 // ============================================================================
 
 export type ProgramacaoConfig = {
+  data: string; // YYYY-MM-DD; vazio = usa a data do Notion
   horario: string;
   plataformas: string[];
   formato: string;
@@ -382,6 +383,7 @@ export type ProgramacaoConfig = {
 };
 
 const CONFIG_VAZIA: ProgramacaoConfig = {
+  data: '',
   horario: '',
   plataformas: [],
   formato: '',
@@ -395,11 +397,12 @@ export async function lerConfigProgramacao(postId: string): Promise<ProgramacaoC
     const sb = await supabaseAdmin();
     const { data, error } = await sb
       .from('programacao_config')
-      .select('horario, plataformas, formato, legenda, atualizado_em, atualizado_por')
+      .select('data_postagem, horario, plataformas, formato, legenda, atualizado_em, atualizado_por')
       .eq('post_id', postId)
       .maybeSingle();
     if (error || !data) return CONFIG_VAZIA;
     return {
+      data: data.data_postagem ?? '',
       horario: data.horario ?? '',
       plataformas: Array.isArray(data.plataformas) ? data.plataformas : [],
       formato: data.formato ?? '',
@@ -414,13 +417,14 @@ export async function lerConfigProgramacao(postId: string): Promise<ProgramacaoC
 
 export async function salvarConfigProgramacao(
   postId: string,
-  config: { horario: string; plataformas: string[]; formato: string; legenda: string },
+  config: { data: string; horario: string; plataformas: string[]; formato: string; legenda: string },
   emailAutor: string,
 ): Promise<void> {
   const sb = await supabaseAdmin();
   const { error } = await sb.from('programacao_config').upsert(
     {
       post_id: postId,
+      data_postagem: config.data || null,
       horario: config.horario,
       plataformas: config.plataformas,
       formato: config.formato,

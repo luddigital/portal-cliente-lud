@@ -45,10 +45,20 @@ async function postExtras(
   }
 }
 
+function toIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export default async function ProgramacaoPage({
   searchParams,
 }: {
-  searchParams: { projetoId?: string; year?: string; month?: string };
+  searchParams: {
+    projetoId?: string;
+    anchor?: string;
+  };
 }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -81,15 +91,53 @@ export default async function ProgramacaoPage({
     );
   }
 
-  const projetoIdSelecionado =
-    (searchParams.projetoId?.trim() && projetos.find((p) => p.id === searchParams.projetoId!.trim())?.id) ||
-    projetos[0].id;
+  // 'todos' = ver posts de todos os projetos de social (só admin/colab
+  // consegue enxergar isso). Outro valor = fallback pra 1º projeto.
+  const paramProjeto = searchParams.projetoId?.trim();
+  const verTodos = paramProjeto === 'todos';
+  const projetoIdSelecionado = verTodos
+    ? 'todos'
+    : (paramProjeto && projetos.find((p) => p.id === paramProjeto)?.id) || projetos[0].id;
 
   const hoje = new Date();
-  const year = parseInt(searchParams.year ?? '', 10) || hoje.getFullYear();
-  const month = parseInt(searchParams.month ?? '', 10) || hoje.getMonth() + 1;
 
-  const posts = await listPostsDoMes([projetoIdSelecionado], year, month);
+  // Anchor = qualquer dia da semana que se quer ver. Default = hoje.
+  const anchorStr = searchParams.anchor?.trim();
+  const anchor = anchorStr && /^\d{4}-\d{2}-\d{2}$/.test(anchorStr)
+    ? new Date(anchorStr + 'T00:00:00')
+    : hoje;
+
+  // Range da semana (Dom → Sáb).
+  const weekStart = new Date(anchor);
+  weekStart.setDate(anchor.getDate() - anchor.getDay());
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+
+  // Tiles/tabelas/legenda seguem o mês da anchor (mês "de referência").
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth() + 1;
+
+  const idsBuscar = verTodos ? projetos.map((p) => p.id) : [projetoIdSelecionado];
+
+  // Busca o mês inteiro da anchor + o mês da weekEnd se a semana cruza meses.
+  // Posts do mês alimentam tiles + tabelas; posts filtrados pela semana
+  // alimentam o calendário (feito no cliente).
+  const meses = new Set<string>();
+  meses.add(`${year}-${month}`);
+  meses.add(`${weekStart.getFullYear()}-${weekStart.getMonth() + 1}`);
+  meses.add(`${weekEnd.getFullYear()}-${weekEnd.getMonth() + 1}`);
+  const buscas = await Promise.all(
+    Array.from(meses).map((k) => {
+      const [y, m] = k.split('-').map(Number);
+      return listPostsDoMes(idsBuscar, y, m);
+    }),
+  );
+  const seen = new Set<string>();
+  const posts = buscas.flat().filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
 
   // Batch: thumb + legenda por post em paralelo. Cacheado por post via
   // getPostComDetalhes — recarregar o mesmo mês é instantâneo.
@@ -109,6 +157,9 @@ export default async function ProgramacaoPage({
       projetoIdSelecionado={projetoIdSelecionado}
       year={year}
       month={month}
+      anchor={toIso(anchor)}
+      weekStart={toIso(weekStart)}
+      weekEnd={toIso(weekEnd)}
       posts={posts}
       thumbnails={thumbnails}
       legendas={legendas}

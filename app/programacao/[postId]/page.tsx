@@ -5,8 +5,9 @@ import {
   getColaboradorByEmail,
   getPostComDetalhes,
 } from '@/lib/notion';
-import { extractDriveFolderId, listFolderFiles } from '@/lib/drive';
+import { extractDriveFolderId, extractDriveFileId, listFolderFiles } from '@/lib/drive';
 import { lerConfigProgramacao } from '@/lib/supabase';
+import type { PreviewArquivo } from '@/app/post/[id]/PostPreview';
 import { ConfigProgramacao } from './ConfigProgramacao';
 
 export const dynamic = 'force-dynamic';
@@ -41,21 +42,32 @@ export default async function ProgramarPostPage({
   ]);
   if (!post) notFound();
 
-  // Primeira thumb do Drive (pra preview do arquivo no form)
-  let thumbFileId: string | null = null;
+  // Todos os arquivos do Drive (pra mostrar o post inteiro no preview,
+  // igual o cliente vê na aprovação)
+  const arquivos: PreviewArquivo[] = [];
   for (const link of post.driveLinks ?? []) {
     const folderId = extractDriveFolderId(link.url);
-    if (!folderId) continue;
-    try {
-      const files = await listFolderFiles(folderId);
-      const imagem = files.find(
-        (f) => !f.isFolder && (f.mimeType?.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(f.name)),
-      );
-      if (imagem) { thumbFileId = imagem.id; break; }
-      const primeiro = files.find((f) => !f.isFolder);
-      if (primeiro) { thumbFileId = primeiro.id; break; }
-    } catch {
-      /* pula essa pasta */
+    if (folderId) {
+      try {
+        const files = await listFolderFiles(folderId);
+        for (const f of files) {
+          if (!f.isFolder) arquivos.push(f);
+        }
+      } catch {
+        /* pula essa pasta */
+      }
+      continue;
+    }
+    const fileId = extractDriveFileId(link.url);
+    if (fileId) {
+      arquivos.push({
+        id: fileId,
+        name: link.name,
+        mimeType: '',
+        webViewLink: link.url,
+        thumbnailLink: null,
+        isFolder: false,
+      });
     }
   }
 
@@ -67,7 +79,7 @@ export default async function ProgramarPostPage({
       projetoNome={post.projetoNome}
       formatoTipo={post.formatoTipo}
       legendaOriginal={post.legenda ?? ''}
-      thumbFileId={thumbFileId}
+      arquivos={arquivos}
       configInicial={config}
     />
   );

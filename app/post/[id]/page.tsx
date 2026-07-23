@@ -21,6 +21,7 @@ import { env } from '@/lib/env';
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
 import { TarefasDoPostPanel } from './TarefasDoPostPanel';
+import { PostSidebarLud } from './PostSidebarLud';
 import { TarefaForm } from '../../tarefa/[id]/form';
 import { HistoricoBox } from '../../_components/HistoricoBox';
 
@@ -92,7 +93,7 @@ export default async function PostDetalhePage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { tarefa?: string; from?: string };
+  searchParams: { tarefa?: string; from?: string; vista?: string };
 }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -148,6 +149,35 @@ export default async function PostDetalhePage({
   const etapaLabel = tarefaTitulo ?? (isStory ? 'Direcionamento de Stories' : 'Aprovação');
   const modo = modoDoPost(tarefaTitulo);
   const voltarPara = searchParams.from ? `/etapa/${searchParams.from}` : '/';
+
+  // Vista Cliente/Lud. — cliente só vê a dele. Admin/colab default = interno.
+  const podeVerInterno = ehAdmin || ehColaborador;
+  const vista: 'cliente' | 'interno' = !podeVerInterno
+    ? 'cliente'
+    : searchParams.vista === 'cliente'
+      ? 'cliente'
+      : 'interno';
+
+  // Preserva os outros params ao trocar de vista.
+  function urlVista(v: 'cliente' | 'interno'): string {
+    const params = new URLSearchParams();
+    if (searchParams.tarefa) params.set('tarefa', searchParams.tarefa);
+    if (searchParams.from) params.set('from', searchParams.from);
+    params.set('vista', v);
+    return `?${params.toString()}`;
+  }
+
+  // Programar só faz sentido se a arte já foi aprovada. Bloqueia se a
+  // tarefa atual ainda é de aprovação/alteração.
+  const statusLower = (post.status ?? '').toLowerCase();
+  const bloqueadoProgramar =
+    statusLower.includes('aprova') ||
+    statusLower.includes('altera') ||
+    statusLower.includes('arte') ||
+    statusLower.includes('copy') ||
+    statusLower.includes('briefing') ||
+    statusLower.includes('curador') ||
+    modo === 'material';
 
   // Resolve arquivos do Drive: se for pasta, lista o conteúdo; se for arquivo, monta um item.
   const arquivos: PreviewArquivo[] = [];
@@ -214,270 +244,384 @@ export default async function PostDetalhePage({
       ? 'Amanhã'
       : `Em ${dias} dias`;
 
-  return (
-    <div className="min-h-screen pb-32 lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden lg:pb-0">
-      <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white lg:shrink-0">
-        <div className="mx-auto flex max-w-3xl lg:max-w-7xl items-center justify-between px-6 py-4 lg:py-2.5">
+  // ==========================================================================
+  // VISÃO CLIENTE — layout ORIGINAL preservado. Não mudar.
+  // Cliente vê essa página exatamente como antes. Admin/colab que abre
+  // ?vista=cliente pra preview também cai aqui + ganha uma pill flutuante
+  // discreta pra voltar pra visão Lud.
+  // ==========================================================================
+  if (vista === 'cliente') {
+    return (
+      <>
+        <div className="min-h-screen pb-32 lg:h-[100dvh] lg:min-h-0 lg:overflow-hidden lg:pb-0">
+          <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white lg:shrink-0">
+            <div className="mx-auto flex max-w-3xl lg:max-w-7xl items-center justify-between px-6 py-4 lg:py-2.5">
+              <Link
+                href="/"
+                className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink"
+              >
+                ← Voltar
+              </Link>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                {post.projetoNome}
+              </div>
+            </div>
+          </header>
+
+          <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6 lg:h-[calc(100dvh_-_49px)] lg:overflow-y-auto lg:py-4 lg:space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
+                {etapaLabel}
+              </span>
+              <FormatoPill formatoTipo={formatoTipoDetectado} qtd={arquivos.length} />
+            </div>
+
+            <h1 className="text-[22px] sm:text-[28px] lg:text-[20px] font-semibold tracking-[-0.03em] text-ink">{post.titulo}</h1>
+
+            <div className="grid gap-2 text-[13px] sm:grid-cols-2">
+              <InfoCard label="Data de postagem" value={fmtData(post.data)} />
+              {prazoLabel && (
+                <InfoCard
+                  label="Prazo de aprovação"
+                  value={prazoLabel}
+                  urgent={dias !== null && dias <= 0}
+                />
+              )}
+            </div>
+
+            {(post.formato.length > 0 || post.funil.length > 0 || post.objetivo.length > 0) && (
+              <dl className="card divide-y divide-[rgba(21,21,33,0.06)] overflow-hidden">
+                {post.formato.length > 0 && <DetalheRow label="Formato" itens={post.formato} />}
+                {post.funil.length > 0 && <DetalheRow label="Funil" itens={post.funil} />}
+                {post.objetivo.length > 0 && <DetalheRow label="Objetivo" itens={post.objetivo} />}
+              </dl>
+            )}
+
+            {arquivos.length > 0 ? (
+              <div>
+                <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                  Pré-visualização
+                </div>
+                <PostPreview
+                  arquivos={arquivos}
+                  formatoTipo={formatoTipoDetectado}
+                  postId={post.id}
+                  tarefaId={modo === 'aprovacao' ? tarefaId : null}
+                  tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+                  legenda={post.legenda}
+                  voltarPara={voltarPara}
+                  aprovacaoColaborativa={post.aprovacaoColaborativa}
+                />
+              </div>
+            ) : (
+              (post.ideiaDoPost || post.bodyCompleto || post.legenda) && (
+                <div className="card p-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                    Ideia do post
+                  </div>
+                  <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
+                    {post.ideiaDoPost ?? post.bodyCompleto ?? post.legenda}
+                  </p>
+                </div>
+              )
+            )}
+
+            {modo === 'aprovacao' && arquivos.length === 0 && tarefaId && (
+              <AprovacaoSimples
+                tarefaId={tarefaId}
+                tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+                voltarPara={voltarPara}
+                aprovacaoColaborativa={post.aprovacaoColaborativa}
+              />
+            )}
+
+            {modo === 'material' &&
+              subtipoMaterial(tarefaTitulo) === 'previas' &&
+              post.informacoesNecessarias &&
+              post.informacoesNecessarias.length > 0 && (
+                <div className="space-y-3">
+                  {post.informacoesNecessarias.map((m, i) => (
+                    <div key={i} className="card p-5">
+                      <div className="flex items-start gap-2.5">
+                        <span className="mt-0.5 text-[18px] leading-none" aria-hidden>📣</span>
+                        <div>
+                          <div className="text-[14px] font-semibold leading-snug text-ink">
+                            {m.cabecalho || 'Informações que precisamos pra esse post'}
+                          </div>
+                        </div>
+                      </div>
+                      {m.detalhes.length > 0 && (
+                        <div className="mt-3 space-y-1.5 pl-7">
+                          {m.detalhes.map((d, j) => (
+                            <p key={j} className="whitespace-pre-line text-[13px] leading-[1.6] text-t1">{d}</p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+            {modo === 'material' &&
+              subtipoMaterial(tarefaTitulo) === 'materiais' &&
+              post.materiaisNecessarios &&
+              post.materiaisNecessarios.length > 0 && (
+                <section>
+                  <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                    O que precisamos de você
+                  </div>
+                  <div className="space-y-3">
+                    {post.materiaisNecessarios
+                      .filter((m) => m.detalhes.length > 0)
+                      .map((m, i) => (
+                        <div key={i} className="card p-5">
+                          {m.cabecalho && (
+                            <div className="flex items-start gap-2.5">
+                              <span className="mt-0.5 text-[18px] leading-none" aria-hidden>📝</span>
+                              <div className="text-[14px] font-semibold leading-snug text-ink">
+                                {m.cabecalho}
+                              </div>
+                            </div>
+                          )}
+                          <div className={`space-y-2 ${m.cabecalho ? 'mt-3 pl-7' : ''}`}>
+                            {m.detalhes.map((d, j) => (
+                              <p key={j} className="whitespace-pre-line text-[13px] leading-[1.6] text-t1">{d}</p>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+
+                    {post.materiaisNecessarios.filter((m) => m.detalhes.length === 0).length > 0 && (
+                      <div className="card p-5">
+                        <div className="flex items-start gap-2.5">
+                          <span className="mt-0.5 text-[18px] leading-none" aria-hidden>🎬</span>
+                          <div>
+                            <div className="text-[14px] font-semibold text-ink">
+                              Materiais que precisamos
+                            </div>
+                            <ul className="mt-2 space-y-1.5">
+                              {post.materiaisNecessarios
+                                .filter((m) => m.detalhes.length === 0)
+                                .map((m, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-[13px] leading-snug text-t1">
+                                    <span className="mt-[7px] inline-block h-1 w-1 shrink-0 rounded-full bg-t3" />
+                                    <span>{m.cabecalho}</span>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
+            {modo === 'material' && tarefaId && (() => {
+              const sub = subtipoMaterial(tarefaTitulo);
+              const ehListaDeMateriais = (cab: string) => {
+                const c = cab.toLowerCase();
+                return /materia|fotos|vídeos|videos|kit|equipamento/.test(c);
+              };
+              const ehLinhaDeLista = (linha: string) => {
+                const t = linha.trim();
+                return /^[→•▸▪►⮕\-–]\s/.test(t);
+              };
+              const roteiroParaGravacao =
+                sub === 'materiais' && post.materiaisNecessarios
+                  ? post.materiaisNecessarios
+                      .filter((m) => !ehListaDeMateriais(m.cabecalho ?? ''))
+                      .flatMap((m) => m.detalhes)
+                      .filter((d) => d.trim() && !ehLinhaDeLista(d))
+                      .join('\n\n')
+                      .trim()
+                  : '';
+              const props =
+                sub === 'materiais'
+                  ? {
+                      mostrarTexto: false,
+                      aceitarComentario: true,
+                      aceitarLink: true,
+                      tituloUpload: 'Outros arquivos (opcional)',
+                      ajudaUpload: roteiroParaGravacao
+                        ? 'Fotos, vídeos e outros áudios. A gravação do voice over feita acima já está incluída.'
+                        : 'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
+                      textoBotao: 'Enviar materiais',
+                      textoVoiceOver: roteiroParaGravacao || undefined,
+                    }
+                  : sub === 'stories'
+                    ? {
+                        mostrarTexto: true,
+                        aceitarLink: true,
+                        tituloUpload: 'Fotos e vídeos pros stories',
+                        ajudaUpload: 'Anexe as artes e arquivos que pretende usar.',
+                        textoBotao: 'Enviar direcionamento',
+                      }
+                    : sub === 'previas'
+                      ? {
+                          mostrarTexto: true,
+                          aceitarLink: true,
+                          permitirGravarVoz: true,
+                          tituloUpload: 'Fotos, vídeos e áudios',
+                          ajudaUpload:
+                            'Anexe o que já tiver pra ajudar a equipe a montar o post.',
+                          textoBotao: 'Enviar informações',
+                        }
+                      : {};
+              return (
+                <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} {...props} />
+              );
+            })()}
+
+            {ehAdmin && (
+              <Suspense
+                fallback={<div className="h-[120px] rounded-2xl bg-bgSoft animate-pulse" />}
+              >
+                <TarefasDoPostSection postId={post.id} />
+              </Suspense>
+            )}
+
+            <Suspense fallback={null}>
+              <HistoricoComentarios postId={post.id} />
+            </Suspense>
+          </main>
+        </div>
+
+        {/* Pill flutuante discreta — só admin/colab que preview'ou como
+            cliente vê esse botão. Cliente comum não vê nada. */}
+        {podeVerInterno && (
           <Link
-            href="/"
-            className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink"
+            href={urlVista('interno')}
+            className="fixed bottom-4 right-4 z-30 rounded-full bg-ink px-4 py-2 text-[11px] font-semibold text-white shadow-lg transition hover:opacity-90"
           >
-            ← Voltar
+            ← Visão Lud.
           </Link>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-            {post.projetoNome}
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="min-h-screen pb-32">
+      {/* HEADER — unificado + toggle de vista pra Lud. */}
+      <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3">
+          <div className="min-w-0">
+            <Link
+              href={voltarPara}
+              className="text-[11px] text-mauve transition hover:text-ink"
+            >
+              ← Voltar
+            </Link>
+            <div className="mt-0.5 flex items-baseline gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                {post.projetoNome}
+              </span>
+              <span className="text-[10px] text-t3">·</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
+                {etapaLabel}
+              </span>
+            </div>
           </div>
+          {podeVerInterno && (
+            <div className="flex items-center gap-1 rounded-full bg-bgSoft p-1">
+              <Link
+                href={urlVista('cliente')}
+                className="rounded-full px-3 py-1 text-[11px] font-semibold text-t3 transition hover:text-ink"
+              >
+                Visão cliente
+              </Link>
+              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm">
+                Visão Lud.
+              </span>
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6 lg:h-[calc(100dvh_-_49px)] lg:overflow-y-auto lg:py-4 lg:space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-            {etapaLabel}
-          </span>
-          <FormatoPill formatoTipo={formatoTipoDetectado} qtd={arquivos.length} />
-        </div>
-
-        <h1 className="text-[22px] sm:text-[28px] lg:text-[20px] font-semibold tracking-[-0.03em] text-ink">{post.titulo}</h1>
-
-        <div className="grid gap-2 text-[13px] sm:grid-cols-2">
-          <InfoCard label="Data de postagem" value={fmtData(post.data)} />
-          {prazoLabel && (
-            <InfoCard
-              label="Prazo de aprovação"
-              value={prazoLabel}
-              urgent={dias !== null && dias <= 0}
-            />
-          )}
-        </div>
-
-        {(post.formato.length > 0 || post.funil.length > 0 || post.objetivo.length > 0) && (
-          <dl className="card divide-y divide-[rgba(21,21,33,0.06)] overflow-hidden">
-            {post.formato.length > 0 && <DetalheRow label="Formato" itens={post.formato} />}
-            {post.funil.length > 0 && <DetalheRow label="Funil" itens={post.funil} />}
-            {post.objetivo.length > 0 && <DetalheRow label="Objetivo" itens={post.objetivo} />}
-          </dl>
-        )}
-
-        {/* conteúdo do post */}
-        {arquivos.length > 0 ? (
-          <div>
-            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-              Pré-visualização
-            </div>
-            <PostPreview
-              arquivos={arquivos}
-              formatoTipo={formatoTipoDetectado}
-              postId={post.id}
-              tarefaId={modo === 'aprovacao' ? tarefaId : null}
-              tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
-              legenda={post.legenda}
-              voltarPara={voltarPara}
-              aprovacaoColaborativa={post.aprovacaoColaborativa}
-            />
+      <main className="mx-auto max-w-7xl px-6 py-6 space-y-5">
+        {/* Título + meta-bar horizontal (data, prazo, formato) */}
+        <div>
+          <h1 className="text-[22px] sm:text-[26px] font-semibold tracking-[-0.03em] text-ink">
+            {post.titulo}
+          </h1>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+            <FormatoPill formatoTipo={formatoTipoDetectado} qtd={arquivos.length} />
+            <MetaChip label="Data" value={fmtData(post.data)} />
+            {prazoLabel && (
+              <MetaChip
+                label="Prazo"
+                value={prazoLabel}
+                urgent={dias !== null && dias <= 0}
+              />
+            )}
+            {post.formato.length > 0 && (
+              <MetaChipRelacao label="Formato" itens={post.formato} />
+            )}
+            {post.funil.length > 0 && (
+              <MetaChipRelacao label="Funil" itens={post.funil} />
+            )}
+            {post.objetivo.length > 0 && (
+              <MetaChipRelacao label="Objetivo" itens={post.objetivo} />
+            )}
           </div>
-        ) : (
-          (post.ideiaDoPost || post.bodyCompleto || post.legenda) && (
-            <div className="card p-5">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-                Ideia do post
-              </div>
-              <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
-                {post.ideiaDoPost ?? post.bodyCompleto ?? post.legenda}
-              </p>
-            </div>
-          )
-        )}
+        </div>
 
-        {/* ação conforme a etapa do post */}
-        {modo === 'aprovacao' && arquivos.length === 0 && tarefaId && (
-          <AprovacaoSimples
-            tarefaId={tarefaId}
-            tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
-            voltarPara={voltarPara}
-            aprovacaoColaborativa={post.aprovacaoColaborativa}
-          />
-        )}
-
-        {/* ETAPA "PRÉVIOS": só mostra as perguntas/info que precisamos do cliente
-            (não confunde com voice over / materiais — essa etapa é antes da
-            produção, é só coletar contexto).                                  */}
-        {modo === 'material' &&
-          subtipoMaterial(tarefaTitulo) === 'previas' &&
-          post.informacoesNecessarias &&
-          post.informacoesNecessarias.length > 0 && (
-            <div className="space-y-3">
-              {post.informacoesNecessarias.map((m, i) => (
-                <div key={i} className="card p-5">
-                  <div className="flex items-start gap-2.5">
-                    <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
-                      📣
-                    </span>
-                    <div>
-                      <div className="text-[14px] font-semibold leading-snug text-ink">
-                        {m.cabecalho || 'Informações que precisamos pra esse post'}
-                      </div>
-                    </div>
+        {/* GRID PRINCIPAL: preview à esquerda + sidebar Lud. à direita. */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+          <div className="min-w-0 space-y-5">
+            {/* Preview em modo readonly — aprovação/comentários ficam
+                na sidebar Lud. (não faz sentido a equipe usar o painel
+                que é do cliente). */}
+            {arquivos.length > 0 ? (
+              <PostPreview
+                arquivos={arquivos}
+                formatoTipo={formatoTipoDetectado}
+                postId={post.id}
+                tarefaId={null}
+                tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+                legenda={post.legenda}
+                voltarPara={voltarPara}
+                aprovacaoColaborativa={post.aprovacaoColaborativa}
+              />
+            ) : (
+              (post.ideiaDoPost || post.bodyCompleto || post.legenda) && (
+                <div className="card p-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                    Ideia do post
                   </div>
-                  {m.detalhes.length > 0 && (
-                    <div className="mt-3 space-y-1.5 pl-7">
-                      {m.detalhes.map((d, j) => (
-                        <p
-                          key={j}
-                          className="whitespace-pre-line text-[13px] leading-[1.6] text-t1"
-                        >
-                          {d}
-                        </p>
-                      ))}
-                    </div>
-                  )}
+                  <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
+                    {post.ideiaDoPost ?? post.bodyCompleto ?? post.legenda}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
+              )
+            )}
 
-        {/* ETAPA "MATERIAIS": cabeça única "O que precisamos de você" agrupa
-            os roteiros (callouts com detalhes — ex: voice over) + a lista
-            enxuta dos materiais a enviar.                                  */}
-        {modo === 'material' &&
-          subtipoMaterial(tarefaTitulo) === 'materiais' &&
-          post.materiaisNecessarios &&
-          post.materiaisNecessarios.length > 0 && (
-            <section>
-              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-                O que precisamos de você
-              </div>
-              <div className="space-y-3">
-                {post.materiaisNecessarios
-                  .filter((m) => m.detalhes.length > 0)
-                  .map((m, i) => (
-                    <div key={i} className="card p-5">
-                      {m.cabecalho && (
-                        <div className="flex items-start gap-2.5">
-                          <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
-                            📝
-                          </span>
-                          <div className="text-[14px] font-semibold leading-snug text-ink">
-                            {m.cabecalho}
-                          </div>
-                        </div>
-                      )}
-                      <div className={`space-y-2 ${m.cabecalho ? 'mt-3 pl-7' : ''}`}>
-                        {m.detalhes.map((d, j) => (
-                          <p
-                            key={j}
-                            className="whitespace-pre-line text-[13px] leading-[1.6] text-t1"
-                          >
-                            {d}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+            {/* Formulários/ações do cliente (aprovação simples, materiais,
+                voice over) NÃO renderizam na visão Lud. — a equipe interna
+                não faz essas ações. Vira lugar do preview + sidebar. */}
+          </div>
 
-                {post.materiaisNecessarios.filter((m) => m.detalhes.length === 0)
-                  .length > 0 && (
-                  <div className="card p-5">
-                    <div className="flex items-start gap-2.5">
-                      <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
-                        🎬
-                      </span>
-                      <div>
-                        <div className="text-[14px] font-semibold text-ink">
-                          Materiais que precisamos
-                        </div>
-                        <ul className="mt-2 space-y-1.5">
-                          {post.materiaisNecessarios
-                            .filter((m) => m.detalhes.length === 0)
-                            .map((m, i) => (
-                              <li
-                                key={i}
-                                className="flex items-start gap-2 text-[13px] leading-snug text-t1"
-                              >
-                                <span className="mt-[7px] inline-block h-1 w-1 shrink-0 rounded-full bg-t3" />
-                                <span>{m.cabecalho}</span>
-                              </li>
-                            ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
-        {modo === 'material' && tarefaId && (() => {
-          const sub = subtipoMaterial(tarefaTitulo);
-          // Pega só a PROSA dos callouts pro teleprompter — descarta linhas
-          // que parecem itens de lista de materiais (começam com →, •, –,
-          // hífen etc) e também qualquer callout cujo cabeçalho mencione
-          // "materiais"/"fotos"/"kit" (lista de coisas, não roteiro).
-          const ehListaDeMateriais = (cab: string) => {
-            const c = cab.toLowerCase();
-            return /materia|fotos|vídeos|videos|kit|equipamento/.test(c);
-          };
-          const ehLinhaDeLista = (linha: string) => {
-            const t = linha.trim();
-            return /^[→•▸▪►⮕\-–]\s/.test(t);
-          };
-          const roteiroParaGravacao =
-            sub === 'materiais' && post.materiaisNecessarios
-              ? post.materiaisNecessarios
-                  .filter((m) => !ehListaDeMateriais(m.cabecalho ?? ''))
-                  .flatMap((m) => m.detalhes)
-                  .filter((d) => d.trim() && !ehLinhaDeLista(d))
-                  .join('\n\n')
-                  .trim()
-              : '';
-          const props =
-            sub === 'materiais'
-              ? {
-                  mostrarTexto: false,
-                  aceitarComentario: true,
-                  aceitarLink: true,
-                  tituloUpload: 'Outros arquivos (opcional)',
-                  ajudaUpload: roteiroParaGravacao
-                    ? 'Fotos, vídeos e outros áudios. A gravação do voice over feita acima já está incluída.'
-                    : 'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
-                  textoBotao: 'Enviar materiais',
-                  textoVoiceOver: roteiroParaGravacao || undefined,
+          {/* SIDEBAR LUD. — programar, comentários geral+interno, tarefas */}
+          <aside className="space-y-4 lg:sticky lg:top-16 lg:self-start">
+            <PostSidebarLud
+              postId={post.id}
+              tarefaId={tarefaId}
+              status={post.status}
+              bloqueadoProgramar={bloqueadoProgramar}
+            />
+            {ehAdmin && (
+              <Suspense
+                fallback={
+                  <div className="h-[120px] rounded-2xl bg-bgSoft animate-pulse" />
                 }
-              : sub === 'stories'
-                ? {
-                    mostrarTexto: true,
-                    aceitarLink: true,
-                    tituloUpload: 'Fotos e vídeos pros stories',
-                    ajudaUpload: 'Anexe as artes e arquivos que pretende usar.',
-                    textoBotao: 'Enviar direcionamento',
-                  }
-                : sub === 'previas'
-                  ? {
-                      mostrarTexto: true,
-                      aceitarLink: true,
-                      permitirGravarVoz: true,
-                      tituloUpload: 'Fotos, vídeos e áudios',
-                      ajudaUpload:
-                        'Anexe o que já tiver pra ajudar a equipe a montar o post.',
-                      textoBotao: 'Enviar informações',
-                    }
-                  : {};
-          return (
-            <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} {...props} />
-          );
-        })()}
-
-        {/* Painel admin de Tarefas do post — só equipe interna vê */}
-        {ehAdmin && (
-          <Suspense
-            fallback={
-              <div className="h-[120px] rounded-2xl bg-bgSoft animate-pulse" />
-            }
-          >
-            <TarefasDoPostSection postId={post.id} />
-          </Suspense>
-        )}
+              >
+                <TarefasDoPostSection postId={post.id} />
+              </Suspense>
+            )}
+          </aside>
+        </div>
 
         {/* histórico de comentários — discreto, no fim da página */}
         <Suspense fallback={null}>
@@ -523,6 +667,102 @@ function InfoCard({
   );
 }
 
+function DetalheRow({ label, itens }: { label: string; itens: RelacaoItem[] }) {
+  return (
+    <div className="flex items-center gap-4 px-4 py-3">
+      <dt className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+        {label}
+      </dt>
+      <dd className="flex flex-wrap items-center gap-2">
+        {itens.map((it) => (
+          <span
+            key={it.id}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[rgba(21,21,33,0.04)] px-2.5 py-1 text-[12px] text-ink"
+          >
+            {it.icon &&
+              (it.icon.startsWith('http') ? (
+                <Image
+                  src={it.icon}
+                  alt={it.name}
+                  width={14}
+                  height={14}
+                  className="h-3.5 w-3.5 rounded-sm object-contain"
+                  unoptimized
+                />
+              ) : (
+                <span className="text-[13px] leading-none">{it.icon}</span>
+              ))}
+            {it.name}
+          </span>
+        ))}
+      </dd>
+    </div>
+  );
+}
+
+function MetaChip({
+  label,
+  value,
+  urgent,
+}: {
+  label: string;
+  value: string;
+  urgent?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${
+        urgent
+          ? 'bg-hubRed text-white'
+          : 'bg-[rgba(21,21,33,0.04)] text-ink'
+      }`}
+    >
+      <span
+        className={`text-[10px] font-semibold uppercase tracking-[0.08em] ${
+          urgent ? 'text-white/80' : 'text-t3'
+        }`}
+      >
+        {label}
+      </span>
+      <span
+        className={`font-mono text-[11px] ${
+          urgent ? 'font-semibold' : 'text-t1'
+        }`}
+      >
+        {value}
+      </span>
+    </span>
+  );
+}
+
+function MetaChipRelacao({ label, itens }: { label: string; itens: RelacaoItem[] }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 rounded-full bg-[rgba(21,21,33,0.04)] px-2.5 py-1">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+        {label}
+      </span>
+      {itens.map((it) => (
+        <span key={it.id} className="inline-flex items-center gap-1 text-[11px] text-ink">
+          {it.icon &&
+            (it.icon.startsWith('http') ? (
+              <Image
+                src={it.icon}
+                alt={it.name}
+                width={12}
+                height={12}
+                className="h-3 w-3 rounded-sm object-contain"
+                unoptimized
+              />
+            ) : (
+              <span className="text-[11px] leading-none">{it.icon}</span>
+            ))}
+          {it.name}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 const FORMATO_PILL: Record<
   'post' | 'reels' | 'story' | 'desconhecido',
   { label: string; bg: string; color: string }
@@ -556,38 +796,5 @@ function FormatoPill({
       {info.label}
       {sufixo && <span className="font-normal opacity-70">{sufixo}</span>}
     </span>
-  );
-}
-
-function DetalheRow({ label, itens }: { label: string; itens: RelacaoItem[] }) {
-  return (
-    <div className="flex items-center gap-4 px-4 py-3">
-      <dt className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-        {label}
-      </dt>
-      <dd className="flex flex-wrap items-center gap-2">
-        {itens.map((it) => (
-          <span
-            key={it.id}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[rgba(21,21,33,0.04)] px-2.5 py-1 text-[12px] text-ink"
-          >
-            {it.icon &&
-              (it.icon.startsWith('http') ? (
-                <Image
-                  src={it.icon}
-                  alt={it.name}
-                  width={14}
-                  height={14}
-                  className="h-3.5 w-3.5 rounded-sm object-contain"
-                  unoptimized
-                />
-              ) : (
-                <span className="text-[13px] leading-none">{it.icon}</span>
-              ))}
-            {it.name}
-          </span>
-        ))}
-      </dd>
-    </div>
   );
 }

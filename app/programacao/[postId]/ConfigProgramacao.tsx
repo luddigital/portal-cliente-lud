@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { ProgramacaoConfig } from '@/lib/supabase';
+import { PostPreview, type PreviewArquivo, type FormatoTipo } from '@/app/post/[id]/PostPreview';
 
 type Plataforma = {
   id: string;
@@ -48,6 +49,12 @@ function formatoDefault(formatoTipo: string): string {
   return 'feed';
 }
 
+const FORMATO_TIPO_MAP: Record<string, FormatoTipo> = {
+  post: 'post',
+  reels: 'reels',
+  story: 'story',
+};
+
 export function ConfigProgramacao({
   postId,
   titulo,
@@ -55,7 +62,7 @@ export function ConfigProgramacao({
   projetoNome,
   formatoTipo,
   legendaOriginal,
-  thumbFileId,
+  arquivos,
   configInicial,
 }: {
   postId: string;
@@ -64,19 +71,22 @@ export function ConfigProgramacao({
   projetoNome: string;
   formatoTipo: string;
   legendaOriginal: string;
-  thumbFileId: string | null;
+  arquivos: PreviewArquivo[];
   configInicial: ProgramacaoConfig;
 }) {
   const router = useRouter();
-  const [horario, setHorario] = useState(configInicial.horario || '18:00');
+  const [data, setData] = useState(configInicial.data || dataPostagem);
+  const [horario, setHorario] = useState(configInicial.horario || '10:00');
   const [formato, setFormato] = useState(configInicial.formato || formatoDefault(formatoTipo));
   const [plataformas, setPlataformas] = useState<string[]>(
     configInicial.plataformas.length > 0 ? configInicial.plataformas : ['instagram', 'facebook'],
   );
   const [legenda, setLegenda] = useState(configInicial.legenda || legendaOriginal);
-  const [loading, setLoading] = useState<'confirmar' | 'rascunho' | null>(null);
+  const [loading, setLoading] = useState<'confirmar' | 'postado' | 'rascunho' | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [feito, setFeito] = useState<'confirmar' | 'rascunho' | null>(null);
+  const [feito, setFeito] = useState<'confirmar' | 'postado' | 'rascunho' | null>(null);
+
+  const formatoPreview: FormatoTipo = FORMATO_TIPO_MAP[formatoTipo] ?? 'desconhecido';
 
   function togglePlataforma(id: string, disponivel: boolean) {
     if (!disponivel) return;
@@ -85,14 +95,14 @@ export function ConfigProgramacao({
     );
   }
 
-  async function submit(acao: 'confirmar' | 'rascunho') {
+  async function submit(acao: 'confirmar' | 'postado' | 'rascunho') {
     setLoading(acao);
     setErro(null);
     try {
       const r = await fetch('/api/programar/config', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ postId, horario, plataformas, formato, legenda, acao }),
+        body: JSON.stringify({ postId, data, horario, plataformas, formato, legenda, acao }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
@@ -126,9 +136,37 @@ export function ConfigProgramacao({
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-8">
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-          {/* Coluna principal — form */}
+      <main className="mx-auto max-w-5xl px-6 py-8 space-y-6">
+        {/* Preview completo do post — igual o cliente vê na aprovação */}
+        <section className="card p-5">
+          <div className="mb-4 flex items-baseline justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                Preview
+              </div>
+              <p className="mt-0.5 text-[11px] text-t3">
+                É exatamente o que o cliente viu na aprovação.
+              </p>
+            </div>
+            <Link
+              href={`/post/${postId}`}
+              className="text-[11px] font-medium text-mauve transition hover:text-ink"
+            >
+              abrir em página inteira ↗
+            </Link>
+          </div>
+          <PostPreview
+            arquivos={arquivos}
+            formatoTipo={formatoPreview}
+            postId={postId}
+            tarefaId={null}
+            tarefaTitulo={tituloSeguro(titulo)}
+            legenda={null}
+          />
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+          {/* Coluna esquerda — data/horário/formato */}
           <div className="space-y-5">
             {/* Data + Horário */}
             <div className="card p-5">
@@ -137,7 +175,7 @@ export function ConfigProgramacao({
                   1 · Data e horário
                 </div>
                 <p className="mt-0.5 text-[11px] text-t3">
-                  Data vem do calendário aprovado. Horário fica salvo pra esse post.
+                  Clique na data pra abrir o calendário. Horário padrão é 10h (do projeto).
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -145,9 +183,17 @@ export function ConfigProgramacao({
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
                     Data
                   </label>
-                  <div className="rounded-lg border border-[rgba(21,21,33,0.13)] bg-bgSoft/60 px-3 py-2 text-[13px] text-ink">
-                    {fmtDataLonga(dataPostagem)}
-                  </div>
+                  <input
+                    type="date"
+                    value={data}
+                    onChange={(e) => setData(e.target.value)}
+                    className="w-full rounded-lg border border-[rgba(21,21,33,0.13)] bg-white px-3 py-2 text-[13px] text-ink"
+                  />
+                  {data && data !== dataPostagem && (
+                    <p className="mt-1 text-[10px] text-t3">
+                      Original: {fmtDataLonga(dataPostagem)}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
@@ -245,8 +291,11 @@ export function ConfigProgramacao({
               </div>
             </div>
 
-            {/* Legenda */}
-            <div className="card p-5">
+          </div>
+
+          {/* Coluna direita — legenda */}
+          <div>
+            <div className="card p-5 h-full flex flex-col">
               <div className="mb-3">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
                   4 · Legenda
@@ -258,81 +307,97 @@ export function ConfigProgramacao({
               <textarea
                 value={legenda}
                 onChange={(e) => setLegenda(e.target.value)}
-                rows={10}
-                className="w-full resize-y rounded-lg border border-[rgba(21,21,33,0.13)] bg-white px-3 py-2 text-[13px] leading-[1.55] text-ink"
+                className="flex-1 min-h-[240px] w-full resize-y rounded-lg border border-[rgba(21,21,33,0.13)] bg-white px-3 py-2 text-[13px] leading-[1.55] text-ink"
                 placeholder="Ninguém acorda querendo tomar café amargo…"
               />
             </div>
+          </div>
+        </div>
 
-            {/* Ações */}
-            {erro && (
-              <p className="rounded-lg bg-[var(--prazo-atrasado-soft)] px-4 py-3 text-[12px] text-[var(--prazo-atrasado)]">
-                ⚠️ {erro}
+        {/* Ações */}
+        {erro && (
+          <p className="rounded-lg bg-[var(--prazo-atrasado-soft)] px-4 py-3 text-[12px] text-[var(--prazo-atrasado)]">
+            ⚠️ {erro}
+          </p>
+        )}
+
+        <div className="card p-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            {/* Modo teste — Rascunho */}
+            <div className="rounded-xl border-2 border-dashed border-[var(--cal-aprovacao)]/40 bg-[var(--cal-aprovacao-soft)]/40 p-4 flex flex-col">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="rounded-full bg-[var(--cal-aprovacao)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                  Modo teste
+                </span>
+                <span className="text-[13px] font-semibold text-ink">Rascunho</span>
+              </div>
+              <p className="mb-3 flex-1 text-[11px] leading-[1.5] text-t2">
+                Salva tudo aqui no portal <b>sem tocar no Notion do cliente</b> e sem publicar em lugar nenhum. Use pra testar à vontade.
               </p>
-            )}
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => submit('confirmar')}
-                disabled={loading !== null || feito !== null}
-                className="btn-primary flex-1 justify-center whitespace-nowrap"
-              >
-                {feito === 'confirmar'
-                  ? '✓ Programado'
-                  : loading === 'confirmar'
-                    ? 'Confirmando…'
-                    : 'Confirmar programação'}
-              </button>
               <button
                 type="button"
                 onClick={() => submit('rascunho')}
                 disabled={loading !== null || feito !== null}
-                className="rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-5 py-2 text-[13px] font-medium text-ink transition hover:bg-bgSoft disabled:opacity-40"
+                className="w-full rounded-full border border-[var(--cal-aprovacao)] bg-white px-5 py-2 text-[13px] font-semibold text-[var(--cal-aprovacao)] transition hover:bg-[var(--cal-aprovacao-soft)] disabled:opacity-40"
               >
                 {feito === 'rascunho'
-                  ? '✓ Salvo'
+                  ? '✓ Salvo em rascunho'
                   : loading === 'rascunho'
                     ? 'Salvando…'
-                    : 'Deixar em rascunho'}
+                    : 'Salvar como rascunho'}
               </button>
             </div>
-            <p className="text-[11px] text-t3">
-              <b>Confirmar</b> muda o status pra Agendado no Notion.{' '}
-              <b>Rascunho</b> só salva o que você preencheu aqui, sem publicar nem mudar status.
-            </p>
-          </div>
 
-          {/* Sidebar — preview */}
-          <aside className="space-y-4 lg:sticky lg:top-8 lg:self-start">
-            <div className="card overflow-hidden p-0">
-              {thumbFileId ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`/api/drive/preview/${thumbFileId}`}
-                  alt=""
-                  className="aspect-[4/5] w-full object-cover"
-                />
-              ) : (
-                <div className="flex aspect-[4/5] w-full items-center justify-center bg-bgSoft text-[11px] text-t3">
-                  sem prévia
-                </div>
-              )}
-              <div className="p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
-                  Preview
-                </div>
-                <div className="mt-1 truncate text-[13px] font-semibold text-ink">
-                  {tituloSeguro(titulo)}
-                </div>
+            {/* Confirmar — Agendado no Notion */}
+            <div className="rounded-xl border border-[rgba(21,21,33,0.13)] bg-white p-4 flex flex-col">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="rounded-full bg-ink px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                  Agendar
+                </span>
+                <span className="text-[13px] font-semibold text-ink">Confirmar</span>
               </div>
+              <p className="mb-3 flex-1 text-[11px] leading-[1.5] text-t2">
+                Muda o status pra <b>Agendado</b> no Notion do cliente. Use quando o post ainda vai subir (por você ou por scheduler).
+              </p>
+              <button
+                type="button"
+                onClick={() => submit('confirmar')}
+                disabled={loading !== null || feito !== null}
+                className="btn-primary w-full justify-center whitespace-nowrap"
+              >
+                {feito === 'confirmar'
+                  ? '✓ Agendado'
+                  : loading === 'confirmar'
+                    ? 'Confirmando…'
+                    : 'Confirmar programação'}
+              </button>
             </div>
-            <Link
-              href={`/post/${postId}`}
-              className="block rounded-lg border border-[rgba(21,21,33,0.13)] bg-white p-3 text-center text-[12px] font-medium text-ink transition hover:bg-bgSoft"
-            >
-              Ver material completo →
-            </Link>
-          </aside>
+
+            {/* Postar agora — marca Postado no Notion */}
+            <div className="rounded-xl border border-[var(--prazo-em-dia)]/30 bg-[var(--prazo-em-dia-soft)]/40 p-4 flex flex-col">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="rounded-full bg-[var(--prazo-em-dia)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                  Já foi
+                </span>
+                <span className="text-[13px] font-semibold text-ink">Postar agora</span>
+              </div>
+              <p className="mb-3 flex-1 text-[11px] leading-[1.5] text-t2">
+                Marca como <b>Postado</b> no Notion. Use quando você já publicou no IG/FB manualmente (ou tá publicando agora). O portal ainda não sobe post por conta própria.
+              </p>
+              <button
+                type="button"
+                onClick={() => submit('postado')}
+                disabled={loading !== null || feito !== null}
+                className="w-full rounded-full bg-[var(--prazo-em-dia)] px-5 py-2 text-[13px] font-semibold text-white transition hover:brightness-95 disabled:opacity-40"
+              >
+                {feito === 'postado'
+                  ? '✓ Marcado como postado'
+                  : loading === 'postado'
+                    ? 'Marcando…'
+                    : 'Marcar como postado'}
+              </button>
+            </div>
+          </div>
         </div>
       </main>
     </div>

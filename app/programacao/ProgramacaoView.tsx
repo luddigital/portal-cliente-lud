@@ -109,11 +109,21 @@ function fmtDiaLongo(iso: string): string {
   return `${d}/${MES_ABREV[m - 1]} · ${s}`;
 }
 
+function rotuloSemana(inicio: string, fim: string): string {
+  const [, mi, di] = inicio.split('-').map(Number);
+  const [yf, mf, df] = fim.split('-').map(Number);
+  if (mi === mf) return `${di} – ${df} ${MES_ABREV[mi - 1]} ${yf}`;
+  return `${di} ${MES_ABREV[mi - 1]} – ${df} ${MES_ABREV[mf - 1]} ${yf}`;
+}
+
 export function ProgramacaoView({
   projetos,
   projetoIdSelecionado,
   year,
   month,
+  anchor,
+  weekStart,
+  weekEnd,
   posts,
   thumbnails,
   legendas,
@@ -122,6 +132,9 @@ export function ProgramacaoView({
   projetoIdSelecionado: string;
   year: number;
   month: number;
+  anchor: string;
+  weekStart: string;
+  weekEnd: string;
   posts: PostCalendario[];
   thumbnails: Record<string, string | null>;
   legendas: Record<string, string | null>;
@@ -149,64 +162,62 @@ export function ProgramacaoView({
   const prontosCount = cats.pronto.length;
   const encaminhados = publicadosCount + programadosCount + prontosCount;
 
-  // Área de programação = prontos + em ajuste (bloqueados). Sem filtros.
-  const areaProgramacao = useMemo(
-    () => [...cats.pronto, ...cats.ajuste].sort((a, b) => (a.data > b.data ? 1 : -1)),
-    [cats.pronto, cats.ajuste],
+  // Área de programação = só posts prontos (arte aprovada aguardando agenda).
+  // Posts em alteração vão pra "Em produção" — ainda em andamento.
+  const areaProgramacao = cats.pronto;
+  const emProducao = useMemo(
+    () => [...cats.outro, ...cats.ajuste].sort((a, b) => (a.data > b.data ? 1 : -1)),
+    [cats.outro, cats.ajuste],
   );
 
-  const projetoNome = projetos.find((p) => p.id === projetoIdSelecionado)?.nome ?? 'Projeto';
+  const verTodos = projetoIdSelecionado === 'todos';
+  const projetoNome = verTodos
+    ? 'Todos os clientes'
+    : projetos.find((p) => p.id === projetoIdSelecionado)?.nome ?? 'Projeto';
 
-  // Nav de mês / projeto — navegação hard (window.location) porque
+  // Nav de semana / projeto — navegação hard (window.location) porque
   // router.push com searchParams no App Router às vezes não re-renderiza
   // o Server Component. Full nav sempre re-avalia o page.tsx.
-  function irPara(deltaMes: number) {
-    let novoMes = month + deltaMes;
-    let novoAno = year;
-    if (novoMes < 1) { novoMes = 12; novoAno -= 1; }
-    else if (novoMes > 12) { novoMes = 1; novoAno += 1; }
+  function irPara(delta: number) {
+    // Anda semanas (delta * 7 dias) a partir do início da semana atual.
+    const [y, m, d] = weekStart.split('-').map(Number);
+    const alvo = new Date(y, m - 1, d + delta * 7);
+    const novoAnchor = `${alvo.getFullYear()}-${String(alvo.getMonth() + 1).padStart(2, '0')}-${String(alvo.getDate()).padStart(2, '0')}`;
     const params = new URLSearchParams({
-      projetoId: projetoIdSelecionado, year: String(novoAno), month: String(novoMes),
+      projetoId: projetoIdSelecionado, anchor: novoAnchor,
     });
     window.location.href = `/programacao?${params.toString()}`;
   }
   function trocarProjeto(id: string) {
-    const params = new URLSearchParams({
-      projetoId: id, year: String(year), month: String(month),
-    });
+    const params = new URLSearchParams({ projetoId: id, anchor });
     window.location.href = `/programacao?${params.toString()}`;
   }
 
-  // Dia de hoje (só marca ring se o mês/ano em tela é o atual)
-  const agora = new Date();
-  const hojeMarcado =
-    agora.getFullYear() === year && agora.getMonth() + 1 === month
-      ? agora.getDate()
-      : null;
-
-  // Calendário com posts nos dias
-  const primeiro = new Date(year, month - 1, 1);
-  const ultimoDia = new Date(year, month, 0).getDate();
-  const offset = primeiro.getDay();
-  const totalCelulas = Math.ceil((offset + ultimoDia) / 7) * 7;
-  const postsPorDia = new Map<number, PostCalendario[]>();
+  // Posts por data ISO (funciona pra mês e pra semana).
+  const postsPorData = new Map<string, PostCalendario[]>();
   for (const p of posts) {
-    const [, , d] = p.data.split('-').map(Number);
-    if (!postsPorDia.has(d)) postsPorDia.set(d, []);
-    postsPorDia.get(d)!.push(p);
+    if (!postsPorData.has(p.data)) postsPorData.set(p.data, []);
+    postsPorData.get(p.data)!.push(p);
   }
-  const celulas = Array.from({ length: totalCelulas }, (_, i) => {
-    const dia = i - offset + 1;
-    return dia >= 1 && dia <= ultimoDia ? dia : null;
+
+  // 7 células — sempre semana Dom → Sáb.
+  const [ys, ms, ds] = weekStart.split('-').map(Number);
+  const celulas = Array.from({ length: 7 }, (_, i) => {
+    const dt = new Date(ys, ms - 1, ds + i);
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    return { iso, dia: dt.getDate() };
   });
+  const hojeIso = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
 
   // Bar segmentos: publicados / programados / aguardando (dos "encaminhados")
   const barra = total > 0 ? {
     pub: (publicadosCount / total) * 100,
     prg: (programadosCount / total) * 100,
     aguard: (prontosCount / total) * 100,
-    resto: ((total - encaminhados) / total) * 100,
-  } : { pub: 0, prg: 0, aguard: 0, resto: 0 };
+  } : { pub: 0, prg: 0, aguard: 0 };
 
   return (
     <div className="min-h-screen pb-16">
@@ -230,14 +241,15 @@ export function ProgramacaoView({
               onChange={(e) => trocarProjeto(e.target.value)}
               className="rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-3 py-1.5 text-[12px] text-ink"
             >
+              <option value="todos">Todos os clientes</option>
               {projetos.map((p) => (
                 <option key={p.id} value={p.id}>{p.nome}</option>
               ))}
             </select>
             <div className="flex items-center gap-1 rounded-full bg-bgSoft p-1">
               <button type="button" onClick={() => irPara(-1)} className="rounded-full px-3 py-1 text-[12px] text-ink transition hover:bg-white">←</button>
-              <span className="min-w-[130px] px-2 text-center text-[12px] font-semibold text-ink">
-                {MESES[month - 1]} {year}
+              <span className="min-w-[180px] px-2 text-center text-[12px] font-semibold text-ink">
+                {rotuloSemana(weekStart, weekEnd)}
               </span>
               <button type="button" onClick={() => irPara(1)} className="rounded-full px-3 py-1 text-[12px] text-ink transition hover:bg-white">→</button>
             </div>
@@ -283,9 +295,8 @@ export function ProgramacaoView({
             Quantos posts existem no calendário e em que estágio da publicação estão. Painel que a Gestão de Projetos abre primeiro pra pegar o status do mês num relance.
           </p>
 
-          {/* Tiles */}
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Tile cor="var(--t3)"                 label="Total no calendário"    valor={total} />
+          {/* Tiles (contexto do mês) */}
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
             <Tile cor="var(--prazo-chegando)"     label="Programar"               valor={prontosCount} />
             <Tile cor="var(--cal-agendado)"       label="Programados"             valor={programadosCount} />
             <Tile cor="var(--prazo-em-dia)"       label="Publicados"              valor={publicadosCount} />
@@ -316,73 +327,67 @@ export function ProgramacaoView({
             </div>
           </div>
 
-          {/* Calendário do mês com títulos */}
+          {/* Calendário semanal */}
           <div className="card p-4">
             <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-t3">
-              {MESES[month - 1]} {year} · datas de publicação
+              {rotuloSemana(weekStart, weekEnd)} · datas de publicação
             </h3>
             <div className="grid grid-cols-7 gap-1">
               {DIAS_SEMANA.map((d) => (
                 <div key={d} className="px-2 py-1 text-[10px] font-semibold text-t3">{d}</div>
               ))}
-              {celulas.map((dia, i) => {
-                const doDia = dia ? postsPorDia.get(dia) ?? [] : [];
-                const ehHoje = dia === hojeMarcado;
+              {celulas.map((c) => {
+                const doDia = postsPorData.get(c.iso) ?? [];
+                const ehHoje = c.iso === hojeIso;
                 return (
                   <div
-                    key={i}
-                    className={`min-h-[96px] rounded-lg border p-1.5 ${
-                      dia
-                        ? ehHoje
-                          ? 'border-transparent bg-white ring-2 ring-inset ring-[var(--cal-agendado)]'
-                          : 'border-[rgba(21,21,33,0.06)] bg-white'
-                        : 'border-transparent bg-bgSoft/40'
+                    key={c.iso}
+                    className={`min-h-[420px] rounded-lg border p-1.5 ${
+                      ehHoje
+                        ? 'border-transparent bg-white ring-2 ring-inset ring-[var(--cal-agendado)]'
+                        : 'border-[rgba(21,21,33,0.06)] bg-white'
                     }`}
                   >
-                    {dia && (
-                      <>
-                        <div
-                          className={`mb-1 text-[11px] font-semibold ${
-                            ehHoje ? 'text-[var(--cal-agendado)]' : 'text-t2'
-                          }`}
-                        >
-                          {dia}
-                          {ehHoje && <span className="ml-1 text-[9px] font-bold uppercase">hoje</span>}
-                        </div>
-                        <div className="space-y-1">
-                          {doDia.slice(0, 3).map((p) => {
-                            const b = balde(p);
-                            const cores = coresChip(p, b);
-                            const label = labelChip(p, b);
-                            return (
-                              <button
-                                type="button"
-                                key={p.id}
-                                onClick={() => setPostAberto(p)}
-                                className="block w-full rounded-md px-1.5 py-1 text-left transition hover:opacity-80"
-                                style={{ background: cores.bg, color: cores.fg }}
-                                title={`${tituloSeguro(p.titulo)} · ${label}`}
-                              >
-                                <span className="block truncate text-[10px] font-medium leading-tight">
-                                  {tituloSeguro(p.titulo)}
-                                </span>
-                                <span
-                                  className="mt-1 inline-block max-w-full truncate rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase tracking-[0.06em] text-white"
-                                  style={{ background: cores.fg }}
-                                >
-                                  {label}
-                                </span>
-                              </button>
-                            );
-                          })}
-                          {doDia.length > 3 && (
-                            <div className="px-1 text-[9px] text-t3">
-                              +{doDia.length - 3}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
+                    <div
+                      className={`mb-1 text-[11px] font-semibold ${
+                        ehHoje ? 'text-[var(--cal-agendado)]' : 'text-t2'
+                      }`}
+                    >
+                      {c.dia}
+                      {ehHoje && <span className="ml-1 text-[9px] font-bold uppercase">hoje</span>}
+                    </div>
+                    <div className="space-y-1">
+                      {doDia.map((p) => {
+                        const b = balde(p);
+                        const cores = coresChip(p, b);
+                        const label = labelChip(p, b);
+                        return (
+                          <button
+                            type="button"
+                            key={p.id}
+                            onClick={() => setPostAberto(p)}
+                            className="block w-full rounded-md px-1.5 py-1 text-left transition hover:opacity-80"
+                            style={{ background: cores.bg, color: cores.fg }}
+                            title={`${tituloSeguro(p.titulo)} · ${label}${p.projetoNome ? ` · ${p.projetoNome}` : ''}`}
+                          >
+                            <span className="block truncate text-[10px] font-medium leading-tight">
+                              {tituloSeguro(p.titulo)}
+                            </span>
+                            <span
+                              className="mt-1 inline-block max-w-full truncate rounded-full px-1.5 py-[1px] text-[8px] font-bold uppercase tracking-[0.06em] text-white"
+                              style={{ background: cores.fg }}
+                            >
+                              {label}
+                            </span>
+                            {p.projetoNome && (
+                              <span className="mt-0.5 block truncate text-[9px] font-medium opacity-70">
+                                {p.projetoNome}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
@@ -422,7 +427,7 @@ export function ProgramacaoView({
             </button>
           </div>
           <p className="mb-4 max-w-prose text-[12px] leading-[1.55] text-t3">
-            Posts com arte aprovada aguardando agendamento. Clique em <b className="text-t2">Programar</b> pra abrir a página de configuração (horário, plataformas, legenda). Cards em ajuste ficam bloqueados.
+            Posts com arte aprovada aguardando agendamento. Clique em <b className="text-t2">Programar</b> pra abrir a página de configuração (horário, plataformas, legenda).
           </p>
 
           {areaProgramacao.length === 0 ? (
@@ -431,49 +436,40 @@ export function ProgramacaoView({
             </div>
           ) : (
             <div className="card divide-y divide-[rgba(21,21,33,0.06)] p-0">
-              <div className="grid grid-cols-[1fr_1.5fr_0.8fr_1fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+              <div className="grid grid-cols-[80px_1fr_1.5fr_0.8fr_auto] gap-3 bg-bgSoft/50 px-4 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+                <span>Data</span>
                 <span>Etapa</span>
                 <span>Post</span>
                 <span>Formato</span>
-                <span>Data</span>
                 <span>Ação</span>
               </div>
               {areaProgramacao.map((p) => {
                 const b = balde(p);
                 const cores = coresChip(p, b);
-                const bloqueado = b === 'ajuste';
                 const label = labelChip(p, b);
                 return (
-                  <div key={p.id} className="grid grid-cols-[1fr_1.5fr_0.8fr_1fr_auto] items-center gap-3 px-4 py-3 text-[13px]">
+                  <div key={p.id} className="grid grid-cols-[80px_1fr_1.5fr_0.8fr_auto] items-center gap-3 px-4 py-3 text-center text-[13px]">
+                    <span className="font-mono font-medium text-t2">{fmtDia(p.data)}</span>
                     <span
-                      className="max-w-full truncate justify-self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                      className="max-w-full truncate justify-self-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
                       style={{ background: cores.bg, color: cores.fg }}
                       title={label}
                     >
                       {label}
                     </span>
-                    <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
+                    <Link href={`/post/${p.id}`} className="min-w-0 truncate text-center font-semibold text-ink hover:text-mauve">
+                      {verTodos && p.projetoNome && (
+                        <span className="text-t3 font-normal">{p.projetoNome} · </span>
+                      )}
                       {tituloSeguro(p.titulo)}
                     </Link>
                     <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
-                    <span className="text-t2">{fmtDiaLongo(p.data)}</span>
-                    {bloqueado ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="cursor-not-allowed rounded-full bg-bgSoft px-3 py-1 text-[11px] font-semibold text-t3"
-                        title="Post em alteração — não dá pra programar até resolver"
-                      >
-                        Bloqueado
-                      </button>
-                    ) : (
-                      <Link
-                        href={`/programacao/${p.id}`}
-                        className="rounded-full bg-[var(--cal-aprovacao)] px-3 py-1 text-[11px] font-semibold text-white transition hover:opacity-90"
-                      >
-                        Programar →
-                      </Link>
-                    )}
+                    <Link
+                      href={`/programacao/${p.id}`}
+                      className="rounded-full bg-[var(--cal-aprovacao)] px-3 py-1 text-[11px] font-semibold text-white transition hover:opacity-90"
+                    >
+                      Programar →
+                    </Link>
                   </div>
                 );
               })}
@@ -482,44 +478,47 @@ export function ProgramacaoView({
         </section>
 
         {/* ============ SEÇÃO EM PRODUÇÃO ============ */}
-        {cats.outro.length > 0 && (
+        {emProducao.length > 0 && (
           <section>
             <div className="mb-1 flex items-baseline gap-2">
               <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
                 Em produção
               </h2>
               <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-t3">
-                {cats.outro.length}
+                {emProducao.length}
               </span>
             </div>
             <p className="mb-4 max-w-prose text-[12px] leading-[1.55] text-t3">
-              Posts do mês que ainda estão sendo produzidos (briefing, copy, curadoria, arte ou aprovação em andamento). Aparecem aqui até a arte ser aprovada e caírem em <b className="text-t2">Prontos para programar</b>.
+              Posts do mês que ainda estão sendo produzidos (briefing, copy, curadoria, arte ou aprovação em andamento) e posts em alteração. Aparecem aqui até a arte ser aprovada e caírem em <b className="text-t2">Área de programação</b>.
             </p>
             <div className="card divide-y divide-[rgba(21,21,33,0.06)] p-0">
-              <div className="grid grid-cols-[1fr_1.6fr_1fr_1fr] gap-3 bg-bgSoft/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+              <div className="grid grid-cols-[80px_1fr_1.6fr_1fr] gap-3 bg-bgSoft/50 px-4 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+                <span>Data</span>
                 <span>Etapa</span>
                 <span>Post</span>
                 <span>Formato</span>
-                <span>Data</span>
               </div>
-              {cats.outro.map((p) => {
+              {emProducao.map((p) => {
                 const b = balde(p);
                 const cores = coresChip(p, b);
                 const label = labelChip(p, b);
                 return (
-                <div key={p.id} className="grid grid-cols-[1fr_1.6fr_1fr_1fr] items-center gap-3 px-4 py-3 text-[13px]">
+                <div key={p.id} className="grid grid-cols-[80px_1fr_1.6fr_1fr] items-center gap-3 px-4 py-3 text-center text-[13px]">
+                  <span className="font-mono font-medium text-t2">{fmtDia(p.data)}</span>
                   <span
-                    className="max-w-full truncate justify-self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                    className="max-w-full truncate justify-self-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
                     style={{ background: cores.bg, color: cores.fg }}
                     title={label}
                   >
                     {label}
                   </span>
-                  <Link href={`/post/${p.id}`} className="min-w-0 truncate font-semibold text-ink hover:text-mauve">
+                  <Link href={`/post/${p.id}`} className="min-w-0 truncate text-center font-semibold text-ink hover:text-mauve">
+                    {verTodos && p.projetoNome && (
+                      <span className="text-t3 font-normal">{p.projetoNome} · </span>
+                    )}
                     {tituloSeguro(p.titulo)}
                   </Link>
                   <span className="text-t2">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
-                  <span className="text-t2">{fmtDiaLongo(p.data)}</span>
                 </div>
                 );
               })}
@@ -543,6 +542,7 @@ export function ProgramacaoView({
             vazioLabel="Nenhum post agendado neste mês."
             acaoLabel="Reprogramar"
             onAcao={(p) => setPostAberto(p)}
+            mostrarCliente={verTodos}
           />
         </section>
 
@@ -562,6 +562,7 @@ export function ProgramacaoView({
             vazioLabel="Nenhum post publicado neste mês ainda."
             acaoLabel="Abrir"
             onAcao={(p) => setPostAberto(p)}
+            mostrarCliente={verTodos}
           />
 
           {cats.publicado.length > 0 && encaminhados === total && total > 0 && (
@@ -654,6 +655,15 @@ function ComoProgramarModal({ onClose }: { onClose: () => void }) {
 
 // ─────────── COMPONENTES ───────────
 
+function LegendaSwatch({ cor, label }: { cor: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="inline-block h-2 w-2 rounded-sm" style={{ background: cor }} />
+      {label}
+    </span>
+  );
+}
+
 function Tile({ cor, label, valor }: { cor: string; label: string; valor: number }) {
   return (
     <div className="card p-4">
@@ -665,15 +675,6 @@ function Tile({ cor, label, valor }: { cor: string; label: string; valor: number
         {valor}
       </div>
     </div>
-  );
-}
-
-function LegendaSwatch({ cor, label }: { cor: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="inline-block h-2 w-2 rounded-sm" style={{ background: cor }} />
-      {label}
-    </span>
   );
 }
 
@@ -847,11 +848,13 @@ function PostTabelaCinza({
   vazioLabel,
   acaoLabel,
   onAcao,
+  mostrarCliente = false,
 }: {
   posts: PostCalendario[];
   vazioLabel: string;
   acaoLabel: string;
   onAcao: (p: PostCalendario) => void;
+  mostrarCliente?: boolean;
 }) {
   if (posts.length === 0) {
     return (
@@ -871,6 +874,9 @@ function PostTabelaCinza({
       {posts.map((p) => (
         <div key={p.id} className="grid grid-cols-[1.6fr_1fr_1fr_auto] items-center gap-3 px-4 py-2.5 text-[12.5px]">
           <Link href={`/post/${p.id}`} className="min-w-0 truncate text-t2 hover:text-ink">
+            {mostrarCliente && p.projetoNome && (
+              <span className="text-t3">{p.projetoNome} · </span>
+            )}
             {tituloSeguro(p.titulo)}
           </Link>
           <span className="text-t3">{FORMATO_LABELS[p.tipo] ?? 'Post'}</span>
