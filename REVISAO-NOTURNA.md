@@ -122,9 +122,9 @@ Seu `Processo_Social_Media.md` já é o sistema — está só num .md que ningu�
 ## 8. Estado ao fim da madrugada
 
 - ✅ Build de análise + insights + metas: **feito e commitado** (`ad3c7c7`).
-- ✅ Fix de segurança #1: **feito**.
-- ⏳ Página de Processo/Gestão: **em construção** (se aparecer commit depois de `ad3c7c7`, está lá; senão, a spec da seção 5 está pronta pra construir).
-- 📋 Ponte de dados, onboarding, demais fixes: **projetados** aqui, aguardando seu OK pra construir.
+- ✅ Fix de segurança #1: **feito** (`862bb65`).
+- ✅ **Página de Processo (10 etapas) construída** (`cb9db7c`) → acesse em **`/gestao/processo`** (link "🗺️ Processo" no header da Gestão). Resolve o "processo não está claro" pro time.
+- 📋 Ponte de dados, onboarding, gestão-por-cliente (fase 2), demais fixes: **projetados** aqui, aguardando seu OK pra construir.
 - ⚠️ Não consegui rodar os agentes de revisão até o fim (instabilidade da API do ambiente) nem validar visualmente ao vivo (localhost lento/travado). Toda validação foi por `tsc` limpo.
 
 **Bom dia! ☀️ Me diz por onde quer que eu siga.**
