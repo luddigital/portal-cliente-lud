@@ -65,6 +65,12 @@ export function GestaoView({
           </div>
           <nav className="flex flex-wrap items-center gap-2 text-[12px]">
             <Link
+              href="/gestao/processo"
+              className="rounded-full bg-bgSoft px-3 py-1.5 text-ink transition hover:bg-white"
+            >
+              🗺️ Processo
+            </Link>
+            <Link
               href="/programacao"
               className="rounded-full bg-bgSoft px-3 py-1.5 text-ink transition hover:bg-white"
             >
