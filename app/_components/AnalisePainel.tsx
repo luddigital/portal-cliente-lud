@@ -218,31 +218,30 @@ function KpiDestaque({
   valor,
   atual,
   anterior,
-  destaque = false,
+  icon,
 }: {
   label: string;
   valor: string;
-  atual: number;
-  anterior: number;
-  destaque?: boolean;
+  atual?: number;
+  anterior?: number;
+  icon?: string;
 }) {
-  const d = delta(atual, anterior);
-  const positivo = atual >= anterior;
+  const d = atual != null && anterior != null ? delta(atual, anterior) : null;
+  const positivo = (atual ?? 0) >= (anterior ?? 0);
   return (
-    <div
-      className={`relative overflow-hidden rounded-3xl border p-5 ${
-        destaque
-          ? 'border-[rgba(21,21,33,0.1)] bg-ink text-white'
-          : 'border-[rgba(21,21,33,0.06)] bg-bgSoft text-ink'
-      }`}
-    >
-      <div
-        className={`text-[12px] font-medium ${destaque ? 'text-white/70' : 'text-t2'}`}
-      >
-        {label}
+    <div className="group relative overflow-hidden rounded-3xl border border-[rgba(21,21,33,0.09)] bg-white p-5 shadow-[0_1px_2px_rgba(21,21,33,0.03)] transition-colors hover:bg-ink">
+      <div className="flex items-center gap-2">
+        {icon && (
+          <span className="text-[14px] leading-none opacity-70" aria-hidden>
+            {icon}
+          </span>
+        )}
+        <span className="text-[12px] font-medium text-t2 transition-colors group-hover:text-white/70">
+          {label}
+        </span>
       </div>
       <div className="mt-2 flex flex-wrap items-baseline gap-2">
-        <span className="text-[30px] font-semibold tracking-[-0.03em] leading-none sm:text-[34px]">
+        <span className="text-[30px] font-semibold tracking-[-0.03em] leading-none text-ink transition-colors group-hover:text-white sm:text-[34px]">
           {valor}
         </span>
         {d && (
@@ -259,11 +258,11 @@ function KpiDestaque({
           </span>
         )}
       </div>
-      <div
-        className={`mt-1 text-[11px] ${destaque ? 'text-white/50' : 'text-t3'}`}
-      >
-        vs. período anterior
-      </div>
+      {d && (
+        <div className="mt-1 text-[11px] text-t3 transition-colors group-hover:text-white/50">
+          vs. período anterior
+        </div>
+      )}
     </div>
   );
 }
@@ -349,27 +348,43 @@ function SplitPublico({ publico }: { publico: NonNullable<IgAnalytics['publico']
       <h3 className="text-[13px] font-semibold text-ink">
         Alcance — seguidores vs. não-seguidores
       </h3>
-      <div className="mt-4 flex h-3 w-full overflow-hidden rounded-full">
-        <div style={{ width: `${pctSeg}%`, background: 'var(--navy)' }} />
-        <div style={{ width: `${pctNao}%`, background: 'var(--lavender)' }} />
+      <div className="mt-5 flex h-11 w-full overflow-hidden rounded-2xl text-[13px] font-semibold">
+        <div
+          className="flex items-center justify-center text-white"
+          style={{ width: `${pctSeg}%`, background: 'var(--navy)' }}
+        >
+          {pctSeg >= 10 ? `${pctSeg.toFixed(1)}%` : ''}
+        </div>
+        <div
+          className="flex items-center justify-center text-ink"
+          style={{ width: `${pctNao}%`, background: 'var(--lavender)' }}
+        >
+          {pctNao >= 10 ? `${pctNao.toFixed(1)}%` : ''}
+        </div>
       </div>
-      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 text-[12px]">
-        <span className="inline-flex items-center gap-1.5">
+      <div className="mt-4 grid grid-cols-2 gap-3 text-[12px]">
+        <span className="inline-flex items-center gap-2">
           <span
-            className="h-2.5 w-2.5 rounded-full"
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
             style={{ background: 'var(--navy)' }}
           />
-          <span className="font-semibold text-ink">{pctSeg.toFixed(1)}%</span>
-          <span className="text-t3">seguidores ({fmt(publico.seguidores)})</span>
+          <span>
+            <span className="font-semibold text-ink">
+              {fmt(publico.seguidores)}
+            </span>{' '}
+            <span className="text-t3">seguidores</span>
+          </span>
         </span>
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center gap-2">
           <span
-            className="h-2.5 w-2.5 rounded-full"
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
             style={{ background: 'var(--lavender)' }}
           />
-          <span className="font-semibold text-ink">{pctNao.toFixed(1)}%</span>
-          <span className="text-t3">
-            não-seguidores ({fmt(publico.naoSeguidores)})
+          <span>
+            <span className="font-semibold text-ink">
+              {fmt(publico.naoSeguidores)}
+            </span>{' '}
+            <span className="text-t3">não-seguidores</span>
           </span>
         </span>
       </div>
@@ -456,41 +471,39 @@ function MediaCard({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem })
         <p className="line-clamp-2 text-[13px] font-medium leading-snug text-ink">
           {m.caption || 'Sem legenda'}
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <StatChip icon="♡" label="curtidas" valor={fmt(m.likes)} />
-          <StatChip icon="💬" label="comentários" valor={fmt(m.comments)} />
-          <StatChip icon="👁" label="alcance" valor={fmt(m.reach)} />
-          {m.saved > 0 && (
-            <StatChip icon="🔖" label="salvos" valor={fmt(m.saved)} />
-          )}
-          {m.shares > 0 && (
-            <StatChip icon="↗" label="compart." valor={fmt(m.shares)} />
-          )}
-          {m.views > 0 && (
-            <StatChip icon="▶" label="views" valor={fmt(m.views)} />
-          )}
+        <div className="mt-3 grid grid-cols-3 gap-x-3 gap-y-3 border-t border-[rgba(21,21,33,0.06)] pt-3">
+          <StatCell icon="▶" label="Views" valor={m.views} />
+          <StatCell icon="👁" label="Alcance" valor={m.reach} />
+          <StatCell icon="♡" label="Curtidas" valor={m.likes} />
+          <StatCell icon="💬" label="Coment." valor={m.comments} />
+          <StatCell icon="↗" label="Compart." valor={m.shares} />
+          <StatCell icon="🔖" label="Salvos" valor={m.saved} />
         </div>
       </div>
     </a>
   );
 }
 
-function StatChip({
+// Célula de dado padronizada: número em cima, emoji + legenda embaixo.
+function StatCell({
   icon,
   label,
   valor,
+  align = 'left',
 }: {
   icon: string;
   label: string;
-  valor: string;
+  valor: number;
+  align?: 'left' | 'right';
 }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-full bg-bgSoft px-2.5 py-1 text-[11px]">
-      <span className="text-[12px] leading-none text-t3" aria-hidden>
-        {icon}
-      </span>
-      <span className="font-semibold text-ink">{valor}</span>
-      <span className="text-t3">{label}</span>
+    <div className={align === 'right' ? 'text-right' : ''}>
+      <div className="text-[15px] font-semibold leading-none text-ink tabular-nums">
+        {fmt(valor)}
+      </div>
+      <div className="mt-1 text-[10px] text-t3">
+        <span aria-hidden>{icon}</span> {label}
+      </div>
     </div>
   );
 }
@@ -522,7 +535,7 @@ function FiltroOrdem({
   );
 }
 
-// === LINHA COMPACTA DE CONTEÚDO (lista da aba Conteúdo) ===
+// === LINHA DE CONTEÚDO (lista da aba Conteúdo — dados em colunas) ===
 function ContentRow({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem }) {
   const data = m.timestamp
     ? new Date(m.timestamp).toLocaleDateString('pt-BR', {
@@ -530,41 +543,61 @@ function ContentRow({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem }
         month: 'short',
       })
     : '';
+  const colunas: { c: CriterioOrdem; label: string; icon: string; valor: number }[] = [
+    { c: 'views', label: 'Views', icon: '▶', valor: m.views },
+    { c: 'reach', label: 'Alcance', icon: '👁', valor: m.reach },
+    { c: 'likes', label: 'Curtidas', icon: '♡', valor: m.likes },
+    { c: 'comments', label: 'Coment.', icon: '💬', valor: m.comments },
+    { c: 'shares', label: 'Compart.', icon: '↗', valor: m.shares },
+    { c: 'saved', label: 'Salvos', icon: '🔖', valor: m.saved },
+  ];
   return (
     <a
       href={m.permalink || '#'}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-3 border-b border-[rgba(21,21,33,0.06)] py-3 transition last:border-b-0 hover:opacity-80"
+      className="flex items-center gap-3 border-b border-[rgba(21,21,33,0.06)] py-2.5 transition last:border-b-0 hover:bg-bgSoft"
     >
-      <div className="relative h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-bgSoft">
+      <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded-lg bg-bgSoft">
         {m.thumbnail ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={m.thumbnail} alt="" className="h-full w-full object-cover" />
         ) : null}
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium text-ink">
+      {/* legenda — espaço limitado */}
+      <div className="min-w-0 basis-[32%] shrink-0 pr-2">
+        <div className="truncate text-[12.5px] font-medium text-ink">
           {m.caption || 'Sem legenda'}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-t3">
-          <span className="font-medium text-t2">
-            {formatoLabel(m.mediaType, m.caption)}
-            {data ? ` · ${data}` : ''}
-          </span>
-          <span>♡ {fmt(m.likes)}</span>
-          <span>💬 {fmt(m.comments)}</span>
-          {m.shares > 0 && <span>↗ {fmt(m.shares)}</span>}
-          {m.saved > 0 && <span>🔖 {fmt(m.saved)}</span>}
+        <div className="mt-0.5 text-[11px] text-t3">
+          {formatoLabel(m.mediaType, m.caption)}
+          {data ? ` · ${data}` : ''}
         </div>
       </div>
-      <div className="shrink-0 pl-2 text-right">
-        <div className="text-[16px] font-semibold tracking-[-0.02em] leading-none text-ink">
-          {fmt(m[criterio])}
-        </div>
-        <div className="mt-1 text-[9px] uppercase tracking-[0.06em] text-t3">
-          {LABEL_METRICA[criterio]}
-        </div>
+      {/* colunas de dados em evidência */}
+      <div className="ml-auto flex items-center gap-3 sm:gap-5">
+        {colunas.map((col) => {
+          const ativo = col.c === criterio;
+          return (
+            <div
+              key={col.c}
+              className={`w-[54px] text-right tabular-nums ${
+                ativo ? '' : 'hidden sm:block'
+              }`}
+            >
+              <div
+                className={`text-[14px] font-semibold leading-none ${
+                  ativo ? 'text-ink' : 'text-t2'
+                }`}
+              >
+                {fmt(col.valor)}
+              </div>
+              <div className="mt-1 text-[10px] text-t3">
+                <span aria-hidden>{col.icon}</span> {col.label}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </a>
   );
@@ -578,36 +611,7 @@ function AbaGeral({ a }: { a: IgAnalytics }) {
         <GraficoLinha dados={a.serieViews} label="Views por dia" />
       )}
 
-      {(a.viewsPorTipo.length > 0 || a.publico) && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <ViewsPorTipo itens={a.viewsPorTipo} />
-          {a.publico && <SplitPublico publico={a.publico} />}
-        </div>
-      )}
-
-      <div>
-        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-t3">
-          Outras métricas
-        </h2>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <Metric
-            label="Contas engajadas"
-            valor={fmt(a.atual.engagedAccounts)}
-            atual={a.atual.engagedAccounts}
-            anterior={a.anterior.engagedAccounts}
-          />
-          <Metric
-            label="Visitas ao perfil"
-            valor={fmt(a.atual.profileViews)}
-            atual={a.atual.profileViews}
-            anterior={a.anterior.profileViews}
-          />
-          <Metric
-            label="Taxa de engajamento"
-            valor={`${(a.taxaEngajamento * 100).toFixed(1)}%`}
-          />
-        </div>
-      </div>
+      {a.viewsPorTipo.length > 0 && <ViewsPorTipo itens={a.viewsPorTipo} />}
 
       <div className="space-y-4">
         {a.serieSeguidores.length > 0 && (
@@ -635,6 +639,7 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
   const [busca, setBusca] = useState('');
   const [criterio, setCriterio] = useState<CriterioOrdem>('views');
   const [tipo, setTipo] = useState<string>('Todos');
+  const [ordem, setOrdem] = useState<'desc' | 'asc'>('desc');
 
   const tipos = useMemo(() => {
     const s = new Set(
@@ -645,13 +650,14 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return a.conteudos
+    const arr = a.conteudos
       .filter(
         (m) => tipo === 'Todos' || formatoLabel(m.mediaType, m.caption) === tipo,
       )
       .filter((m) => !q || (m.caption || '').toLowerCase().includes(q))
       .sort((x, y) => y[criterio] - x[criterio]);
-  }, [a.conteudos, busca, tipo, criterio]);
+    return ordem === 'asc' ? arr.reverse() : arr;
+  }, [a.conteudos, busca, tipo, criterio, ordem]);
 
   const destaques = filtrados.slice(0, 3);
 
@@ -679,40 +685,58 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
         )}
       </div>
 
-      {/* filtro por métrica */}
-      <div>
-        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-t3">
-          Ordenar por métrica
+      {/* filtros — agrupados numa linha só */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex items-center gap-1 rounded-full border border-[rgba(21,21,33,0.12)] bg-white pl-3 pr-1 text-[12px]">
+          <span className="text-t3">Ordenar por</span>
+          <select
+            value={criterio}
+            onChange={(e) => setCriterio(e.target.value as CriterioOrdem)}
+            className="cursor-pointer rounded-full bg-transparent py-2 pl-1 pr-1 font-semibold text-ink outline-none"
+          >
+            {METRICA_OPTS.map((o) => (
+              <option key={o.c} value={o.c}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
-        <FiltroOrdem valor={criterio} onChange={setCriterio} />
+
+        <button
+          type="button"
+          onClick={() => setOrdem((o) => (o === 'desc' ? 'asc' : 'desc'))}
+          title="Alternar entre melhores e piores do período"
+          className="inline-flex items-center gap-1.5 rounded-full bg-ink px-3.5 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
+        >
+          {ordem === 'desc' ? '↓ Maior → menor' : '↑ Menor → maior'}
+        </button>
+
+        {tipos.length > 2 && (
+          <select
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+            className="cursor-pointer rounded-full border border-[rgba(21,21,33,0.12)] bg-white px-3 py-2 text-[12px] font-medium text-ink outline-none"
+          >
+            {tipos.map((t) => (
+              <option key={t} value={t}>
+                {t === 'Todos' ? 'Todos os tipos' : t}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
-      {/* filtro por tipo */}
-      {tipos.length > 2 && (
-        <div className="flex flex-wrap gap-1">
-          {tipos.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTipo(t)}
-              className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                tipo === t
-                  ? 'bg-ink text-white'
-                  : 'bg-bgSoft text-t2 hover:text-ink'
-              }`}
-            >
-              {t === 'Todos' ? 'Todos os tipos' : t}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* destaques (top 3 pela métrica escolhida) */}
+      {/* destaques — melhores OU piores conforme a ordem */}
       {destaques.length >= 3 && !busca && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {destaques.map((m) => (
-            <MediaCard key={m.id} m={m} criterio={criterio} />
-          ))}
+        <div>
+          <div className="mb-2 text-[13px] font-semibold text-ink">
+            {ordem === 'desc' ? '🏆 Melhores do período' : '⚠️ Piores do período'}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {destaques.map((m) => (
+              <MediaCard key={m.id} m={m} criterio={criterio} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -744,16 +768,26 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
   );
 }
 
-// === ABA PÚBLICO (placeholder — demografia vem no próximo passo) ===
-function AbaPublico() {
+// === ABA PÚBLICO ===
+function AbaPublico({ a }: { a: IgAnalytics }) {
   return (
-    <div className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-8 text-center">
-      <div className="text-[13px] font-semibold text-ink">Público — em breve</div>
-      <p className="mx-auto mt-1 max-w-md text-[12px] text-t3">
-        Gênero, faixa etária e top localizações dos seguidores. Também vamos
-        guardar o histórico ao longo do tempo (a API do Instagram só mostra a
-        foto do momento).
-      </p>
+    <div className="space-y-4">
+      {a.publico ? (
+        <SplitPublico publico={a.publico} />
+      ) : (
+        <p className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-6 text-center text-[13px] text-t3">
+          A conta não expõe o breakdown de alcance por seguidores nesta versão da
+          API.
+        </p>
+      )}
+      <div className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-8 text-center">
+        <div className="text-[13px] font-semibold text-ink">Demografia — em breve</div>
+        <p className="mx-auto mt-1 max-w-md text-[12px] text-t3">
+          Gênero, faixa etária e top localizações dos seguidores. A API do
+          Instagram só mostra a foto do momento — vamos guardar o histórico ao
+          longo do tempo.
+        </p>
+      </div>
     </div>
   );
 }
@@ -985,32 +1019,58 @@ export function AnalisePainel({
       {/* SEGUIDORES — primeiro, tamanho médio (persistente) */}
       <CabecalhoSeguidores a={a} />
 
-      {/* FILEIRA DE KPIs (persistente) */}
+      {/* KPIs PRINCIPAIS */}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <KpiDestaque
-          destaque
+          icon="👁"
           label="Views"
           valor={fmt(a.atual.views)}
           atual={a.atual.views}
           anterior={a.anterior.views}
         />
         <KpiDestaque
+          icon="🌍"
           label="Contas alcançadas"
           valor={fmt(a.atual.reach)}
           atual={a.atual.reach}
           anterior={a.anterior.reach}
         />
         <KpiDestaque
+          icon="👥"
           label="Novos seguidores"
           valor={`${a.atual.novosSeguidores > 0 ? '+' : ''}${fmt(a.atual.novosSeguidores)}`}
           atual={a.atual.novosSeguidores}
           anterior={a.anterior.novosSeguidores}
         />
         <KpiDestaque
+          icon="💬"
           label="Interações"
           valor={fmt(a.atual.interactions)}
           atual={a.atual.interactions}
           anterior={a.anterior.interactions}
+        />
+      </div>
+
+      {/* KPIs SECUNDÁRIOS */}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <KpiDestaque
+          icon="✨"
+          label="Contas engajadas"
+          valor={fmt(a.atual.engagedAccounts)}
+          atual={a.atual.engagedAccounts}
+          anterior={a.anterior.engagedAccounts}
+        />
+        <KpiDestaque
+          icon="👤"
+          label="Visitas ao perfil"
+          valor={fmt(a.atual.profileViews)}
+          atual={a.atual.profileViews}
+          anterior={a.anterior.profileViews}
+        />
+        <KpiDestaque
+          icon="📈"
+          label="Taxa de engajamento"
+          valor={`${(a.taxaEngajamento * 100).toFixed(1)}%`}
         />
       </div>
 
@@ -1023,7 +1083,7 @@ export function AnalisePainel({
       {aba === 'geral' && <AbaGeral a={a} />}
       {aba === 'conteudo' && <AbaConteudo a={a} />}
       {aba === 'insights' && <AbaInsights query={insightsQuery} />}
-      {aba === 'publico' && <AbaPublico />}
+      {aba === 'publico' && <AbaPublico a={a} />}
     </div>
   );
 }

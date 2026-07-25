@@ -72,6 +72,7 @@ export function GraficoBarras({
   const diasGanho = valores.filter((v) => v > 0).length;
   const diasPerda = valores.filter((v) => v < 0).length;
 
+  // Mesma amostragem de dias do gráfico de linha, pra padronizar os dois.
   const indicesX = indicesEixoX(dados.length);
 
   const corPos = 'var(--prazo-em-dia)';
