@@ -106,14 +106,13 @@ export async function GET(
     },
   });
 
-  // Cache headers — bytes de arquivos do Drive são imutáveis (file id é
-  // único pra esse upload específico). public + s-maxage longo permite
-  // Vercel CDN servir do edge nas próximas chamadas, evitando ida ao
-  // Drive e ida ao lambda na maioria das visualizações.
+  // Cache headers — este endpoint é PROTEGIDO POR SESSÃO. `public` faria o CDN
+  // da Vercel cachear os bytes do arquivo privado com chave só pelo fileId e
+  // servir pra qualquer um (inclusive sem cookie), furando a auth. Usamos
+  // `private` (cache só no browser do próprio usuário autenticado).
   const headers: Record<string, string> = {
     'Content-Type': meta.mimeType,
-    'Cache-Control':
-      'public, max-age=3600, s-maxage=604800, stale-while-revalidate=86400',
+    'Cache-Control': 'private, max-age=3600',
     'Accept-Ranges': 'bytes',
   };
   const respHeaders: Record<string, any> = driveRes.headers ?? {};
