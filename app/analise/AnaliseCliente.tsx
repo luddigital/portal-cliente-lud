@@ -66,6 +66,10 @@ export function AnaliseCliente({
     setUntil(hojeISO());
   }
 
+  const insightsQuery = `projetoId=${encodeURIComponent(projetoId)}&${
+    modo === 'preset' ? `dias=${presetDias}` : `since=${since}&until=${until}`
+  }`;
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -149,7 +153,13 @@ export function AnaliseCliente({
           {erro}
         </p>
       )}
-      {data && !carregando && !erro && <AnalisePainel a={data} />}
+      {data && !carregando && !erro && (
+        <AnalisePainel
+          a={data}
+          insightsQuery={insightsQuery}
+          projetoId={projetoId}
+        />
+      )}
     </div>
   );
 }

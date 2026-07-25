@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { igConfigured, listIgAccounts } from '@/lib/instagram';
+import { igConfigured, listIgAccounts, type IgAccount } from '@/lib/instagram';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +25,7 @@ export default async function IgDescobrirPage() {
     );
   }
 
-  let accounts;
+  let accounts: IgAccount[] = [];
   let erro: string | null = null;
   try {
     accounts = await listIgAccounts();

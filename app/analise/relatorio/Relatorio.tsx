@@ -259,12 +259,13 @@ export function Relatorio({
               Seguidores no período
             </h2>
             <p className="mt-1 text-[13px] text-t2">
-              Quantos entraram (verde) e saíram (vermelho) por dia.
+              Saldo líquido de seguidores por dia — dias de ganho (verde) e de
+              perda (vermelho).
             </p>
             <div className="mt-6">
               <GraficoBarras
                 dados={a.serieSeguidores}
-                label="Entradas e saídas diárias"
+                label="Variação líquida diária"
               />
             </div>
           </Slide>

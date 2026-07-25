@@ -80,6 +80,15 @@ export function AnaliseAdmin({
     setModo('custom');
   }
 
+  const periodoQs =
+    modo === 'preset'
+      ? `dias=${presetDias}`
+      : `since=${since}&until=${until}`;
+  const projetoId = projetoPorIg[igId];
+  const insightsQuery = `igId=${encodeURIComponent(igId)}&${periodoQs}${
+    projetoId ? `&projetoId=${encodeURIComponent(projetoId)}` : ''
+  }`;
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -174,7 +183,13 @@ export function AnaliseAdmin({
           {erro}
         </p>
       )}
-      {data && !carregando && !erro && <AnalisePainel a={data} />}
+      {data && !carregando && !erro && (
+        <AnalisePainel
+          a={data}
+          insightsQuery={insightsQuery}
+          projetoId={projetoId}
+        />
+      )}
     </div>
   );
 }

@@ -17,7 +17,12 @@ export type IgPeriodInsights = {
   engagedAccounts: number;
   profileViews: number;
   novosSeguidores: number;
+  /** Total de visualizações de conteúdo no período (métrica `views` da conta). */
+  views: number;
 };
+
+/** Uma fatia de um breakdown (ex.: por tipo de conteúdo, por público). */
+export type IgBreakdownItem = { chave: string; valor: number };
 
 export type IgMediaItem = {
   id: string;
@@ -49,9 +54,20 @@ export type IgAnalytics = {
   topMedia: IgMediaItem[];
   /** Piores conteúdos (menor engajamento) do período. */
   topPiores: IgMediaItem[];
+  /** Todos os conteúdos do período (feed + reels), pra aba Conteúdo com busca
+   *  e ordenação por métrica. Limitado às últimas ~50 publicações. */
+  conteudos: IgMediaItem[];
   taxaEngajamento: number;
   /** Reach diário no período. */
   serieAlcance: IgPontoSerie[];
+  /** Views (visualizações) diárias no período. */
+  serieViews: IgPontoSerie[];
+  /** Views quebradas por tipo de conteúdo (Reels, Stories, Posts, …).
+   *  Vazio se a conta/versão da API não expõe o breakdown. */
+  viewsPorTipo: IgBreakdownItem[];
+  /** Alcance dividido entre seguidores e não-seguidores. null se a API
+   *  não expõe o breakdown pra essa conta. */
+  publico: { seguidores: number; naoSeguidores: number } | null;
   /** Delta diário de seguidores (signed: positivo = entraram, negativo = saíram).
    *  Não dá pra separar entraram vs saíram nos mesmos dia — IG API só expõe
    *  o saldo líquido por dia. */
@@ -155,17 +171,31 @@ async function getPeriodInsights(
   since: string,
   until: string,
 ): Promise<IgPeriodInsights> {
-  const [reach, interactions, engagedAccounts, profileViews, novosSeguidores] =
-    await Promise.all([
-      totalValue(igUserId, 'reach', since, until),
-      totalValue(igUserId, 'total_interactions', since, until),
-      totalValue(igUserId, 'accounts_engaged', since, until),
-      totalValue(igUserId, 'profile_views', since, until),
-      // follower_count NÃO é compatível com total_value (a API recusa). Vem como
-      // série diária de saldo líquido — somamos pra ter o ganho do período.
-      sumTimeSeries(igUserId, 'follower_count', since, until),
-    ]);
-  return { reach, interactions, engagedAccounts, profileViews, novosSeguidores };
+  const [
+    reach,
+    interactions,
+    engagedAccounts,
+    profileViews,
+    novosSeguidores,
+    views,
+  ] = await Promise.all([
+    totalValue(igUserId, 'reach', since, until),
+    totalValue(igUserId, 'total_interactions', since, until),
+    totalValue(igUserId, 'accounts_engaged', since, until),
+    totalValue(igUserId, 'profile_views', since, until),
+    // follower_count NÃO é compatível com total_value (a API recusa). Vem como
+    // série diária de saldo líquido — somamos pra ter o ganho do período.
+    sumTimeSeries(igUserId, 'follower_count', since, until),
+    totalValue(igUserId, 'views', since, until),
+  ]);
+  return {
+    reach,
+    interactions,
+    engagedAccounts,
+    profileViews,
+    novosSeguidores,
+    views,
+  };
 }
 
 /** Soma os valores diários de uma métrica time_series no período. */
@@ -346,6 +376,7 @@ function somarInsights(pedacos: IgPeriodInsights[]): IgPeriodInsights {
       engagedAccounts: acc.engagedAccounts + p.engagedAccounts,
       profileViews: acc.profileViews + p.profileViews,
       novosSeguidores: acc.novosSeguidores + p.novosSeguidores,
+      views: acc.views + p.views,
     }),
     {
       reach: 0,
@@ -353,8 +384,52 @@ function somarInsights(pedacos: IgPeriodInsights[]): IgPeriodInsights {
       engagedAccounts: 0,
       profileViews: 0,
       novosSeguidores: 0,
+      views: 0,
     },
   );
+}
+
+/** Puxa uma métrica com `breakdown` (ex.: media_product_type, follow_type) no
+ *  período. Resiliente: se a conta/versão da API não expõe o breakdown, devolve
+ *  vazio em vez de estourar. */
+async function totalValueBreakdown(
+  igUserId: string,
+  metric: string,
+  breakdown: string,
+  since: string,
+  until: string,
+): Promise<IgBreakdownItem[]> {
+  try {
+    const json = await graph<any>(`${igUserId}/insights`, {
+      metric,
+      metric_type: 'total_value',
+      period: 'day',
+      breakdown,
+      since,
+      until,
+    });
+    const results = json?.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? [];
+    return results.map((r: any) => ({
+      chave: String(r?.dimension_values?.[0] ?? '').toUpperCase(),
+      valor: typeof r?.value === 'number' ? r.value : 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Junta fatias de breakdown de vários pedaços de 30d somando por chave. */
+function mergeBreakdown(fatias: IgBreakdownItem[][]): IgBreakdownItem[] {
+  const mapa = new Map<string, number>();
+  for (const fatia of fatias) {
+    for (const item of fatia) {
+      mapa.set(item.chave, (mapa.get(item.chave) ?? 0) + item.valor);
+    }
+  }
+  return [...mapa.entries()]
+    .map(([chave, valor]) => ({ chave, valor }))
+    .filter((i) => i.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
 }
 
 /** Divide um intervalo em pedaços de até 30 dias — cap da Graph API. */
@@ -398,6 +473,9 @@ export async function getIgAnalytics(
     fatiasAlcance,
     fatiasSeguidores,
     fatiasEngajamento,
+    fatiasViews,
+    fatiasViewsPorTipo,
+    fatiasPublico,
   ] = await Promise.all([
     Promise.all(pedacosAtual.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
     Promise.all(pedacosAnterior.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
@@ -405,6 +483,18 @@ export async function getIgAnalytics(
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'reach', s(a), s(b)))),
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'follower_count', s(a), s(b)))),
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'accounts_engaged', s(a), s(b)))),
+    Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'views', s(a), s(b)))),
+    // Breakdowns (podem não existir na conta → mergeBreakdown volta []):
+    Promise.all(
+      pedacosAtual.map(([a, b]) =>
+        totalValueBreakdown(igUserId, 'views', 'media_product_type', s(a), s(b)),
+      ),
+    ),
+    Promise.all(
+      pedacosAtual.map(([a, b]) =>
+        totalValueBreakdown(igUserId, 'reach', 'follow_type', s(a), s(b)),
+      ),
+    ),
   ]);
 
   const atual = somarInsights(insightsAtual);
@@ -412,6 +502,22 @@ export async function getIgAnalytics(
   const serieAlcance = fatiasAlcance.flat();
   const serieSeguidores = fatiasSeguidores.flat();
   const serieEngajamento = fatiasEngajamento.flat();
+  const serieViews = fatiasViews.flat();
+  const viewsPorTipo = mergeBreakdown(fatiasViewsPorTipo);
+
+  // Público: a API devolve chaves tipo FOLLOWER / NON_FOLLOWER (variam por
+  // versão). Classificamos por conter "NON"/"NÃO" pra ser resiliente ao nome.
+  const publicoMerge = mergeBreakdown(fatiasPublico);
+  let publico: { seguidores: number; naoSeguidores: number } | null = null;
+  if (publicoMerge.length > 0) {
+    let seguidores = 0;
+    let naoSeguidores = 0;
+    for (const item of publicoMerge) {
+      if (/NON|NAO|NÃO/.test(item.chave)) naoSeguidores += item.valor;
+      else seguidores += item.valor;
+    }
+    if (seguidores + naoSeguidores > 0) publico = { seguidores, naoSeguidores };
+  }
 
   // Melhores = top 3 do sorted desc. Piores = últimos 3 do sorted desc =
   // primeiros 3 do sorted asc. Só se tiver 6+ posts pra fazer sentido —
@@ -433,9 +539,13 @@ export async function getIgAnalytics(
     anterior,
     topMedia,
     topPiores,
+    conteudos: mediaOrdenada,
     taxaEngajamento: atual.reach > 0 ? atual.interactions / atual.reach : 0,
     serieAlcance,
     serieSeguidores,
     serieEngajamento,
+    serieViews,
+    viewsPorTipo,
+    publico,
   };
 }

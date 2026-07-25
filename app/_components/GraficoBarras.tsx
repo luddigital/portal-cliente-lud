@@ -66,9 +66,11 @@ export function GraficoBarras({
   const stepX = (W - PADX * 2) / totalDias;
   const barW = Math.max(2, stepX * 0.7);
 
-  const positivos = valores.filter((v) => v > 0).reduce((a, b) => a + b, 0);
-  const negativos = valores.filter((v) => v < 0).reduce((a, b) => a + b, 0);
-  const liquido = positivos + negativos;
+  // A API do Instagram só expõe o SALDO LÍQUIDO por dia (não separa entradas de
+  // saídas). Então mostramos só o líquido — nada de "entraram/saíram" inventado.
+  const liquido = valores.reduce((a, b) => a + b, 0);
+  const diasGanho = valores.filter((v) => v > 0).length;
+  const diasPerda = valores.filter((v) => v < 0).length;
 
   const indicesX = indicesEixoX(dados.length);
 
@@ -100,19 +102,17 @@ export function GraficoBarras({
 
   return (
     <div className="card relative p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-[13px] font-semibold text-ink">{label}</h3>
-        <div className="flex flex-wrap items-baseline gap-2 text-[11px]">
-          <span style={{ color: corPos }} className="font-semibold">
-            +{Math.abs(positivos).toLocaleString('pt-BR')}
-          </span>
-          <span className="text-t3">entraram</span>
-          <span style={{ color: corNeg }} className="ml-2 font-semibold">
-            {negativos.toLocaleString('pt-BR')}
-          </span>
-          <span className="text-t3">saíram</span>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div>
+          <h3 className="text-[13px] font-semibold text-ink">{label}</h3>
+          <p className="text-[11px] text-t3">
+            Saldo líquido por dia · {diasGanho} de ganho
+            {diasPerda > 0 ? ` · ${diasPerda} de perda` : ''}
+          </p>
+        </div>
+        <div className="flex items-baseline gap-1.5 text-[11px]">
           <span
-            className="ml-2 font-semibold"
+            className="text-[15px] font-semibold"
             style={{
               color: liquido > 0 ? corPos : liquido < 0 ? corNeg : 'var(--t2)',
             }}
@@ -120,7 +120,7 @@ export function GraficoBarras({
             {liquido > 0 ? '+' : ''}
             {liquido.toLocaleString('pt-BR')}
           </span>
-          <span className="text-t3">líquido</span>
+          <span className="text-t3">no período</span>
         </div>
       </div>
       <div className="relative mt-3">
