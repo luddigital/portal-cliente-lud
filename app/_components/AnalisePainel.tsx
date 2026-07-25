@@ -166,7 +166,29 @@ function MetasObjetivo({ projetoId, a }: { projetoId?: string; a: IgAnalytics })
   ].filter((b): b is typeof b & { meta: number } => b.meta != null && b.meta > 0);
 
   const objetivo = config.objetivo?.trim();
-  if (!objetivo && barras.length === 0) return null;
+  if (!objetivo && barras.length === 0) {
+    return (
+      <div className="rounded-3xl border border-dashed border-[rgba(21,21,33,0.16)] bg-bgSoft p-5 sm:p-6">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-t3">
+          Objetivo do mês
+        </div>
+        <p className="mt-1.5 text-[13px] text-t2">
+          Esse projeto ainda não tem objetivo e metas definidos.
+          {projetoId ? (
+            <>
+              {' '}
+              <a
+                href={`/admin/projetos/${projetoId}`}
+                className="font-semibold text-navy underline underline-offset-2"
+              >
+                Definir agora →
+              </a>
+            </>
+          ) : null}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-3xl border border-[rgba(21,21,33,0.06)] bg-bgSoft p-5 sm:p-6">
@@ -501,7 +523,7 @@ function StatCell({
       <div className="text-[15px] font-semibold leading-none text-ink tabular-nums">
         {fmt(valor)}
       </div>
-      <div className="mt-1 text-[10px] text-t3">
+      <div className="mt-1 whitespace-nowrap text-[10px] text-t3">
         <span aria-hidden>{icon}</span> {label}
       </div>
     </div>
@@ -592,7 +614,7 @@ function ContentRow({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem }
               >
                 {fmt(col.valor)}
               </div>
-              <div className="mt-1 text-[10px] text-t3">
+              <div className="mt-1 whitespace-nowrap text-[10px] text-t3">
                 <span aria-hidden>{col.icon}</span> {col.label}
               </div>
             </div>
@@ -611,13 +633,11 @@ function AbaGeral({ a }: { a: IgAnalytics }) {
         <GraficoLinha dados={a.serieViews} label="Views por dia" />
       )}
 
-      {a.viewsPorTipo.length > 0 && <ViewsPorTipo itens={a.viewsPorTipo} />}
-
       <div className="space-y-4">
         {a.serieSeguidores.length > 0 && (
           <GraficoBarras
             dados={a.serieSeguidores}
-            label="Seguidores — variação líquida por dia"
+            label="Novos seguidores por dia"
           />
         )}
         {a.serieAlcance.length > 0 && (
@@ -630,6 +650,9 @@ function AbaGeral({ a }: { a: IgAnalytics }) {
           />
         )}
       </div>
+
+      {/* Views por tipo de conteúdo — por último */}
+      {a.viewsPorTipo.length > 0 && <ViewsPorTipo itens={a.viewsPorTipo} />}
     </div>
   );
 }
@@ -708,7 +731,7 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
           title="Alternar entre melhores e piores do período"
           className="inline-flex items-center gap-1.5 rounded-full bg-ink px-3.5 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
         >
-          {ordem === 'desc' ? '↓ Maior → menor' : '↑ Menor → maior'}
+          {ordem === 'desc' ? '🏆 Melhores primeiro' : '⚠️ Piores primeiro'}
         </button>
 
         {tipos.length > 2 && (
@@ -769,25 +792,107 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
 }
 
 // === ABA PÚBLICO ===
+// Lista de barras genérica (gênero, idade, países, cidades).
+function ListaBarras({
+  titulo,
+  itens,
+  formatKey,
+}: {
+  titulo: string;
+  itens: { chave: string; valor: number }[];
+  formatKey?: (k: string) => string;
+}) {
+  if (itens.length === 0) return null;
+  const total = itens.reduce((acc, i) => acc + i.valor, 0);
+  const max = Math.max(...itens.map((i) => i.valor), 1);
+  return (
+    <div className="rounded-2xl border border-[rgba(21,21,33,0.06)] bg-bgSoft p-5 sm:p-6">
+      <h3 className="text-[13px] font-semibold text-ink">{titulo}</h3>
+      <div className="mt-4 space-y-3">
+        {itens.map((i) => {
+          const pct = total > 0 ? (i.valor / total) * 100 : 0;
+          return (
+            <div key={i.chave}>
+              <div className="mb-1 flex items-baseline justify-between gap-2 text-[12px]">
+                <span className="font-medium text-ink">
+                  {formatKey ? formatKey(i.chave) : i.chave}
+                </span>
+                <span className="text-t3">{pct.toFixed(1)}%</span>
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-[rgba(21,21,33,0.06)]">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${(i.valor / max) * 100}%`, background: 'var(--navy)' }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const AGE_ORDER = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'];
+
+const PAIS_NOME: Record<string, string> = {
+  BR: '🇧🇷 Brasil', PT: '🇵🇹 Portugal', US: '🇺🇸 Estados Unidos', FR: '🇫🇷 França',
+  ES: '🇪🇸 Espanha', IT: '🇮🇹 Itália', DE: '🇩🇪 Alemanha', GB: '🇬🇧 Reino Unido',
+  AR: '🇦🇷 Argentina', CA: '🇨🇦 Canadá', CH: '🇨🇭 Suíça', MX: '🇲🇽 México',
+  CL: '🇨🇱 Chile', CO: '🇨🇴 Colômbia', NL: '🇳🇱 Holanda', BE: '🇧🇪 Bélgica',
+  AU: '🇦🇺 Austrália', JP: '🇯🇵 Japão', IE: '🇮🇪 Irlanda',
+};
+
+function generoLabel(k: string): string {
+  const u = k.trim().toUpperCase();
+  if (u.startsWith('F')) return 'Mulheres';
+  if (u.startsWith('M')) return 'Homens';
+  return 'Outros';
+}
+
+function paisLabel(code: string): string {
+  return PAIS_NOME[code.trim().toUpperCase()] ?? code;
+}
+
 function AbaPublico({ a }: { a: IgAnalytics }) {
+  const demo = a.demografia;
+  const idadeOrdenada = demo
+    ? [...demo.idade].sort(
+        (x, y) => AGE_ORDER.indexOf(x.chave) - AGE_ORDER.indexOf(y.chave),
+      )
+    : [];
   return (
     <div className="space-y-4">
-      {a.publico ? (
-        <SplitPublico publico={a.publico} />
+      {a.publico && <SplitPublico publico={a.publico} />}
+
+      {demo ? (
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ListaBarras titulo="Gênero" itens={demo.genero} formatKey={generoLabel} />
+            <ListaBarras titulo="Top países" itens={demo.paises} formatKey={paisLabel} />
+          </div>
+          {idadeOrdenada.length > 0 && (
+            <ListaBarras titulo="Faixa etária" itens={idadeOrdenada} />
+          )}
+          {demo.cidades.length > 0 && (
+            <ListaBarras titulo="Top cidades" itens={demo.cidades} />
+          )}
+          <p className="px-1 text-[11px] text-t3">
+            📸 Foto do momento — a API do Instagram não guarda histórico de
+            demografia. (Em breve: snapshots pra ver a evolução.)
+          </p>
+        </>
       ) : (
-        <p className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-6 text-center text-[13px] text-t3">
-          A conta não expõe o breakdown de alcance por seguidores nesta versão da
-          API.
-        </p>
+        <div className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-8 text-center">
+          <div className="text-[13px] font-semibold text-ink">
+            Demografia indisponível
+          </div>
+          <p className="mx-auto mt-1 max-w-md text-[12px] text-t3">
+            A conta não expõe a demografia dos seguidores nesta versão da API
+            (precisa de 100+ seguidores).
+          </p>
+        </div>
       )}
-      <div className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-8 text-center">
-        <div className="text-[13px] font-semibold text-ink">Demografia — em breve</div>
-        <p className="mx-auto mt-1 max-w-md text-[12px] text-t3">
-          Gênero, faixa etária e top localizações dos seguidores. A API do
-          Instagram só mostra a foto do momento — vamos guardar o histórico ao
-          longo do tempo.
-        </p>
-      </div>
     </div>
   );
 }
@@ -802,36 +907,19 @@ const INSIGHT_ICON: Record<InsightAcionavel['tipo'], string> = {
   geral: '✦',
 };
 
-function AbaInsights({ query }: { query?: string }) {
-  const [insights, setInsights] = useState<InsightAcionavel[] | null>(null);
-  const [audiencia, setAudiencia] = useState<'interno' | 'cliente'>('interno');
-  const [erro, setErro] = useState('');
-  const [carregando, setCarregando] = useState(false);
-
-  const carregar = useCallback(
-    (refresh: boolean) => {
-      if (!query) return;
-      setCarregando(true);
-      setErro('');
-      fetch(`/api/instagram/insights?${query}${refresh ? '&refresh=1' : ''}`)
-        .then((r) => r.json())
-        .then((j) => {
-          if (j.error) setErro(j.error);
-          else {
-            setInsights(j.insights ?? []);
-            if (j.audiencia) setAudiencia(j.audiencia);
-          }
-        })
-        .catch((e) => setErro(String(e?.message ?? e)))
-        .finally(() => setCarregando(false));
-    },
-    [query],
-  );
-
-  useEffect(() => {
-    carregar(false);
-  }, [carregar]);
-
+function AbaInsights({
+  insights,
+  audiencia,
+  erro,
+  carregando,
+  onAtualizar,
+}: {
+  insights: InsightAcionavel[] | null;
+  audiencia: 'interno' | 'cliente';
+  erro: string;
+  carregando: boolean;
+  onAtualizar: () => void;
+}) {
   const hero = insights?.[0];
   const apoio = insights?.slice(1) ?? [];
   const heroCliente = audiencia === 'cliente';
@@ -849,7 +937,7 @@ function AbaInsights({ query }: { query?: string }) {
         </div>
         <button
           type="button"
-          onClick={() => carregar(true)}
+          onClick={onAtualizar}
           disabled={carregando}
           className="rounded-full bg-bgSoft px-4 py-2 text-[12px] font-semibold text-t2 transition hover:text-ink disabled:opacity-50"
         >
@@ -992,6 +1080,37 @@ export function AnalisePainel({
 }) {
   const [aba, setAba] = useState<Aba>('geral');
 
+  // Pré-carrega os insights de IA assim que a página abre (em segundo plano),
+  // pra quando a pessoa clicar na aba eles já estarem prontos.
+  const [insights, setInsights] = useState<InsightAcionavel[] | null>(null);
+  const [audienciaIns, setAudienciaIns] = useState<'interno' | 'cliente'>('interno');
+  const [erroIns, setErroIns] = useState('');
+  const [carregandoIns, setCarregandoIns] = useState(false);
+
+  const carregarInsights = useCallback(
+    (refresh: boolean) => {
+      if (!insightsQuery) return;
+      setCarregandoIns(true);
+      setErroIns('');
+      fetch(`/api/instagram/insights?${insightsQuery}${refresh ? '&refresh=1' : ''}`)
+        .then((r) => r.json())
+        .then((j) => {
+          if (j.error) setErroIns(j.error);
+          else {
+            setInsights(j.insights ?? []);
+            if (j.audiencia) setAudienciaIns(j.audiencia);
+          }
+        })
+        .catch((e) => setErroIns(String(e?.message ?? e)))
+        .finally(() => setCarregandoIns(false));
+    },
+    [insightsQuery],
+  );
+
+  useEffect(() => {
+    carregarInsights(false);
+  }, [carregarInsights]);
+
   return (
     <div className="space-y-6">
       {/* cabeçalho da conta */}
@@ -1082,7 +1201,15 @@ export function AnalisePainel({
 
       {aba === 'geral' && <AbaGeral a={a} />}
       {aba === 'conteudo' && <AbaConteudo a={a} />}
-      {aba === 'insights' && <AbaInsights query={insightsQuery} />}
+      {aba === 'insights' && (
+        <AbaInsights
+          insights={insights}
+          audiencia={audienciaIns}
+          erro={erroIns}
+          carregando={carregandoIns}
+          onAtualizar={() => carregarInsights(true)}
+        />
+      )}
       {aba === 'publico' && <AbaPublico a={a} />}
     </div>
   );

@@ -68,6 +68,14 @@ export type IgAnalytics = {
   /** Alcance dividido entre seguidores e não-seguidores. null se a API
    *  não expõe o breakdown pra essa conta. */
   publico: { seguidores: number; naoSeguidores: number } | null;
+  /** Demografia dos seguidores (foto do momento). null se a API não expõe
+   *  (conta com <100 seguidores ou versão sem o breakdown). */
+  demografia: {
+    genero: IgBreakdownItem[];
+    idade: IgBreakdownItem[];
+    paises: IgBreakdownItem[];
+    cidades: IgBreakdownItem[];
+  } | null;
   /** Delta diário de seguidores (signed: positivo = entraram, negativo = saíram).
    *  Não dá pra separar entraram vs saíram nos mesmos dia — IG API só expõe
    *  o saldo líquido por dia. */
@@ -418,6 +426,33 @@ async function totalValueBreakdown(
   }
 }
 
+/** Demografia dos seguidores por dimensão (age | gender | country | city).
+ *  É um snapshot (foto do momento) — requer 100+ seguidores. Resiliente. */
+async function demografiaBreakdown(
+  igUserId: string,
+  breakdown: 'age' | 'gender' | 'country' | 'city',
+): Promise<IgBreakdownItem[]> {
+  try {
+    const json = await graph<any>(`${igUserId}/insights`, {
+      metric: 'follower_demographics',
+      period: 'lifetime',
+      metric_type: 'total_value',
+      timeframe: 'last_30_days',
+      breakdown,
+    });
+    const results = json?.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? [];
+    return results
+      .map((r: any) => ({
+        chave: String(r?.dimension_values?.[0] ?? ''),
+        valor: typeof r?.value === 'number' ? r.value : 0,
+      }))
+      .filter((i: IgBreakdownItem) => i.valor > 0)
+      .sort((a: IgBreakdownItem, b: IgBreakdownItem) => b.valor - a.valor);
+  } catch {
+    return [];
+  }
+}
+
 /** Junta fatias de breakdown de vários pedaços de 30d somando por chave. */
 function mergeBreakdown(fatias: IgBreakdownItem[][]): IgBreakdownItem[] {
   const mapa = new Map<string, number>();
@@ -476,6 +511,10 @@ export async function getIgAnalytics(
     fatiasViews,
     fatiasViewsPorTipo,
     fatiasPublico,
+    demoGenero,
+    demoIdade,
+    demoPaises,
+    demoCidades,
   ] = await Promise.all([
     Promise.all(pedacosAtual.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
     Promise.all(pedacosAnterior.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
@@ -495,6 +534,11 @@ export async function getIgAnalytics(
         totalValueBreakdown(igUserId, 'reach', 'follow_type', s(a), s(b)),
       ),
     ),
+    // Demografia dos seguidores (snapshot — não depende do período):
+    demografiaBreakdown(igUserId, 'gender'),
+    demografiaBreakdown(igUserId, 'age'),
+    demografiaBreakdown(igUserId, 'country'),
+    demografiaBreakdown(igUserId, 'city'),
   ]);
 
   const atual = somarInsights(insightsAtual);
@@ -518,6 +562,20 @@ export async function getIgAnalytics(
     }
     if (seguidores + naoSeguidores > 0) publico = { seguidores, naoSeguidores };
   }
+
+  const temDemografia =
+    demoGenero.length > 0 ||
+    demoIdade.length > 0 ||
+    demoPaises.length > 0 ||
+    demoCidades.length > 0;
+  const demografia = temDemografia
+    ? {
+        genero: demoGenero,
+        idade: demoIdade,
+        paises: demoPaises.slice(0, 6),
+        cidades: demoCidades.slice(0, 6),
+      }
+    : null;
 
   // Melhores = top 3 do sorted desc. Piores = últimos 3 do sorted desc =
   // primeiros 3 do sorted asc. Só se tiver 6+ posts pra fazer sentido —
@@ -547,5 +605,6 @@ export async function getIgAnalytics(
     serieViews,
     viewsPorTipo,
     publico,
+    demografia,
   };
 }

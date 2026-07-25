@@ -107,8 +107,10 @@ export function GraficoBarras({
         <div>
           <h3 className="text-[13px] font-semibold text-ink">{label}</h3>
           <p className="text-[11px] text-t3">
-            Saldo líquido por dia · {diasGanho} de ganho
-            {diasPerda > 0 ? ` · ${diasPerda} de perda` : ''}
+            {diasGanho} {diasGanho === 1 ? 'dia' : 'dias'} no positivo
+            {diasPerda > 0
+              ? ` · ${diasPerda} ${diasPerda === 1 ? 'dia' : 'dias'} no negativo`
+              : ''}
           </p>
         </div>
         <div className="flex items-baseline gap-1.5 text-[11px]">

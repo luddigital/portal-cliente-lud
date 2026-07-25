@@ -265,7 +265,7 @@ export function Relatorio({
             <div className="mt-6">
               <GraficoBarras
                 dados={a.serieSeguidores}
-                label="Variação líquida diária"
+                label="Novos seguidores por dia"
               />
             </div>
           </Slide>
