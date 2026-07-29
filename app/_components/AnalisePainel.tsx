@@ -438,15 +438,13 @@ const LABEL_METRICA = Object.fromEntries(
   METRICA_OPTS.map((o) => [o.c, o.label]),
 ) as Record<CriterioOrdem, string>;
 
-function MediaCard({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem }) {
+function MediaCard({ m }: { m: IgMediaItem }) {
   const data = m.timestamp
     ? new Date(m.timestamp).toLocaleDateString('pt-BR', {
         day: '2-digit',
         month: 'short',
       })
     : '';
-  const valorDestaque = m[criterio];
-  const labelDestaque = LABEL_METRICA;
   return (
     <a
       href={m.permalink || '#'}
@@ -476,15 +474,6 @@ function MediaCard({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem })
           <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-t2 backdrop-blur">
             {data}
           </span>
-        </div>
-        {/* destaque grande no canto inf direito */}
-        <div className="absolute bottom-3 right-3 rounded-2xl bg-white/95 px-3 py-2 text-right backdrop-blur">
-          <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-t3">
-            {labelDestaque[criterio]}
-          </div>
-          <div className="mt-0.5 text-[18px] font-semibold tracking-[-0.02em] leading-none text-ink">
-            {fmt(valorDestaque)}
-          </div>
         </div>
       </div>
 
@@ -757,7 +746,7 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {destaques.map((m) => (
-              <MediaCard key={m.id} m={m} criterio={criterio} />
+              <MediaCard key={m.id} m={m} />
             ))}
           </div>
         </div>

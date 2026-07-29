@@ -28,6 +28,34 @@
   --prazo-em-dia-soft: #EBEFE9;
   --prazo-tranquilo: #6F6F7E;       /* cinza neutro */
   --prazo-tranquilo-soft: #EEF0F4;
+
+  /* Paleta da marca (espelha tailwind.config.ts) — expõe as cores como CSS
+     vars pra poderem ser usadas em style={{ background: 'var(--navy)' }}.
+     Sem isso, var(--navy)/var(--lavender)/etc resolvem pra nada e o
+     elemento fica transparente (ex.: barras do painel de Público). */
+  --ink: #151521;
+  --bg: #F0F0F2;
+  --bgSoft: #F7F7F8;
+  --cream: #F1EBE5;
+  --navy: #313D65;
+  --navyHub: #1F2D4A;
+  --deep: #1E476A;
+  --denim: #436F95;
+  --steel: #779DBF;
+  --sky: #B8D2EA;
+  --lavender: #BAC4E6;
+  --mauve: #8485A3;
+  --sage: #889F7B;
+  --fern: #6A7464;
+  --blush: #FFABAC;
+  --petal: #FFD5D6;
+  --crimson: #90181A;
+  --t1: #151521;
+  --t2: #5C5B72;
+  --t3: #9898AA;
+  --hubBlue: #3B6789;
+  --hubGreen: #4F6B4A;
+  --hubRed: #6E2A2C;
 }
 
 @layer base {
