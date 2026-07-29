@@ -3,19 +3,11 @@
 import { useEffect, useState } from 'react';
 import type { IgAnalytics } from '@/lib/instagram';
 import { AnalisePainel } from '@/app/_components/AnalisePainel';
-
-const PRESETS = [
-  { dias: 7, label: '7d' },
-  { dias: 14, label: '14d' },
-  { dias: 30, label: '30d' },
-  { dias: 60, label: '60d' },
-  { dias: 90, label: '90d' },
-];
+import { PeriodoPicker } from '@/app/_components/PeriodoPicker';
 
 function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
-
 function diasAtrasISO(dias: number): string {
   const d = new Date();
   d.setDate(d.getDate() - dias);
@@ -28,8 +20,6 @@ export function AnaliseCliente({
   projetos: { id: string; nome: string }[];
 }) {
   const [projetoId, setProjetoId] = useState(projetos[0]?.id ?? '');
-  const [modo, setModo] = useState<'preset' | 'custom'>('preset');
-  const [presetDias, setPresetDias] = useState(30);
   const [since, setSince] = useState(diasAtrasISO(30));
   const [until, setUntil] = useState(hojeISO());
   const [data, setData] = useState<IgAnalytics | null>(null);
@@ -41,10 +31,7 @@ export function AnaliseCliente({
     let ativo = true;
     setCarregando(true);
     setErro('');
-    const qs =
-      modo === 'preset'
-        ? `projetoId=${encodeURIComponent(projetoId)}&dias=${presetDias}`
-        : `projetoId=${encodeURIComponent(projetoId)}&since=${since}&until=${until}`;
+    const qs = `projetoId=${encodeURIComponent(projetoId)}&since=${since}&until=${until}`;
     fetch(`/api/instagram/analytics?${qs}`)
       .then((r) => r.json())
       .then((j) => {
@@ -57,18 +44,9 @@ export function AnaliseCliente({
     return () => {
       ativo = false;
     };
-  }, [projetoId, modo, presetDias, since, until]);
+  }, [projetoId, since, until]);
 
-  function escolherPreset(d: number) {
-    setModo('preset');
-    setPresetDias(d);
-    setSince(diasAtrasISO(d));
-    setUntil(hojeISO());
-  }
-
-  const insightsQuery = `projetoId=${encodeURIComponent(projetoId)}&${
-    modo === 'preset' ? `dias=${presetDias}` : `since=${since}&until=${until}`
-  }`;
+  const insightsQuery = `projetoId=${encodeURIComponent(projetoId)}&since=${since}&until=${until}`;
 
   return (
     <div className="space-y-5">
@@ -86,45 +64,16 @@ export function AnaliseCliente({
             ))}
           </select>
         )}
-        <div className="flex gap-1">
-          {PRESETS.map((p) => (
-            <button
-              key={p.dias}
-              onClick={() => escolherPreset(p.dias)}
-              className={`rounded-full px-3 py-1.5 text-[12px] transition ${
-                modo === 'preset' && presetDias === p.dias
-                  ? 'bg-ink font-semibold text-white'
-                  : 'bg-bgSoft text-t2 hover:text-ink'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 rounded-full bg-bgSoft px-3 py-1">
-          <input
-            type="date"
-            value={since}
-            max={until}
-            onChange={(e) => {
-              setSince(e.target.value);
-              setModo('custom');
-            }}
-            className="border-0 bg-transparent text-[12px] text-ink focus:outline-none"
-          />
-          <span className="text-t3">→</span>
-          <input
-            type="date"
-            value={until}
-            min={since}
-            max={hojeISO()}
-            onChange={(e) => {
-              setUntil(e.target.value);
-              setModo('custom');
-            }}
-            className="border-0 bg-transparent text-[12px] text-ink focus:outline-none"
-          />
-        </div>
+
+        <PeriodoPicker
+          since={since}
+          until={until}
+          onApply={(s, u) => {
+            setSince(s);
+            setUntil(u);
+          }}
+        />
+
         <a
           href={`/analise/relatorio?projetoId=${encodeURIComponent(projetoId)}&inicio=${since}&fim=${until}`}
           target="_blank"

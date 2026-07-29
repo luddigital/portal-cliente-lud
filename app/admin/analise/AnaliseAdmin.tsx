@@ -3,19 +3,11 @@
 import { useEffect, useState } from 'react';
 import type { IgAccount, IgAnalytics } from '@/lib/instagram';
 import { AnalisePainel } from '@/app/_components/AnalisePainel';
-
-const PRESETS = [
-  { dias: 7, label: '7d' },
-  { dias: 14, label: '14d' },
-  { dias: 30, label: '30d' },
-  { dias: 60, label: '60d' },
-  { dias: 90, label: '90d' },
-];
+import { PeriodoPicker } from '@/app/_components/PeriodoPicker';
 
 function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
-
 function diasAtrasISO(dias: number): string {
   const d = new Date();
   d.setDate(d.getDate() - dias);
@@ -30,8 +22,6 @@ export function AnaliseAdmin({
   projetoPorIg: Record<string, string>;
 }) {
   const [igId, setIgId] = useState(accounts[0]?.igUserId ?? '');
-  const [modo, setModo] = useState<'preset' | 'custom'>('preset');
-  const [presetDias, setPresetDias] = useState(30);
   const [since, setSince] = useState(diasAtrasISO(30));
   const [until, setUntil] = useState(hojeISO());
   const [data, setData] = useState<IgAnalytics | null>(null);
@@ -43,10 +33,7 @@ export function AnaliseAdmin({
     let ativo = true;
     setCarregando(true);
     setErro('');
-    const qs =
-      modo === 'preset'
-        ? `igId=${encodeURIComponent(igId)}&dias=${presetDias}`
-        : `igId=${encodeURIComponent(igId)}&since=${since}&until=${until}`;
+    const qs = `igId=${encodeURIComponent(igId)}&since=${since}&until=${until}`;
     fetch(`/api/instagram/analytics?${qs}`)
       .then((r) => r.json())
       .then((j) => {
@@ -59,7 +46,7 @@ export function AnaliseAdmin({
     return () => {
       ativo = false;
     };
-  }, [igId, modo, presetDias, since, until]);
+  }, [igId, since, until]);
 
   if (accounts.length === 0) {
     return (
@@ -69,23 +56,8 @@ export function AnaliseAdmin({
     );
   }
 
-  function escolherPreset(d: number) {
-    setModo('preset');
-    setPresetDias(d);
-    setSince(diasAtrasISO(d));
-    setUntil(hojeISO());
-  }
-
-  function aplicarCustom() {
-    setModo('custom');
-  }
-
-  const periodoQs =
-    modo === 'preset'
-      ? `dias=${presetDias}`
-      : `since=${since}&until=${until}`;
   const projetoId = projetoPorIg[igId];
-  const insightsQuery = `igId=${encodeURIComponent(igId)}&${periodoQs}${
+  const insightsQuery = `igId=${encodeURIComponent(igId)}&since=${since}&until=${until}${
     projetoId ? `&projetoId=${encodeURIComponent(projetoId)}` : ''
   }`;
 
@@ -104,51 +76,18 @@ export function AnaliseAdmin({
           ))}
         </select>
 
-        {/* presets rápidos */}
-        <div className="flex gap-1">
-          {PRESETS.map((p) => (
-            <button
-              key={p.dias}
-              onClick={() => escolherPreset(p.dias)}
-              className={`rounded-full px-3 py-1.5 text-[12px] transition ${
-                modo === 'preset' && presetDias === p.dias
-                  ? 'bg-ink font-semibold text-white'
-                  : 'bg-bgSoft text-t2 hover:text-ink'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <PeriodoPicker
+          since={since}
+          until={until}
+          onApply={(s, u) => {
+            setSince(s);
+            setUntil(u);
+          }}
+        />
 
-        {/* date picker custom */}
-        <div className="flex items-center gap-2 rounded-full bg-bgSoft px-3 py-1">
-          <input
-            type="date"
-            value={since}
-            max={until}
-            onChange={(e) => {
-              setSince(e.target.value);
-              aplicarCustom();
-            }}
-            className="border-0 bg-transparent text-[12px] text-ink focus:outline-none"
-          />
-          <span className="text-t3">→</span>
-          <input
-            type="date"
-            value={until}
-            min={since}
-            max={hojeISO()}
-            onChange={(e) => {
-              setUntil(e.target.value);
-              aplicarCustom();
-            }}
-            className="border-0 bg-transparent text-[12px] text-ink focus:outline-none"
-          />
-        </div>
-        {projetoPorIg[igId] ? (
+        {projetoId ? (
           <a
-            href={`/analise/relatorio?projetoId=${encodeURIComponent(projetoPorIg[igId])}&inicio=${since}&fim=${until}`}
+            href={`/analise/relatorio?projetoId=${encodeURIComponent(projetoId)}&inicio=${since}&fim=${until}`}
             target="_blank"
             rel="noreferrer"
             className="ml-auto inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
