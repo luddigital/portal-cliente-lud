@@ -2486,7 +2486,15 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       resolverFormato(formatoIds),
       lerLegendaDoPost(postId),
       lerBodyCompletoDoPost(postId),
-      lerSecaoEntre(postId, 'Ideia do Post', []),
+      // Template do Notion mudou: hoje o header pode ser "Ideia do Post"
+      // (padrão antigo) ou "Briefing do Post" (padrão novo). Tenta os dois.
+      (async () => {
+        const a = await lerSecaoEntre(postId, 'Ideia do Post', []);
+        if (a) return a;
+        const b = await lerSecaoEntre(postId, 'Briefing do Post', []);
+        if (b) return b;
+        return await lerSecaoEntre(postId, 'Briefing', []);
+      })(),
       lerMateriaisNecessarios(postId),
       lerInformacoesNecessarias(postId),
     ]);
