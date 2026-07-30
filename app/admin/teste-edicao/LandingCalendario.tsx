@@ -1,8 +1,11 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { criarPautaNaData } from './actions';
+
+const LS_CLIENTE = 'lud:sandbox:clienteId';
+const LS_PROJETO = 'lud:sandbox:projetoId';
 
 type Projeto = {
   id: string;
@@ -63,6 +66,27 @@ export function LandingCalendario({
 }) {
   const [pendingDia, setPendingDia] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Restaura cliente/projeto do localStorage se a URL veio vazia
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (clienteId) {
+      // Persiste a escolha atual pra próxima vez
+      window.localStorage.setItem(LS_CLIENTE, clienteId);
+      if (projetoId) window.localStorage.setItem(LS_PROJETO, projetoId);
+      else window.localStorage.removeItem(LS_PROJETO);
+      return;
+    }
+    // URL veio sem clienteId — tenta restaurar do storage
+    const lsCliente = window.localStorage.getItem(LS_CLIENTE);
+    if (lsCliente) {
+      const lsProjeto = window.localStorage.getItem(LS_PROJETO);
+      const params = new URLSearchParams(window.location.search);
+      params.set('clienteId', lsCliente);
+      if (lsProjeto) params.set('projetoId', lsProjeto);
+      window.location.href = `/admin/teste-edicao?${params.toString()}`;
+    }
+  }, [clienteId, projetoId]);
 
   // Agrupa projetos por cliente
   const clientes = useMemo(() => {

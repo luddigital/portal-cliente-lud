@@ -6,7 +6,7 @@ import { getColaboradorByEmail } from '@/lib/notion';
 
 export const runtime = 'nodejs';
 
-const CAMPOS_VALIDOS = ['ideia_texto', 'informacoes_texto', 'materiais_texto'] as const;
+const CAMPOS_VALIDOS = ['ideia_texto', 'informacoes_texto', 'materiais_texto', 'referencias_texto'] as const;
 type Campo = (typeof CAMPOS_VALIDOS)[number];
 
 /** GET  → { rascunho: {ideia_texto, informacoes_texto, materiais_texto, atualizado_em, publicado_em} | null }
@@ -37,7 +37,7 @@ export async function GET(_req: Request, { params }: { params: { postId: string 
   const sb = await supabaseAdmin();
   const { data, error } = await sb
     .from('rascunho_pauta')
-    .select('ideia_texto, informacoes_texto, materiais_texto, atualizado_em, atualizado_por, publicado_em, publicado_por')
+    .select('ideia_texto, informacoes_texto, materiais_texto, referencias_texto, atualizado_em, atualizado_por, publicado_em, publicado_por')
     .eq('post_id', params.postId)
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

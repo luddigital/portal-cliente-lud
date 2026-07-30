@@ -7,6 +7,7 @@ import {
   getPostComDetalhes,
   listAllProjetos,
   listOpcoesRelation,
+  listOpcoesRelationUncached,
   listOpcoesSelect,
   listPostsNoIntervalo,
 } from '@/lib/notion';
@@ -167,7 +168,7 @@ export default async function TesteEdicaoPage({
         const sb = await supabaseAdmin();
         const { data } = await sb
           .from('rascunho_pauta')
-          .select('ideia_texto, informacoes_texto, materiais_texto, atualizado_em, publicado_em')
+          .select('ideia_texto, informacoes_texto, materiais_texto, referencias_texto, atualizado_em, publicado_em')
           .eq('post_id', post.id)
           .maybeSingle();
         return data ?? null;
@@ -176,8 +177,10 @@ export default async function TesteEdicaoPage({
       }
     })(),
     listOpcoesRelation('Formato').catch(() => []),
-    listOpcoesRelation('Funil').catch(() => []),
-    listOpcoesRelation('Objetivo').catch(() => []),
+    // Funil/Objetivo usam UNCACHED — o seed acabou de rodar acima e
+    // revalidateTag só invalida pras próximas requests, não pra essa.
+    listOpcoesRelationUncached('Funil').catch(() => []),
+    listOpcoesRelationUncached('Objetivo').catch(() => []),
     listOpcoesSelect(env.notion.postProps.demanda).catch(() => []),
   ]);
 

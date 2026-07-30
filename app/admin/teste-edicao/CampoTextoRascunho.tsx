@@ -27,7 +27,7 @@ export function CampoTextoRascunho({
   atualizadoEmInicial,
 }: {
   postId: string;
-  campo: 'informacoes_texto' | 'materiais_texto';
+  campo: 'informacoes_texto' | 'materiais_texto' | 'referencias_texto';
   label: string;
   placeholder: string;
   valorInicial: string;

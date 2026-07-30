@@ -3281,6 +3281,11 @@ const _listOpcoesSelectCached = unstable_cache(
 export const listOpcoesSelect = (propriedade: string) =>
   _listOpcoesSelectCached(propriedade);
 
+/** Versão SEM cache do listOpcoesRelation — usa direto quando precisa da
+ *  leitura fresca (ex: logo depois de um seed, quando o unstable_cache
+ *  ainda serviria valores antigos até a próxima request). */
+export const listOpcoesRelationUncached = _listOpcoesRelationUncached;
+
 /** Garante que a prop `propriedade` do post tem as options/entries `nomes`.
  *  Funciona pra select (adiciona options faltantes via databases.update) e
  *  pra relation (cria páginas com o title = nome no DB relacionado).

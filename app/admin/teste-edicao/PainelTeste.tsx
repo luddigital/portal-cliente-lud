@@ -12,6 +12,7 @@ type RascunhoPauta = {
   ideia_texto: string;
   informacoes_texto: string;
   materiais_texto: string;
+  referencias_texto: string;
   atualizado_em: string;
   publicado_em: string | null;
 } | null;
@@ -133,12 +134,14 @@ export function PainelTeste({
           atualizadoEmInicial={rascunhoPauta?.atualizado_em ?? null}
         />
 
-        <div className="card p-4">
-          <div className="label mb-1">Próximos campos (próxima rodada)</div>
-          <ul className="mt-1 space-y-1 text-[12px] text-t2">
-            <li>• Referências (lista de links + prints)</li>
-          </ul>
-        </div>
+        <CampoTextoRascunho
+          postId={postId}
+          campo="referencias_texto"
+          label="Referências"
+          placeholder="Cola links, posts, notas de inspiração. Ex: https://instagram.com/reel/… — Reels do X sobre Y (usar o corte final como referência)."
+          valorInicial={rascunhoPauta?.referencias_texto ?? ''}
+          atualizadoEmInicial={rascunhoPauta?.atualizado_em ?? null}
+        />
 
         {emModal ? (
           <div className="pt-2 text-center">
