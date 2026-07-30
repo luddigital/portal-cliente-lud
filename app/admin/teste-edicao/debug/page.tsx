@@ -54,6 +54,12 @@ async function diagnosticar() {
       database_id: env.notion.postagensDbId,
     });
 
+    // TODAS as props da DB — pra descobrir nomes reais de Funil/Objetivo
+    out.todasAsProps = Object.entries(db.properties).map(([nome, p]: [string, any]) => ({
+      nome,
+      tipo: p.type,
+    }));
+
     for (const propNome of ['Formato', 'Funil', 'Objetivo']) {
       const prop = db.properties?.[propNome];
       if (!prop) {
