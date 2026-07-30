@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { env } from '@/lib/env';
 import {
+  getColaboradorByEmail,
   getPostComDetalhes,
   atualizarLegendaDoPost,
   invalidarCachesAposMudanca,
@@ -24,7 +26,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     const post = await getPostComDetalhes(params.id);
     if (!post) return NextResponse.json({ error: 'post não encontrado' }, { status: 404 });
-    if (!post.projetoId || !session.projetoIds.includes(post.projetoId)) {
+
+    // Permissão: cliente dono do projeto OU equipe Lud. (admin/colaborador)
+    const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+    let ehColaborador = !!session.colaboradorId;
+    if (!ehColaborador && !ehAdmin) {
+      try {
+        const c = await getColaboradorByEmail(session.email);
+        ehColaborador = !!c;
+      } catch {
+        /* mantém false */
+      }
+    }
+    const ehClienteDono =
+      !!post.projetoId && session.projetoIds.includes(post.projetoId);
+    if (!ehAdmin && !ehColaborador && !ehClienteDono) {
       return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
     }
 
