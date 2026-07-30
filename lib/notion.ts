@@ -2446,6 +2446,85 @@ export async function atualizarLegendaDoPost(
   }
 }
 
+/**
+ * Atualiza o texto da seção 'Ideia do Post' ou 'Briefing do Post' do post
+ * no Notion. Se ainda não existe uma seção, cria — puxa pra baixo do heading
+ * correto (o que já estiver no template). Aceita qualquer um dos nomes.
+ */
+export async function atualizarIdeiaDoPost(
+  postId: string,
+  novoTexto: string,
+): Promise<void> {
+  const texto = (novoTexto ?? '').trim();
+  const blocks = await coletarBlocosRecursivo(postId);
+
+  // Acha o heading da "Ideia do Post" OU "Briefing do Post" OU só "Briefing"
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/[:.\s]+/g, ' ').trim();
+  const alvos = ['ideia do post', 'briefing do post', 'briefing'];
+
+  let idxHeading = -1;
+  for (const alvo of alvos) {
+    idxHeading = blocks.findIndex(
+      (b) => ehHeading(b) && normalize(rtTexto(b)).includes(alvo),
+    );
+    if (idxHeading >= 0) break;
+  }
+  if (idxHeading < 0) {
+    throw new Error('Não achei a seção "Ideia do Post" / "Briefing do Post" nesse post.');
+  }
+
+  // Coleta blocos de texto entre o heading e o próximo heading (ou callout ou
+  // divider — igual ao pattern da legenda).
+  const TIPOS_TEXTO = new Set([
+    'paragraph',
+    'bulleted_list_item',
+    'numbered_list_item',
+    'quote',
+  ]);
+  const conteudoBlocks: any[] = [];
+  const headingId = blocks[idxHeading].id as string;
+  for (let i = idxHeading + 1; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (ehHeading(b)) break;
+    if (b.type === 'divider') break;
+    if (b.type === 'callout') break;
+    if (!TIPOS_TEXTO.has(b.type as string)) continue;
+    conteudoBlocks.push(b);
+  }
+
+  if (conteudoBlocks.length > 0) {
+    // Atualiza o primeiro parágrafo, arquiva os outros
+    const primeiro = conteudoBlocks[0];
+    const tipo = primeiro.type as string;
+    await notion.blocks.update({
+      block_id: primeiro.id,
+      [tipo]: { rich_text: [{ type: 'text', text: { content: texto } }] },
+    } as any);
+    for (let i = 1; i < conteudoBlocks.length; i++) {
+      try {
+        await notion.blocks.delete({ block_id: conteudoBlocks[i].id });
+      } catch (err: any) {
+        console.warn('[atualizarIdeia] falhou arquivar bloco:', err?.message);
+      }
+    }
+  } else {
+    // Não achou parágrafo — appenda um novo abaixo do heading
+    await notion.blocks.children.append({
+      block_id: headingId,
+      children: [
+        {
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ type: 'text', text: { content: texto } }],
+          },
+        } as any,
+      ],
+    });
+  }
+}
+
 export async function getPostComDetalhes(postId: string): Promise<PostDetalhado | null> {
   try {
     const page = (await cachedPageRetrieve(postId)) as any;
