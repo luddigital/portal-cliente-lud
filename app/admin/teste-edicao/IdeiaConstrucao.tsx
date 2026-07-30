@@ -22,15 +22,14 @@ function fmtHa(iso: string | null): string {
 }
 
 /** Cria/edita a Ideia do post em modo RASCUNHO (Supabase). Cliente só vê
- *  depois que a equipe clica "Publicar pra cliente" — aí escreve no Notion.
- *  Autosave debounced (900ms) mantém o rascunho persistido cross-device. */
+ *  depois que a equipe clica "Publicar pra cliente" — aí escreve no Notion. */
 export function IdeiaConstrucao({
   postId,
   ideiaNotion,
   rascunhoInicial,
 }: {
   postId: string;
-  ideiaNotion: string;      // versão que o cliente vê hoje
+  ideiaNotion: string;
   rascunhoInicial: Rascunho;
 }) {
   const [texto, setTexto] = useState(rascunhoInicial?.ideia_texto ?? ideiaNotion ?? '');
@@ -44,7 +43,6 @@ export function IdeiaConstrucao({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const primeiroRenderRef = useRef(true);
 
-  // Autosave debounced — só salva se texto mudou desde o carregamento
   useEffect(() => {
     if (primeiroRenderRef.current) {
       primeiroRenderRef.current = false;
@@ -78,12 +76,10 @@ export function IdeiaConstrucao({
   }, [texto]);
 
   async function publicar() {
-    // Se tem edição pendente, salva antes de publicar
     if (timerRef.current) clearTimeout(timerRef.current);
     setPublicando(true);
     setErro(null);
     try {
-      // Salva o rascunho atual imediatamente
       await fetch(`/api/pauta/${postId}/rascunho`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -109,9 +105,7 @@ export function IdeiaConstrucao({
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-          Ideia do post
-        </div>
+        <div className="label mb-0">Ideia do post</div>
         <StatusBadge pendente={!!pendente} publicadoEm={publicadoEm} />
       </div>
 
@@ -122,7 +116,7 @@ export function IdeiaConstrucao({
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           placeholder="Descreva a ideia do post — o ângulo, o tom, o que o cliente vai ver…"
-          className="input min-h-[160px] resize-y text-[13px] leading-[1.55]"
+          className="input min-h-[160px] resize-y text-[13px]"
           disabled={publicando}
         />
         <div className="mt-1.5 flex items-center justify-between text-[10.5px] text-t3">
@@ -140,21 +134,17 @@ export function IdeiaConstrucao({
       </div>
 
       {erro && (
-        <p
-          className="mt-2 rounded-lg px-3 py-2 text-[11.5px] font-medium"
-          style={{ background: 'rgba(224,49,49,0.08)', color: '#E03131' }}
-        >
-          {erro}
+        <p className="prazo-pill atrasado mt-3">
+          <span className="prazo-dot"></span>{erro}
         </p>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={publicar}
           disabled={publicando || !temTexto || !pendente}
-          className="rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white transition hover:brightness-110 disabled:opacity-50 disabled:hover:brightness-100"
-          style={{ background: 'var(--ink)' }}
+          className="btn-primary justify-center"
           title={
             !temTexto
               ? 'Escreva algo primeiro'
@@ -186,32 +176,20 @@ function StatusBadge({
 }) {
   if (pendente) {
     return (
-      <span
-        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-        style={{
-          background: 'var(--prazo-chegando-soft)',
-          color: 'var(--prazo-chegando)',
-        }}
-      >
+      <span className="entrega-status-pill hoje">
         Rascunho não publicado
       </span>
     );
   }
   if (publicadoEm) {
     return (
-      <span
-        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-        style={{
-          background: 'var(--prazo-em-dia-soft)',
-          color: 'var(--prazo-em-dia)',
-        }}
-      >
+      <span className="entrega-status-pill em-dia">
         Publicado {fmtHa(publicadoEm)}
       </span>
     );
   }
   return (
-    <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-t3">
+    <span className="entrega-status-pill aguardando">
       Sem versão publicada
     </span>
   );
