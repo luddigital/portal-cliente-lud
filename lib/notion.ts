@@ -3165,6 +3165,29 @@ export async function anexarTextoAoPost(postId: string, titulo: string, texto: s
   });
 }
 
+/**
+ * Cria uma pauta vazia no Notion (DB de posts) na data e projeto informados.
+ * Usado pelo sandbox de teste-edicao — o portal cria o card, aí a equipe
+ * preenche na tela de Construção.
+ *
+ * Nada de bloco/template ainda — deixa a página crua pra ser preenchida.
+ * Título fica vazio (Notion aceita); status não é setado (fica default).
+ */
+export async function criarPostVazio(
+  projetoId: string,
+  dataISO: string,
+): Promise<{ id: string }> {
+  const page: any = await notion.pages.create({
+    parent: { type: 'database_id', database_id: env.notion.postagensDbId },
+    properties: {
+      [env.notion.postProps.projeto]: { relation: [{ id: projetoId }] },
+      [env.notion.postProps.data]: { date: { start: dataISO } },
+    },
+  });
+  invalidarCachesAposMudanca();
+  return { id: page.id };
+}
+
 export async function atualizarLinkDriveDoPost(postId: string, nome: string, url: string): Promise<void> {
   await notion.pages.update({
     page_id: postId,

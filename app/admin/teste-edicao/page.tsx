@@ -2,20 +2,29 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { getPostComDetalhes, listarTarefasDoPost } from '@/lib/notion';
+import {
+  getPostComDetalhes,
+  listAllProjetos,
+  listPostsNoIntervalo,
+  listarTarefasDoPost,
+} from '@/lib/notion';
 import { supabaseAdmin } from '@/lib/supabase';
 import { PainelTeste } from './PainelTeste';
+import { LandingCalendario } from './LandingCalendario';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-/** Sandbox pra testar edição inline do post no Notion sem tocar em post real.
- *  Uso: cria uma página de teste no Notion (qualquer projeto), copia o ID
- *  da URL, acessa /admin/teste-edicao?postId=<ID>. Só admin. */
+/** Sandbox: sem postId → landing com calendário; com postId → construção. */
 export default async function TesteEdicaoPage({
   searchParams,
 }: {
-  searchParams: { postId?: string };
+  searchParams: {
+    postId?: string;
+    clienteId?: string;
+    projetoId?: string;
+    mes?: string;
+  };
 }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -24,82 +33,79 @@ export default async function TesteEdicaoPage({
 
   const postId = (searchParams.postId ?? '').trim();
 
+  // ─────────── Modo LANDING (sem postId) ───────────
   if (!postId) {
+    // Mês atual (ou o que veio em ?mes=YYYY-MM)
+    const hoje = new Date();
+    const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+
+    let ano = hoje.getFullYear();
+    let mes = hoje.getMonth(); // 0-11
+    const mesParam = (searchParams.mes ?? '').match(/^(\d{4})-(\d{2})$/);
+    if (mesParam) {
+      ano = parseInt(mesParam[1], 10);
+      mes = parseInt(mesParam[2], 10) - 1;
+    }
+
+    const projetos = await listAllProjetos().catch(() => []);
+    const clienteIdSel = searchParams.clienteId?.trim() || null;
+
+    // Auto-seleciona o projeto se cliente tem só 1
+    const projetosDoCliente = projetos.filter((p) => p.clienteId === clienteIdSel);
+    const projetoIdSel =
+      (searchParams.projetoId?.trim() || null) ??
+      (projetosDoCliente.length === 1 ? projetosDoCliente[0].id : null);
+
+    // Busca posts do mês só se cliente + projeto foram escolhidos
+    let postsChips: {
+      id: string; projetoId: string; data: string; titulo: string;
+      cor: 'publicado' | 'agendado' | 'aprovacao' | 'alteracao' | 'aguardando' | 'rascunho';
+    }[] = [];
+    if (projetoIdSel) {
+      const inicio = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
+      const fim = new Date(ano, mes + 1, 0);
+      const fimISO = `${fim.getFullYear()}-${String(fim.getMonth() + 1).padStart(2, '0')}-${String(fim.getDate()).padStart(2, '0')}`;
+
+      const posts = await listPostsNoIntervalo(inicio, fimISO).catch(() => []);
+      postsChips = posts
+        .filter((p) => p.projetoId === projetoIdSel)
+        .map((p) => ({
+          id: p.id,
+          projetoId: p.projetoId,
+          data: p.data,
+          titulo: p.titulo,
+          cor: p.cor,
+        }));
+    }
+
     return (
-      <div className="min-h-screen bg-bgSoft/40 pb-16">
-        <header className="border-b border-[rgba(21,21,33,0.08)] bg-white">
-          <div className="mx-auto max-w-3xl px-6 py-4">
-            <Link href="/admin" className="text-[11px] text-mauve hover:text-ink">
-              ← Admin
-            </Link>
-            <h1 className="mt-1 text-[20px] font-semibold tracking-[-0.02em] text-ink">
-              🧪 Sandbox — edição inline do post
-            </h1>
-            <p className="text-[11px] text-t3">
-              Ambiente isolado pra testar edição direto no Notion sem risco.
-            </p>
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-3xl px-6 py-8 space-y-5">
-          <div className="card p-6 space-y-4">
-            <div>
-              <h2 className="text-[15px] font-semibold text-ink">Como usar</h2>
-              <ol className="mt-3 space-y-2 text-[13px] leading-[1.6] text-t2">
-                <li>
-                  <b className="text-ink">1.</b> No Notion, crie (ou duplique) uma
-                  página de post pra usar como teste. Sugestão: chama de
-                  &quot;🧪 TESTE PORTAL — Padronização&quot;. Pode ser em qualquer
-                  projeto seu.
-                </li>
-                <li>
-                  <b className="text-ink">2.</b> Copie a URL da página no Notion.
-                  O ID é a última parte (ex: em{' '}
-                  <code className="rounded bg-bgSoft px-1 py-0.5 text-[11px]">
-                    notion.so/luddigital/…-3aad04d23b4a809d96f9e6fa67aed21d
-                  </code>{' '}
-                  o ID é <code className="rounded bg-bgSoft px-1 py-0.5 text-[11px]">
-                    3aad04d23b4a809d96f9e6fa67aed21d
-                  </code>).
-                </li>
-                <li>
-                  <b className="text-ink">3.</b> Cole abaixo. O painel vai carregar os
-                  campos daquela página específica — cada save escreve na sua
-                  página de teste (nunca em post real).
-                </li>
-              </ol>
-            </div>
-
-            <form className="flex gap-2">
-              <input
-                type="text"
-                name="postId"
-                placeholder="Cola o ID (ou URL) da página do Notion aqui"
-                className="input flex-1 text-[13px]"
-                required
-              />
-              <button type="submit" className="btn-primary">
-                Abrir
-              </button>
-            </form>
-            <p className="text-[10px] text-t3">
-              Aceita ID puro OU URL completa (o portal extrai o ID).
-            </p>
-          </div>
-        </main>
-      </div>
+      <LandingCalendario
+        projetos={projetos.map((p) => ({
+          id: p.id,
+          nome: p.nome,
+          clienteId: p.clienteId,
+          clienteNome: p.clienteNome,
+        }))}
+        posts={postsChips}
+        ano={ano}
+        mes={mes}
+        clienteId={clienteIdSel}
+        projetoId={projetoIdSel}
+        hojeISO={hojeISO}
+      />
     );
   }
 
-  // Extrai UUID puro. Remove aspas/espaços caso venha copy-paste de outro
-  // lugar. Aceita URL do Notion, UUID com ou sem hifens.
+  // ─────────── Modo CONSTRUÇÃO (com postId) ───────────
+
+  // Extrai UUID puro. Remove aspas/espaços caso venha copy-paste
   const bruto = postId.trim().replace(/^["']|["']$/g, '');
   const idLimpo = bruto.replace(/-/g, '').match(/[a-f0-9]{32}/i)?.[0];
   if (!idLimpo) {
     return (
       <ErroTeste
         titulo="ID inválido"
-        detalhe="Não achei um UUID de 32 caracteres hex nesse valor. Cola a URL da página do Notion ou o ID puro."
+        detalhe="Não achei um UUID de 32 caracteres hex nesse valor."
         idTentado={bruto}
       />
     );
@@ -123,13 +129,12 @@ export default async function TesteEdicaoPage({
     return (
       <ErroTeste
         titulo="Página não encontrada"
-        detalhe="Confere se o ID está certo e se a integração Lud. tem acesso à página (compartilhar a página com a integration se ainda não estiver)."
+        detalhe="Confere se o ID está certo e se a integração Lud. tem acesso à página."
         idTentado={idFinal}
       />
     );
   }
 
-  // Busca tarefa "Aprovação | Pauta" aberta e rascunho da pauta em paralelo
   const [tarefas, rascunho] = await Promise.all([
     listarTarefasDoPost(post.id).catch(() => []),
     (async () => {
@@ -189,7 +194,7 @@ function ErroTeste({
           href="/admin/teste-edicao"
           className="mt-5 inline-block text-[13px] font-medium text-mauve hover:text-ink"
         >
-          ← Tentar outro
+          ← voltar
         </Link>
       </div>
     </div>
