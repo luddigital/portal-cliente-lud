@@ -91,34 +91,41 @@ export default async function TesteEdicaoPage({
     );
   }
 
-  // Extrai UUID puro se veio URL colada
-  const idLimpo = postId.replace(/-/g, '').match(/[a-f0-9]{32}/i)?.[0];
-  const idFinal = idLimpo
-    ? `${idLimpo.slice(0, 8)}-${idLimpo.slice(8, 12)}-${idLimpo.slice(12, 16)}-${idLimpo.slice(16, 20)}-${idLimpo.slice(20)}`
-    : postId;
+  // Extrai UUID puro. Remove aspas/espaços caso venha copy-paste de outro
+  // lugar. Aceita URL do Notion, UUID com ou sem hifens.
+  const bruto = postId.trim().replace(/^["']|["']$/g, '');
+  const idLimpo = bruto.replace(/-/g, '').match(/[a-f0-9]{32}/i)?.[0];
+  if (!idLimpo) {
+    return (
+      <ErroTeste
+        titulo="ID inválido"
+        detalhe="Não achei um UUID de 32 caracteres hex nesse valor. Cola a URL da página do Notion ou o ID puro."
+        idTentado={bruto}
+      />
+    );
+  }
+  const idFinal = `${idLimpo.slice(0, 8)}-${idLimpo.slice(8, 12)}-${idLimpo.slice(12, 16)}-${idLimpo.slice(16, 20)}-${idLimpo.slice(20)}`;
 
-  const post = await getPostComDetalhes(idFinal);
+  let post;
+  try {
+    post = await getPostComDetalhes(idFinal);
+  } catch (err: any) {
+    return (
+      <ErroTeste
+        titulo="Notion rejeitou a leitura"
+        detalhe={err?.message ?? 'Erro desconhecido do Notion API'}
+        idTentado={idFinal}
+      />
+    );
+  }
 
   if (!post) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-20 text-center">
-        <h1 className="text-[18px] font-semibold text-ink">
-          Página não encontrada no Notion
-        </h1>
-        <p className="mt-2 text-[13px] text-t2">
-          Confere se o ID está certo e se a integração Lud. tem acesso à página
-          (compartilhar a página com a integration se ainda não estiver).
-        </p>
-        <p className="mt-4 text-[11px] text-t3">
-          ID tentado: <code className="rounded bg-bgSoft px-1 py-0.5">{idFinal}</code>
-        </p>
-        <Link
-          href="/admin/teste-edicao"
-          className="mt-6 inline-block text-[13px] font-medium text-mauve hover:text-ink"
-        >
-          ← Tentar outro
-        </Link>
-      </div>
+      <ErroTeste
+        titulo="Página não encontrada"
+        detalhe="Confere se o ID está certo e se a integração Lud. tem acesso à página (compartilhar a página com a integration se ainda não estiver)."
+        idTentado={idFinal}
+      />
     );
   }
 
@@ -155,5 +162,36 @@ export default async function TesteEdicaoPage({
       tarefaAprovacaoPautaId={tarefaAprovacaoPauta?.tarefaId ?? null}
       rascunhoPauta={rascunho}
     />
+  );
+}
+
+function ErroTeste({
+  titulo,
+  detalhe,
+  idTentado,
+}: {
+  titulo: string;
+  detalhe: string;
+  idTentado: string;
+}) {
+  return (
+    <div className="mx-auto max-w-2xl px-6 py-20">
+      <div className="card p-6">
+        <h1 className="text-[18px] font-semibold text-ink">{titulo}</h1>
+        <p className="mt-2 text-[13px] leading-[1.55] text-t2">{detalhe}</p>
+        <p className="mt-4 text-[11px] text-t3">
+          Valor recebido:{' '}
+          <code className="rounded bg-bgSoft px-1.5 py-0.5 text-[11px] break-all">
+            {idTentado || '(vazio)'}
+          </code>
+        </p>
+        <Link
+          href="/admin/teste-edicao"
+          className="mt-5 inline-block text-[13px] font-medium text-mauve hover:text-ink"
+        >
+          ← Tentar outro
+        </Link>
+      </div>
+    </div>
   );
 }
