@@ -2,10 +2,29 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import {
+  atualizarDataDoPost,
   atualizarRelationDoPost,
   atualizarSelectDoPost,
   getColaboradorByEmail,
+  tipoDaPropDoPost,
 } from '@/lib/notion';
+
+/** Salva o valor de uma prop que pode ser relation OU select — detecta
+ *  automático pelo tipo no Notion. `valor` é ID (relation) ou nome (select). */
+async function salvarPropDinamico(
+  postId: string,
+  propriedade: string,
+  valor: string | null,
+): Promise<void> {
+  const tipo = await tipoDaPropDoPost(propriedade);
+  if (tipo === 'relation') {
+    await atualizarRelationDoPost(postId, propriedade, valor ? [valor] : []);
+  } else if (tipo === 'select' || tipo === 'status') {
+    await atualizarSelectDoPost(postId, propriedade, valor);
+  } else {
+    throw new Error(`prop "${propriedade}" não é relation nem select (tipo: ${tipo ?? 'desconhecido'})`);
+  }
+}
 
 export const runtime = 'nodejs';
 
@@ -33,32 +52,28 @@ export async function POST(req: Request, { params }: { params: { postId: string 
     funilId?: string | null;
     objetivoId?: string | null;
     demandaValor?: string | null;
+    data?: string | null;
   };
 
   try {
+    if ('data' in body) {
+      const d = body.data;
+      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        return NextResponse.json({ error: 'data deve ser YYYY-MM-DD' }, { status: 400 });
+      }
+      await atualizarDataDoPost(params.postId, d ?? null);
+    }
     if ('formatoId' in body) {
-      await atualizarRelationDoPost(
-        params.postId,
-        'Formato',
-        body.formatoId ? [body.formatoId] : [],
-      );
+      await salvarPropDinamico(params.postId, 'Formato', body.formatoId ?? null);
     }
     if ('funilId' in body) {
-      await atualizarRelationDoPost(
-        params.postId,
-        'Funil',
-        body.funilId ? [body.funilId] : [],
-      );
+      await salvarPropDinamico(params.postId, 'Funil', body.funilId ?? null);
     }
     if ('objetivoId' in body) {
-      await atualizarRelationDoPost(
-        params.postId,
-        'Objetivo',
-        body.objetivoId ? [body.objetivoId] : [],
-      );
+      await salvarPropDinamico(params.postId, 'Objetivo', body.objetivoId ?? null);
     }
     if ('demandaValor' in body) {
-      await atualizarSelectDoPost(
+      await salvarPropDinamico(
         params.postId,
         env.notion.postProps.demanda,
         body.demandaValor ?? null,

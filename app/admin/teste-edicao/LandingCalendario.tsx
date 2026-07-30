@@ -271,54 +271,59 @@ export function LandingCalendario({
                   );
                 }
                 return (
-                  <button
+                  <div
                     key={iso}
-                    type="button"
-                    onClick={() => postsHoje.length === 0 && criarNaData(iso)}
-                    disabled={postsHoje.length > 0 || loading}
-                    className={`group min-h-[78px] bg-white p-1.5 text-left flex flex-col gap-1 relative
-                      ${postsHoje.length === 0 ? 'cursor-pointer hover:outline hover:outline-2 hover:outline-dashed hover:outline-ink hover:-outline-offset-2' : 'cursor-default'}
-                      ${loading ? 'opacity-50' : ''}
-                    `}
+                    className="group min-h-[78px] bg-white p-1.5 flex flex-col gap-1 relative"
                     style={ehHoje ? { boxShadow: 'inset 0 0 0 1.5px var(--prazo-hoje)' } : undefined}
                   >
-                    <div
-                      className="text-[11px] font-mono"
-                      style={ehHoje ? { color: 'var(--prazo-hoje)', fontWeight: 700 } : { color: 'var(--t2)' }}
-                    >
-                      {data.getDate()}
-                    </div>
-                    {ehHoje && (
+                    <div className="flex items-center justify-between">
                       <div
-                        className="text-[9px] font-semibold uppercase tracking-[0.04em]"
-                        style={{ color: 'var(--prazo-hoje)' }}
-                      >hoje</div>
-                    )}
-                    {postsHoje.slice(0, 2).map((p) => {
+                        className="text-[11px] font-mono"
+                        style={ehHoje ? { color: 'var(--prazo-hoje)', fontWeight: 700 } : { color: 'var(--t2)' }}
+                      >
+                        {data.getDate()}
+                      </div>
+                      {ehHoje && (
+                        <div
+                          className="text-[9px] font-semibold uppercase tracking-[0.04em]"
+                          style={{ color: 'var(--prazo-hoje)' }}
+                        >hoje</div>
+                      )}
+                    </div>
+                    {postsHoje.slice(0, 3).map((p) => {
                       const c = COR_CHIP[p.cor];
                       return (
-                        <div
+                        <Link
                           key={p.id}
-                          className="text-[10px] font-medium truncate rounded px-1.5 py-0.5"
+                          href={`/admin/teste-edicao?postId=${p.id}`}
+                          className="text-[10px] font-medium truncate rounded px-1.5 py-0.5 hover:brightness-95"
                           style={{ background: c.bg, color: c.fg }}
+                          title={`Abrir ${p.titulo}`}
                         >
                           {p.titulo}
-                        </div>
+                        </Link>
                       );
                     })}
-                    {postsHoje.length > 2 && (
-                      <div className="text-[9px] text-t3">+{postsHoje.length - 2}</div>
+                    {postsHoje.length > 3 && (
+                      <div className="text-[9px] text-t3">+{postsHoje.length - 3}</div>
                     )}
-                    {postsHoje.length === 0 && !loading && (
-                      <div className="mt-auto self-start opacity-0 group-hover:opacity-100 transition flex items-center gap-1 text-[10px] font-semibold text-ink">
-                        <span className="w-4 h-4 rounded bg-ink text-white inline-flex items-center justify-center text-[11px] leading-none">+</span>
-                        criar
-                      </div>
-                    )}
-                    {loading && (
-                      <div className="mt-auto text-[10px] text-t3">criando…</div>
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => criarNaData(iso)}
+                      disabled={loading}
+                      className="mt-auto self-start opacity-0 group-hover:opacity-100 focus:opacity-100 transition flex items-center gap-1 text-[10px] font-semibold text-ink disabled:opacity-50"
+                      title="Criar nova pauta nesse dia"
+                    >
+                      {loading ? (
+                        'criando…'
+                      ) : (
+                        <>
+                          <span className="w-4 h-4 rounded bg-ink text-white inline-flex items-center justify-center text-[11px] leading-none">+</span>
+                          {postsHoje.length === 0 ? 'criar' : 'outra'}
+                        </>
+                      )}
+                    </button>
+                  </div>
                 );
               })}
             </div>

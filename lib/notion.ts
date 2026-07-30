@@ -2550,6 +2550,12 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
     const funilIds = (getProp(page, 'Funil')?.relation ?? []).map((r: any) => r.id);
     const objetivoIds = (getProp(page, 'Objetivo')?.relation ?? []).map((r: any) => r.id);
 
+    // Fallback pra caso a prop seja select em vez de relation — se select,
+    // trata como "relacao com id === nome" pra unificar o front.
+    const funilSelect = getProp(page, 'Funil')?.select?.name as string | undefined;
+    const objetivoSelect = getProp(page, 'Objetivo')?.select?.name as string | undefined;
+    const formatoSelect = getProp(page, 'Formato')?.select?.name as string | undefined;
+
     const [
       formato,
       funil,
@@ -2607,9 +2613,24 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       status: getProp(page, env.notion.postProps.status)?.status?.name ?? null,
       projetoId,
       projetoNome,
-      formato,
-      funil,
-      objetivo,
+      formato:
+        formato.length > 0
+          ? formato
+          : formatoSelect
+            ? [{ id: formatoSelect, name: formatoSelect, icon: null }]
+            : formato,
+      funil:
+        funil.length > 0
+          ? funil
+          : funilSelect
+            ? [{ id: funilSelect, name: funilSelect, icon: null }]
+            : funil,
+      objetivo:
+        objetivo.length > 0
+          ? objetivo
+          : objetivoSelect
+            ? [{ id: objetivoSelect, name: objetivoSelect, icon: null }]
+            : objetivo,
       demanda: getProp(page, env.notion.postProps.demanda)?.select?.name ?? null,
       formatoTipo,
       driveLinks,
@@ -3173,12 +3194,42 @@ export async function anexarTextoAoPost(postId: string, titulo: string, texto: s
 export type OpcaoRelation = { id: string; nome: string };
 export type OpcaoSelect = { nome: string; cor?: string | null };
 
+/** Retorna o tipo da propriedade no DB de posts (ex: 'relation', 'select',
+ *  'status', 'date', 'title', 'files', 'formula'…) ou null se não existir. */
+async function _tipoDaPropDoPostUncached(propriedade: string): Promise<string | null> {
+  const db: any = await comRetry(() =>
+    notion.databases.retrieve({ database_id: env.notion.postagensDbId }),
+  );
+  const prop = db.properties?.[propriedade];
+  return prop?.type ?? null;
+}
+const _tipoDaPropDoPostCached = unstable_cache(
+  _tipoDaPropDoPostUncached,
+  ['tipo-da-prop-do-post-v1'],
+  { revalidate: 3600, tags: [TAG_POSTS] },
+);
+export const tipoDaPropDoPost = (propriedade: string) =>
+  _tipoDaPropDoPostCached(propriedade);
+
+/** Lista opções da prop `propriedade` do post. Se for `relation`, lista
+ *  páginas do DB relacionado; se for `select`/`status`, retorna as options
+ *  (id === nome). Retorna array vazio se não encontrar. */
 async function _listOpcoesRelationUncached(propriedade: string): Promise<OpcaoRelation[]> {
   const db: any = await comRetry(() =>
     notion.databases.retrieve({ database_id: env.notion.postagensDbId }),
   );
   const prop = db.properties?.[propriedade];
-  if (!prop || prop.type !== 'relation') return [];
+  if (!prop) return [];
+
+  // Se for select/status, retorna as options já com id === nome
+  if (prop.type === 'select' || prop.type === 'status') {
+    const opts = prop[prop.type]?.options ?? [];
+    return opts
+      .map((o: any) => ({ id: o.name, nome: o.name }))
+      .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+
+  if (prop.type !== 'relation') return [];
   const dbRel = prop.relation.database_id;
 
   const out: OpcaoRelation[] = [];
@@ -3240,6 +3291,22 @@ export async function atualizarRelationDoPost(
     page_id: postId,
     properties: {
       [propriedade]: { relation: ids.map((id) => ({ id })) },
+    },
+  });
+  invalidarCachesAposMudanca();
+}
+
+/** Atualiza a Data Postagem do post. `dataISO` em formato YYYY-MM-DD, null limpa. */
+export async function atualizarDataDoPost(
+  postId: string,
+  dataISO: string | null,
+): Promise<void> {
+  await notion.pages.update({
+    page_id: postId,
+    properties: {
+      [env.notion.postProps.data]: dataISO
+        ? { date: { start: dataISO } }
+        : { date: null },
     },
   });
   invalidarCachesAposMudanca();

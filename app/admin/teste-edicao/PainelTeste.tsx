@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { DataEditavel } from './DataEditavel';
 import { IdeiaConstrucao } from './IdeiaConstrucao';
 import { SelectsMeta } from './SelectsMeta';
 
@@ -17,12 +18,6 @@ function tituloSeguro(t: string): string {
   if (!trim || /^post sem t[íi]tulo$/i.test(trim)) return 'Nova pauta';
   if (/^https?:\/\/\S+$/.test(trim) && !trim.includes(' ')) return 'Nova pauta';
   return trim;
-}
-
-function fmtData(iso: string): string {
-  if (!iso) return '—';
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
 }
 
 export function PainelTeste({
@@ -91,7 +86,7 @@ export function PainelTeste({
             {tituloSeguro(titulo)}
           </h1>
           <div className="text-[12px] text-t2 mt-1">
-            Data de postagem: <span className="font-mono text-ink">{fmtData(data)}</span>
+            Data de postagem: <DataEditavel postId={postId} dataInicial={data} />
           </div>
         </div>
 
