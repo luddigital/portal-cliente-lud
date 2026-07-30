@@ -4,6 +4,13 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { IdeiaEditavel } from '@/app/post/[id]/IdeiaEditavel';
 import { LegendaEditavel } from '@/app/post/[id]/LegendaEditavel';
+import { IdeiaConstrucao } from './IdeiaConstrucao';
+
+type RascunhoPauta = {
+  ideia_texto: string;
+  atualizado_em: string;
+  publicado_em: string | null;
+} | null;
 
 function tituloSeguro(t: string): string {
   const trim = t.trim();
@@ -43,6 +50,7 @@ export function PainelTeste({
   ideia,
   legenda,
   tarefaAprovacaoPautaId,
+  rascunhoPauta,
 }: {
   postId: string;
   titulo: string;
@@ -52,6 +60,7 @@ export function PainelTeste({
   ideia: string;
   legenda: string;
   tarefaAprovacaoPautaId: string | null;
+  rascunhoPauta: RascunhoPauta;
 }) {
   const [etapa, setEtapa] = useState<Etapa>('aprovacao-pauta');
   const notionUrl = `https://www.notion.so/${postId.replace(/-/g, '')}`;
@@ -149,7 +158,11 @@ export function PainelTeste({
           />
         )}
         {etapa === 'construcao-pauta' && (
-          <ViewConstrucaoPauta postId={postId} ideia={ideia} />
+          <ViewConstrucaoPauta
+            postId={postId}
+            ideiaNotion={ideia}
+            rascunhoPauta={rascunhoPauta}
+          />
         )}
         {etapa === 'aprovacao-post' && (
           <ViewAprovacaoPost postId={postId} legenda={legenda} />
@@ -376,15 +389,28 @@ function ViewAprovacaoPauta({
 
 /* ─────────── ETAPA 2: Construção pauta (equipe) ─────────── */
 
-function ViewConstrucaoPauta({ postId, ideia }: { postId: string; ideia: string }) {
+function ViewConstrucaoPauta({
+  postId,
+  ideiaNotion,
+  rascunhoPauta,
+}: {
+  postId: string;
+  ideiaNotion: string;
+  rascunhoPauta: RascunhoPauta;
+}) {
   return (
     <div className="space-y-4">
       <ContextBar cor="var(--prazo-hoje)">
-        Equipe da Lud. constrói o material. <b>Ideia</b> já é editável e escreve
-        no Notion. Os outros campos entram na próxima rodada de endpoints.
+        Equipe edita a pauta em <b>rascunho</b> (autosave). Cliente só vê
+        quando alguém clica <b>Publicar pra cliente</b>.
       </ContextBar>
 
-      <IdeiaEditavel postId={postId} ideiaInicial={ideia} podeEditar={true} />
+      <IdeiaConstrucao
+        postId={postId}
+        ideiaNotion={ideiaNotion}
+        rascunhoInicial={rascunhoPauta}
+      />
+
       <PendenteCard titulo="📣 Informações que precisamos" descricao="editor inline — próxima rodada" />
       <PendenteCard titulo="🎬 Materiais que precisamos"    descricao="editor inline — próxima rodada" />
       <PendenteCard titulo="✋ Roteiro voice over"           descricao="editor inline — próxima rodada" />

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { getPostComDetalhes, listarTarefasDoPost } from '@/lib/notion';
+import { supabaseAdmin } from '@/lib/supabase';
 import { PainelTeste } from './PainelTeste';
 
 export const dynamic = 'force-dynamic';
@@ -121,9 +122,23 @@ export default async function TesteEdicaoPage({
     );
   }
 
-  // Busca tarefa "Aprovação | Pauta" aberta associada ao post (pra testar
-  // o fluxo real de aprovar/pedir alteração no sandbox).
-  const tarefas = await listarTarefasDoPost(post.id).catch(() => []);
+  // Busca tarefa "Aprovação | Pauta" aberta e rascunho da pauta em paralelo
+  const [tarefas, rascunho] = await Promise.all([
+    listarTarefasDoPost(post.id).catch(() => []),
+    (async () => {
+      try {
+        const sb = await supabaseAdmin();
+        const { data } = await sb
+          .from('rascunho_pauta')
+          .select('ideia_texto, atualizado_em, publicado_em')
+          .eq('post_id', post.id)
+          .maybeSingle();
+        return data ?? null;
+      } catch {
+        return null;
+      }
+    })(),
+  ]);
   const tarefaAprovacaoPauta = tarefas.find(
     (t) => t.aberta && t.titulo === 'Aprovação | Pauta',
   );
@@ -138,6 +153,7 @@ export default async function TesteEdicaoPage({
       ideia={post.ideiaDoPost ?? ''}
       legenda={post.legenda ?? ''}
       tarefaAprovacaoPautaId={tarefaAprovacaoPauta?.tarefaId ?? null}
+      rascunhoPauta={rascunho}
     />
   );
 }
