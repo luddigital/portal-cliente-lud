@@ -167,7 +167,7 @@ export default async function TesteEdicaoPage({
         const sb = await supabaseAdmin();
         const { data } = await sb
           .from('rascunho_pauta')
-          .select('ideia_texto, atualizado_em, publicado_em')
+          .select('ideia_texto, informacoes_texto, materiais_texto, atualizado_em, publicado_em')
           .eq('post_id', post.id)
           .maybeSingle();
         return data ?? null;

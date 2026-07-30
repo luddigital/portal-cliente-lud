@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { CampoTextoRascunho } from './CampoTextoRascunho';
 import { DataEditavel } from './DataEditavel';
 import { IdeiaConstrucao } from './IdeiaConstrucao';
 import { SelectsMeta } from './SelectsMeta';
@@ -9,6 +10,8 @@ type Opcao = { id: string; nome: string };
 type OpcaoSelect = { nome: string; cor?: string | null };
 type RascunhoPauta = {
   ideia_texto: string;
+  informacoes_texto: string;
+  materiais_texto: string;
   atualizado_em: string;
   publicado_em: string | null;
 } | null;
@@ -112,12 +115,28 @@ export function PainelTeste({
           rascunhoInicial={rascunhoPauta}
         />
 
+        <CampoTextoRascunho
+          postId={postId}
+          campo="informacoes_texto"
+          label="Informações que precisamos pro post"
+          placeholder="O que o cliente precisa te contar pra você escrever — ex: como funciona X, quais estações têm o totem, se ele já passou por Y…"
+          valorInicial={rascunhoPauta?.informacoes_texto ?? ''}
+          atualizadoEmInicial={rascunhoPauta?.atualizado_em ?? null}
+        />
+
+        <CampoTextoRascunho
+          postId={postId}
+          campo="materiais_texto"
+          label="Materiais que precisamos pro post"
+          placeholder="Fotos, vídeos, prints, áudios — o que a equipe precisa receber do cliente."
+          valorInicial={rascunhoPauta?.materiais_texto ?? ''}
+          atualizadoEmInicial={rascunhoPauta?.atualizado_em ?? null}
+        />
+
         <div className="card p-4">
           <div className="label mb-1">Próximos campos (próxima rodada)</div>
           <ul className="mt-1 space-y-1 text-[12px] text-t2">
-            <li>• Informações que precisamos pro post</li>
-            <li>• Materiais que precisamos pro post</li>
-            <li>• Referências</li>
+            <li>• Referências (lista de links + prints)</li>
           </ul>
         </div>
 

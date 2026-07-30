@@ -8,6 +8,8 @@ type Opcao = { id: string; nome: string };
 type OpcaoSelect = { nome: string; cor?: string | null };
 type RascunhoPauta = {
   ideia_texto: string;
+  informacoes_texto: string;
+  materiais_texto: string;
   atualizado_em: string;
   publicado_em: string | null;
 } | null;

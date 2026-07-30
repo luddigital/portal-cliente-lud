@@ -6,9 +6,12 @@ import { getColaboradorByEmail } from '@/lib/notion';
 
 export const runtime = 'nodejs';
 
-/** GET /api/pauta/[postId]/rascunho → { ideia_texto, atualizado_em, publicado_em }
- *  POST /api/pauta/[postId]/rascunho { ideia_texto } → upsert (autosave)
- *  Só equipe Lud. (admin OU colaborador). Cliente NUNCA acessa. */
+const CAMPOS_VALIDOS = ['ideia_texto', 'informacoes_texto', 'materiais_texto'] as const;
+type Campo = (typeof CAMPOS_VALIDOS)[number];
+
+/** GET  → { rascunho: {ideia_texto, informacoes_texto, materiais_texto, atualizado_em, publicado_em} | null }
+ *  POST { campo?: string } — envia só os campos que mudaram; upsert.
+ *  Só equipe Lud. */
 async function verificaEquipe() {
   const session = await getSession();
   if (!session) return { ok: false as const, res: NextResponse.json({ error: 'não autenticado' }, { status: 401 }) };
@@ -34,7 +37,7 @@ export async function GET(_req: Request, { params }: { params: { postId: string 
   const sb = await supabaseAdmin();
   const { data, error } = await sb
     .from('rascunho_pauta')
-    .select('ideia_texto, atualizado_em, atualizado_por, publicado_em, publicado_por')
+    .select('ideia_texto, informacoes_texto, materiais_texto, atualizado_em, atualizado_por, publicado_em, publicado_por')
     .eq('post_id', params.postId)
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -45,21 +48,23 @@ export async function POST(req: Request, { params }: { params: { postId: string 
   const guard = await verificaEquipe();
   if (!guard.ok) return guard.res;
 
-  const body = (await req.json().catch(() => ({}))) as { ideia_texto?: string };
-  const texto = (body.ideia_texto ?? '').replace(/\r\n/g, '\n');
+  const body = (await req.json().catch(() => ({}))) as Partial<Record<Campo, string>>;
+
+  const update: Record<string, any> = {
+    post_id: params.postId,
+    atualizado_em: new Date().toISOString(),
+    atualizado_por: guard.email,
+  };
+  for (const campo of CAMPOS_VALIDOS) {
+    if (campo in body) {
+      update[campo] = (body[campo] ?? '').replace(/\r\n/g, '\n');
+    }
+  }
 
   const sb = await supabaseAdmin();
   const { data, error } = await sb
     .from('rascunho_pauta')
-    .upsert(
-      {
-        post_id: params.postId,
-        ideia_texto: texto,
-        atualizado_em: new Date().toISOString(),
-        atualizado_por: guard.email,
-      },
-      { onConflict: 'post_id' },
-    )
+    .upsert(update, { onConflict: 'post_id' })
     .select('atualizado_em, publicado_em')
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
