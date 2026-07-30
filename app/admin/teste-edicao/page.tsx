@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { getPostComDetalhes } from '@/lib/notion';
+import { getPostComDetalhes, listarTarefasDoPost } from '@/lib/notion';
 import { PainelTeste } from './PainelTeste';
 
 export const dynamic = 'force-dynamic';
@@ -121,6 +121,13 @@ export default async function TesteEdicaoPage({
     );
   }
 
+  // Busca tarefa "Aprovação | Pauta" aberta associada ao post (pra testar
+  // o fluxo real de aprovar/pedir alteração no sandbox).
+  const tarefas = await listarTarefasDoPost(post.id).catch(() => []);
+  const tarefaAprovacaoPauta = tarefas.find(
+    (t) => t.aberta && t.titulo === 'Aprovação | Pauta',
+  );
+
   return (
     <PainelTeste
       postId={post.id}
@@ -130,6 +137,7 @@ export default async function TesteEdicaoPage({
       projetoNome={post.projetoNome}
       ideia={post.ideiaDoPost ?? ''}
       legenda={post.legenda ?? ''}
+      tarefaAprovacaoPautaId={tarefaAprovacaoPauta?.tarefaId ?? null}
     />
   );
 }

@@ -27,11 +27,11 @@ const FORMATO_LABELS: Record<string, string> = {
 
 type Etapa = 'aprovacao-pauta' | 'construcao-pauta' | 'aprovacao-post' | 'equipe';
 
-const ETAPAS: { id: Etapa; label: string; sub: string }[] = [
-  { id: 'aprovacao-pauta',  label: 'Aprovação pauta',      sub: 'cliente vê a ideia' },
-  { id: 'construcao-pauta', label: 'Construção pauta',     sub: 'equipe produz' },
-  { id: 'aprovacao-post',   label: 'Aprovação post',       sub: 'cliente aprova o post' },
-  { id: 'equipe',           label: 'Visão da equipe',      sub: 'dashboard completo' },
+const ETAPAS: { id: Etapa; label: string; sub: string; foco: boolean }[] = [
+  { id: 'aprovacao-pauta',  label: 'Aprovação pauta',  sub: 'cliente vê a ideia',    foco: true  },
+  { id: 'construcao-pauta', label: 'Construção pauta', sub: 'equipe produz',          foco: true  },
+  { id: 'aprovacao-post',   label: 'Aprovação post',   sub: 'cliente aprova o post',  foco: false },
+  { id: 'equipe',           label: 'Visão da equipe',  sub: 'dashboard completo',     foco: false },
 ];
 
 export function PainelTeste({
@@ -42,6 +42,7 @@ export function PainelTeste({
   projetoNome,
   ideia,
   legenda,
+  tarefaAprovacaoPautaId,
 }: {
   postId: string;
   titulo: string;
@@ -50,13 +51,13 @@ export function PainelTeste({
   projetoNome: string;
   ideia: string;
   legenda: string;
+  tarefaAprovacaoPautaId: string | null;
 }) {
   const [etapa, setEtapa] = useState<Etapa>('aprovacao-pauta');
   const notionUrl = `https://www.notion.so/${postId.replace(/-/g, '')}`;
 
   return (
     <div className="min-h-screen bg-bgSoft/40 pb-20">
-      {/* Barra fina do sandbox */}
       <div
         className="border-b px-6 py-2 text-[11px]"
         style={{
@@ -77,7 +78,6 @@ export function PainelTeste({
       </div>
 
       <main className="mx-auto max-w-2xl px-5 pt-8 space-y-5">
-        {/* Título + projeto */}
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.1em] text-t3">
             {projetoNome}
@@ -87,7 +87,6 @@ export function PainelTeste({
           </h1>
         </div>
 
-        {/* Meta em grid compacto — data primeiro, status prioritário */}
         <div className="grid grid-cols-2 gap-2.5">
           <InfoCard label="Data de postagem" value={fmtData(data)} />
           <InfoCard label="Status" value="Em Produção" tone="status" />
@@ -95,7 +94,6 @@ export function PainelTeste({
           <InfoCard label="Prazo aprovação" value="Hoje" tone="urgent" />
         </div>
 
-        {/* Seletor de etapa — 4 chips grandes com sublabel */}
         <div>
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
             Testar layout de etapa
@@ -108,18 +106,33 @@ export function PainelTeste({
                   key={e.id}
                   type="button"
                   onClick={() => setEtapa(e.id)}
-                  className={`rounded-xl border p-2.5 text-left transition ${
+                  className={`relative rounded-xl border p-2.5 text-left transition ${
                     ativo
                       ? 'border-ink bg-ink text-white shadow-sm'
-                      : 'border-[rgba(21,21,33,0.1)] bg-white text-ink hover:border-ink/40'
+                      : e.foco
+                        ? 'border-[rgba(21,21,33,0.12)] bg-white text-ink hover:border-ink/40'
+                        : 'border-dashed border-[rgba(21,21,33,0.1)] bg-white/40 text-t3 hover:text-ink'
                   }`}
                 >
-                  <div className="text-[12px] font-semibold leading-tight">{e.label}</div>
-                  <div
-                    className={`mt-0.5 text-[10px] leading-tight ${
-                      ativo ? 'text-white/70' : 'text-t3'
-                    }`}
-                  >
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-[12px] font-semibold leading-tight">
+                      {e.label}
+                    </div>
+                    {e.foco && !ativo && (
+                      <span
+                        className="rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase"
+                        style={{
+                          background: 'var(--prazo-em-dia-soft)',
+                          color: 'var(--prazo-em-dia)',
+                        }}
+                      >
+                        foco
+                      </span>
+                    )}
+                  </div>
+                  <div className={`mt-0.5 text-[10px] leading-tight ${
+                    ativo ? 'text-white/70' : 'text-t3'
+                  }`}>
                     {e.sub}
                   </div>
                 </button>
@@ -128,9 +141,12 @@ export function PainelTeste({
           </div>
         </div>
 
-        {/* Views por etapa */}
         {etapa === 'aprovacao-pauta' && (
-          <ViewAprovacaoPauta postId={postId} ideia={ideia} />
+          <ViewAprovacaoPauta
+            postId={postId}
+            ideia={ideia}
+            tarefaId={tarefaAprovacaoPautaId}
+          />
         )}
         {etapa === 'construcao-pauta' && (
           <ViewConstrucaoPauta postId={postId} ideia={ideia} />
@@ -146,7 +162,7 @@ export function PainelTeste({
   );
 }
 
-/* ─────────── Cards de meta reaproveitando o estilo do /post/[id] ─────────── */
+/* ─────────── Cards de meta ─────────── */
 
 function InfoCard({
   label,
@@ -157,46 +173,97 @@ function InfoCard({
   value: string;
   tone?: 'urgent' | 'status';
 }) {
-  const styles = {
-    base: 'card',
-    urgent: 'bg-hubRed border-transparent text-white',
-    status: 'text-white border-transparent',
-  };
-
   const bg =
-    tone === 'status'
-      ? { background: 'var(--prazo-hoje)' } // laranja "em produção"
-      : undefined;
-
+    tone === 'status' ? { background: 'var(--prazo-hoje)' } : undefined;
+  const classe =
+    tone === 'urgent'
+      ? 'bg-hubRed border-transparent text-white'
+      : tone === 'status'
+        ? 'text-white border-transparent'
+        : 'card';
   return (
     <div
-      className={`rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 ${
-        tone === 'urgent' ? styles.urgent : tone === 'status' ? styles.status : styles.base
-      }`}
+      className={`rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 ${classe}`}
       style={bg}
     >
-      <span
-        className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${
-          tone ? 'text-white/80' : 'text-t3'
-        }`}
-      >
+      <span className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${
+        tone ? 'text-white/80' : 'text-t3'
+      }`}>
         {label}
       </span>
-      <span
-        className={`font-mono text-[12px] ${
-          tone ? 'text-white font-semibold' : 'text-t1'
-        }`}
-      >
+      <span className={`font-mono text-[12px] ${
+        tone ? 'text-white font-semibold' : 'text-t1'
+      }`}>
         {value}
       </span>
     </div>
   );
 }
 
-/* ─────────────────────────── Views por etapa ─────────────────────────── */
+/* ─────────── ETAPA 1: Aprovação de pauta (cliente) ─────────── */
 
-/** ETAPA 1 — Aprovação de pauta: cliente vê a ideia e aprova antes de produzir. */
-function ViewAprovacaoPauta({ postId, ideia }: { postId: string; ideia: string }) {
+function ViewAprovacaoPauta({
+  postId,
+  ideia,
+  tarefaId,
+}: {
+  postId: string;
+  ideia: string;
+  tarefaId: string | null;
+}) {
+  const [modo, setModo] = useState<'idle' | 'aprovando' | 'alterando'>('idle');
+  const [comentario, setComentario] = useState('');
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function aprovar() {
+    if (!tarefaId) return;
+    setLoading(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/tarefas/${tarefaId}/aprovar`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ comentario: comentario.trim() || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      setFeedback({ ok: true, msg: '✓ Pauta aprovada. A tarefa foi fechada no Notion.' });
+      setModo('idle');
+      setComentario('');
+    } catch (e: any) {
+      setFeedback({ ok: false, msg: e.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function pedirAlteracao() {
+    if (!tarefaId) return;
+    if (!comentario.trim()) {
+      setFeedback({ ok: false, msg: 'Escreva o que precisa alterar.' });
+      return;
+    }
+    setLoading(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/tarefas/${tarefaId}/alterar`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ comentario: comentario.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      setFeedback({ ok: true, msg: '✓ Alteração solicitada. Volta pra equipe no Notion.' });
+      setModo('idle');
+      setComentario('');
+    } catch (e: any) {
+      setFeedback({ ok: false, msg: e.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <ContextBar cor="var(--prazo-chegando)">
@@ -212,22 +279,109 @@ function ViewAprovacaoPauta({ postId, ideia }: { postId: string; ideia: string }
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        <BotaoAcao cor="var(--prazo-em-dia)" icon="✓">Aprovar pauta</BotaoAcao>
-        <BotaoAcao cor="var(--prazo-chegando)" icon="✏️">Pedir alteração</BotaoAcao>
-      </div>
+      {!tarefaId ? (
+        <div
+          className="rounded-xl border p-4 text-[12px] leading-[1.5]"
+          style={{
+            background: 'var(--prazo-chegando-soft)',
+            borderColor: 'var(--prazo-chegando)',
+            color: 'var(--prazo-chegando)',
+          }}
+        >
+          <b>Sem tarefa &quot;Aprovação | Pauta&quot; aberta.</b> Pra testar os
+          botões de verdade, crie no Notion uma tarefa com título exatamente{' '}
+          <code className="rounded bg-white/70 px-1 py-0.5 text-[11px]">
+            Aprovação | Pauta
+          </code>{' '}
+          associada a essa página, e recarregue aqui.
+        </div>
+      ) : modo === 'idle' ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          <button
+            type="button"
+            onClick={() => setModo('aprovando')}
+            className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold text-white transition hover:brightness-110"
+            style={{ background: 'var(--prazo-em-dia)' }}
+          >
+            ✓ Aprovar pauta
+          </button>
+          <button
+            type="button"
+            onClick={() => setModo('alterando')}
+            className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold text-white transition hover:brightness-110"
+            style={{ background: 'var(--prazo-chegando)' }}
+          >
+            ✏️ Pedir alteração
+          </button>
+        </div>
+      ) : (
+        <div className="card p-4 space-y-3">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+            {modo === 'aprovando' ? 'Aprovar (comentário opcional)' : 'O que precisa mudar'}
+          </div>
+          <textarea
+            rows={4}
+            value={comentario}
+            onChange={(e) => setComentario(e.target.value)}
+            className="input resize-y text-[13px] leading-[1.5]"
+            placeholder={
+              modo === 'aprovando'
+                ? 'Ex: aprovado, só ajustar o gancho na hora da copy'
+                : 'Explique o que precisa mudar na pauta'
+            }
+            disabled={loading}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={modo === 'aprovando' ? aprovar : pedirAlteracao}
+              disabled={loading}
+              className="rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition hover:brightness-110"
+              style={{
+                background:
+                  modo === 'aprovando'
+                    ? 'var(--prazo-em-dia)'
+                    : 'var(--prazo-chegando)',
+              }}
+            >
+              {loading ? 'Enviando…' : modo === 'aprovando' ? 'Confirmar aprovação' : 'Enviar alteração'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setModo('idle'); setComentario(''); }}
+              disabled={loading}
+              className="btn-ghost"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
-      <PendenteCard titulo="Comentários" descricao="Histórico dos comentários da pauta" />
+      {feedback && (
+        <div
+          className="rounded-xl p-3 text-[12px] font-medium"
+          style={{
+            background: feedback.ok ? 'var(--prazo-em-dia-soft)' : 'rgba(224,49,49,0.08)',
+            color: feedback.ok ? 'var(--prazo-em-dia)' : 'var(--hubRed, #E03131)',
+          }}
+        >
+          {feedback.msg}
+        </div>
+      )}
     </div>
   );
 }
 
-/** ETAPA 2 — Construção da pauta pra equipe: campos editáveis pra time da Lud. */
+/* ─────────── ETAPA 2: Construção pauta (equipe) ─────────── */
+
 function ViewConstrucaoPauta({ postId, ideia }: { postId: string; ideia: string }) {
   return (
     <div className="space-y-4">
       <ContextBar cor="var(--prazo-hoje)">
-        Equipe da Lud. constrói o material. Todos os campos abaixo são <b>editáveis</b> e escrevem no Notion.
+        Equipe da Lud. constrói o material. <b>Ideia</b> já é editável e escreve
+        no Notion. Os outros campos entram na próxima rodada de endpoints.
       </ContextBar>
 
       <IdeiaEditavel postId={postId} ideiaInicial={ideia} podeEditar={true} />
@@ -239,52 +393,33 @@ function ViewConstrucaoPauta({ postId, ideia }: { postId: string; ideia: string 
   );
 }
 
-/** ETAPA 3 — Aprovação do post cliente: preview + legenda, cliente aprova o post final. */
+/* ─────────── ETAPA 3 e 4 — parked ─────────── */
+
 function ViewAprovacaoPost({ postId, legenda }: { postId: string; legenda: string }) {
   return (
     <div className="space-y-4">
-      <ContextBar cor="var(--prazo-chegando)">
-        Cliente vê o <b>post pronto</b> (preview + legenda) e aprova antes de programar.
+      <ContextBar cor="var(--t3)">
+        Etapa parada — foco atual está na aprovação de pauta.
       </ContextBar>
-
       <PendenteCard titulo="Preview do post" descricao="Preview visual do carrossel/reels — próxima rodada" />
       <LegendaEditavel postId={postId} legendaInicial={legenda || ''} />
-
-      <div className="grid grid-cols-2 gap-2.5">
-        <BotaoAcao cor="var(--prazo-em-dia)" icon="✓">Aprovar post</BotaoAcao>
-        <BotaoAcao cor="var(--prazo-chegando)" icon="✏️">Pedir alteração</BotaoAcao>
-      </div>
-
-      <PendenteCard titulo="Comentários" descricao="Histórico de comentários no post" />
     </div>
   );
 }
 
-/** ETAPA 4 — Visão da equipe: dashboard interno com tudo. */
 function ViewEquipe({ postId, ideia, legenda }: { postId: string; ideia: string; legenda: string }) {
   return (
     <div className="space-y-4">
-      <ContextBar cor="var(--ink)">
-        Dashboard interno — a equipe vê tudo (briefing, materiais, preview, legenda, tarefas, status).
+      <ContextBar cor="var(--t3)">
+        Etapa parada — foco atual está na aprovação e construção de pauta.
       </ContextBar>
-
       <IdeiaEditavel postId={postId} ideiaInicial={ideia} podeEditar={true} />
       <LegendaEditavel postId={postId} legendaInicial={legenda || ''} />
-
-      <div className="grid grid-cols-2 gap-3">
-        <PendenteCard titulo="📣 Informações" descricao="—" />
-        <PendenteCard titulo="🎬 Materiais"   descricao="—" />
-        <PendenteCard titulo="✋ Roteiro VO"  descricao="—" />
-        <PendenteCard titulo="🔗 Referências" descricao="—" />
-      </div>
-
-      <PendenteCard titulo="✅ Tarefas do post" descricao="Kanban das tarefas atuais — próxima rodada" />
-      <PendenteCard titulo="💬 Comentários"     descricao="Histórico completo — próxima rodada" />
     </div>
   );
 }
 
-/* ────────────────────────── Componentes auxiliares ────────────────────────── */
+/* ─────────── Aux ─────────── */
 
 function ContextBar({ children, cor }: { children: React.ReactNode; cor: string }) {
   return (
@@ -294,28 +429,6 @@ function ContextBar({ children, cor }: { children: React.ReactNode; cor: string 
     >
       {children}
     </div>
-  );
-}
-
-function BotaoAcao({
-  children,
-  cor,
-  icon,
-}: {
-  children: React.ReactNode;
-  cor: string;
-  icon: string;
-}) {
-  return (
-    <button
-      type="button"
-      className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold text-white transition hover:brightness-110"
-      style={{ background: cor }}
-      disabled
-      title="preview visual — sem ação nessa rodada"
-    >
-      <span>{icon}</span> {children}
-    </button>
   );
 }
 
