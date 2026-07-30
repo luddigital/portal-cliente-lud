@@ -32,6 +32,22 @@ async function patchProps(
   }
 }
 
+/** Cada objetivo Lud. tem um ou mais funis pré-associados. Quando o
+ *  usuário troca o objetivo, o funil auto-preenche com o primeiro da
+ *  lista (dá pra sobrescrever manualmente depois). */
+const OBJETIVO_PARA_FUNIL: Record<string, string[]> = {
+  'Antecipação':   ['Fundo'],
+  'Infotenimento': ['Topo', 'Meio'],
+  'Divulgação':    ['Meio', 'Fundo'],
+  'Automação':     ['Fundo'],
+  'Autoridade':    ['Topo', 'Meio'],
+  'Utilidade':     ['Topo', 'Meio'],
+  'Engajamento':   ['Topo'],
+  'Awareness':     ['Meio'],
+  'Vendas':        ['Fundo'],
+  'Comunidade':    ['Meio'],
+};
+
 export function SelectsMeta(props: Props) {
   const {
     postId, formatos, funis, objetivos, demandas,
@@ -44,6 +60,14 @@ export function SelectsMeta(props: Props) {
   const [demanda, setDemanda] = useState<string | null>(demandaInicial);
   const [salvando, setSalvando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  /** Nome do objetivo atual (pra lookup no mapa). Pode ser id (relation) ou
+   *  o próprio nome (select) — em ambos os casos vem do array `objetivos`. */
+  const objetivoNomeAtual =
+    objetivos.find((o) => o.id === objetivoId)?.nome ?? null;
+  const funisSugeridos = objetivoNomeAtual
+    ? (OBJETIVO_PARA_FUNIL[objetivoNomeAtual] ?? [])
+    : [];
 
   async function trocar<K extends string>(
     campo: K,
@@ -124,17 +148,55 @@ export function SelectsMeta(props: Props) {
           opcoes={demandas.map((d) => ({ id: d.nome, nome: d.nome }))}
           loading={salvando === 'demandaValor'}
         />
-        <SelectItem
-          label="Funil"
-          value={funilId}
-          onChange={(v) => trocar('funilId', v, setFunilId)}
-          opcoes={funis}
-          loading={salvando === 'funilId'}
-        />
+        <div>
+          <SelectItem
+            label="Funil"
+            value={funilId}
+            onChange={(v) => trocar('funilId', v, setFunilId)}
+            opcoes={funis}
+            loading={salvando === 'funilId'}
+          />
+          {funisSugeridos.length > 1 && (
+            <div className="mt-1.5 text-[10.5px] text-t3">
+              sugerido pelo objetivo:{' '}
+              {funisSugeridos.map((nome, i) => {
+                const opt = funis.find((f) => f.nome === nome);
+                const ativo = opt?.id === funilId;
+                return (
+                  <span key={nome}>
+                    {i > 0 && <span> · </span>}
+                    <button
+                      type="button"
+                      onClick={() => opt && trocar('funilId', opt.id, setFunilId)}
+                      disabled={!opt}
+                      className={`underline hover:text-ink transition ${ativo ? 'text-ink font-semibold' : ''}`}
+                    >
+                      {nome}
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <SelectItem
           label="Objetivo"
           value={objetivoId}
-          onChange={(v) => trocar('objetivoId', v, setObjetivoId)}
+          onChange={(v) => {
+            trocar('objetivoId', v, setObjetivoId);
+            // Auto-preenche o funil com o primeiro sugerido, se ainda não tiver
+            // Notion escolhido pelo usuário — respeita override manual
+            if (v) {
+              const nome = objetivos.find((o) => o.id === v)?.nome;
+              const sug = nome ? OBJETIVO_PARA_FUNIL[nome] : undefined;
+              if (sug && sug.length > 0) {
+                const primeiroOpt = funis.find((f) => f.nome === sug[0]);
+                if (primeiroOpt) {
+                  trocar('funilId', primeiroOpt.id, setFunilId);
+                }
+              }
+            }
+          }}
           opcoes={objetivos}
           loading={salvando === 'objetivoId'}
         />
