@@ -35,6 +35,7 @@ export function PainelTeste({
   funilIdAtual,
   objetivoIdAtual,
   demandaAtual,
+  emModal = false,
 }: {
   postId: string;
   titulo: string;
@@ -50,33 +51,36 @@ export function PainelTeste({
   funilIdAtual: string | null;
   objetivoIdAtual: string | null;
   demandaAtual: string | null;
+  emModal?: boolean;
 }) {
   const notionUrl = `https://www.notion.so/${postId.replace(/-/g, '')}`;
 
   return (
-    <div className="min-h-screen bg-bg pb-20">
-      <div
-        className="border-b px-6 py-2 text-[11px]"
-        style={{
-          background: 'var(--prazo-hoje-soft)',
-          borderColor: 'var(--prazo-hoje)',
-          color: 'var(--prazo-hoje)',
-        }}
-      >
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
-          <div>🧪 <b>Sandbox</b> — a pauta que você criar é real e vai pro Notion.</div>
-          <div className="flex items-center gap-3">
-            <Link href="/admin/teste-edicao" className="hover:underline">
-              ← voltar ao calendário
-            </Link>
-            <a href={notionUrl} target="_blank" rel="noreferrer" className="hover:underline">
-              abrir no Notion ↗
-            </a>
+    <div className={emModal ? 'pb-8' : 'min-h-screen bg-bg pb-20'}>
+      {!emModal && (
+        <div
+          className="border-b px-6 py-2 text-[11px]"
+          style={{
+            background: 'var(--prazo-hoje-soft)',
+            borderColor: 'var(--prazo-hoje)',
+            color: 'var(--prazo-hoje)',
+          }}
+        >
+          <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+            <div>🧪 <b>Sandbox</b> — a pauta que você criar é real e vai pro Notion.</div>
+            <div className="flex items-center gap-3">
+              <Link href="/admin/teste-edicao" className="hover:underline">
+                ← voltar ao calendário
+              </Link>
+              <a href={notionUrl} target="_blank" rel="noreferrer" className="hover:underline">
+                abrir no Notion ↗
+              </a>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <main className="mx-auto max-w-2xl px-5 pt-8 space-y-3">
+      <main className={`mx-auto max-w-2xl px-5 space-y-3 ${emModal ? 'pt-10' : 'pt-8'}`}>
         {/* Cabeçalho */}
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
@@ -117,14 +121,30 @@ export function PainelTeste({
           </ul>
         </div>
 
-        <div className="pt-2 flex flex-col items-center gap-2">
-          <Link href="/admin/teste-edicao" className="btn-ghost">
-            ← Voltar pro calendário do mês
-          </Link>
-          <div className="text-[10.5px] text-t3">
-            A publicação pro cliente é feita no lote na página de Revisão do mês (em breve).
+        {emModal ? (
+          <div className="pt-2 text-center">
+            <a
+              href={notionUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] font-medium text-mauve hover:text-ink"
+            >
+              abrir no Notion ↗
+            </a>
+            <div className="text-[10.5px] text-t3 mt-1">
+              Publicação pro cliente vai ser em lote na Revisão do mês (em breve).
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="pt-2 flex flex-col items-center gap-2">
+            <Link href="/admin/teste-edicao" className="btn-ghost">
+              ← Voltar pro calendário do mês
+            </Link>
+            <div className="text-[10.5px] text-t3">
+              A publicação pro cliente é feita no lote na página de Revisão do mês (em breve).
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
