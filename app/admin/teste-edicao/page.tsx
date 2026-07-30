@@ -5,8 +5,9 @@ import { env } from '@/lib/env';
 import {
   getPostComDetalhes,
   listAllProjetos,
+  listOpcoesRelation,
+  listOpcoesSelect,
   listPostsNoIntervalo,
-  listarTarefasDoPost,
 } from '@/lib/notion';
 import { supabaseAdmin } from '@/lib/supabase';
 import { PainelTeste } from './PainelTeste';
@@ -135,8 +136,7 @@ export default async function TesteEdicaoPage({
     );
   }
 
-  const [tarefas, rascunho] = await Promise.all([
-    listarTarefasDoPost(post.id).catch(() => []),
+  const [rascunho, formatos, funis, objetivos, demandas] = await Promise.all([
     (async () => {
       try {
         const sb = await supabaseAdmin();
@@ -150,22 +150,28 @@ export default async function TesteEdicaoPage({
         return null;
       }
     })(),
+    listOpcoesRelation('Formato').catch(() => []),
+    listOpcoesRelation('Funil').catch(() => []),
+    listOpcoesRelation('Objetivo').catch(() => []),
+    listOpcoesSelect(env.notion.postProps.demanda).catch(() => []),
   ]);
-  const tarefaAprovacaoPauta = tarefas.find(
-    (t) => t.aberta && t.titulo === 'Aprovação | Pauta',
-  );
 
   return (
     <PainelTeste
       postId={post.id}
       titulo={post.titulo}
       data={post.data ?? ''}
-      formatoTipo={post.formatoTipo}
       projetoNome={post.projetoNome}
       ideia={post.ideiaDoPost ?? ''}
-      legenda={post.legenda ?? ''}
-      tarefaAprovacaoPautaId={tarefaAprovacaoPauta?.tarefaId ?? null}
       rascunhoPauta={rascunho}
+      formatos={formatos.map((o) => ({ id: o.id, nome: o.nome }))}
+      funis={funis.map((o) => ({ id: o.id, nome: o.nome }))}
+      objetivos={objetivos.map((o) => ({ id: o.id, nome: o.nome }))}
+      demandas={demandas.map((o) => ({ nome: o.nome, cor: o.cor ?? null }))}
+      formatoIdAtual={post.formato[0]?.id ?? null}
+      funilIdAtual={post.funil[0]?.id ?? null}
+      objetivoIdAtual={post.objetivo[0]?.id ?? null}
+      demandaAtual={post.demanda}
     />
   );
 }

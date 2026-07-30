@@ -21,8 +21,9 @@ function fmtHa(iso: string | null): string {
   return `há ${d} d`;
 }
 
-/** Cria/edita a Ideia do post em modo RASCUNHO (Supabase). Cliente só vê
- *  depois que a equipe clica "Publicar pra cliente" — aí escreve no Notion. */
+/** Rascunho da Ideia (autosave). Fluxo novo: NÃO publica por post — a
+ *  publicação vai em lote pela página de Revisão. Mantido só um link
+ *  discreto "publicar só esse agora" pra caso de urgência. */
 export function IdeiaConstrucao({
   postId,
   ideiaNotion,
@@ -75,8 +76,11 @@ export function IdeiaConstrucao({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [texto]);
 
-  async function publicar() {
+  async function publicarUrgente() {
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (!confirm('Publicar só ESSA pauta pro cliente agora, sem esperar o lote do mês?')) {
+      return;
+    }
     setPublicando(true);
     setErro(null);
     try {
@@ -106,11 +110,14 @@ export function IdeiaConstrucao({
     <div className="card p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="label mb-0">Ideia do post</div>
-        <StatusBadge pendente={!!pendente} publicadoEm={publicadoEm} />
+        {publicadoEm && !pendente && (
+          <span className="entrega-status-pill em-dia">
+            Publicado {fmtHa(publicadoEm)}
+          </span>
+        )}
       </div>
 
       <div className="mt-3">
-        <label className="label">Rascunho (só a equipe vê)</label>
         <textarea
           rows={7}
           value={texto}
@@ -139,58 +146,21 @@ export function IdeiaConstrucao({
         </p>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={publicar}
-          disabled={publicando || !temTexto || !pendente}
-          className="btn-primary justify-center"
-          title={
-            !temTexto
-              ? 'Escreva algo primeiro'
-              : !pendente
-                ? 'Nenhuma edição nova pra publicar'
-                : 'Escrever essa versão no Notion — cliente passa a ver'
-          }
-        >
-          {publicando ? 'Publicando…' : '↑ Publicar pra cliente'}
-        </button>
-        <span className="text-[11px] text-t3">
-          {pendente
-            ? 'Cliente ainda vê a versão anterior.'
-            : publicadoEm
-              ? 'Cliente vê essa versão.'
-              : 'Cliente ainda não recebeu nenhuma versão.'}
-        </span>
-      </div>
+      {temTexto && pendente && (
+        <div className="mt-3 pt-3 border-t border-[rgba(21,21,33,0.06)]">
+          <button
+            type="button"
+            onClick={publicarUrgente}
+            disabled={publicando}
+            className="text-[11px] font-medium text-mauve hover:text-ink disabled:opacity-50"
+          >
+            {publicando ? 'Publicando…' : '↑ publicar só esse agora (urgente)'}
+          </button>
+          <span className="ml-2 text-[10.5px] text-t3">
+            — normalmente todos do mês publicam juntos na Revisão
+          </span>
+        </div>
+      )}
     </div>
-  );
-}
-
-function StatusBadge({
-  pendente,
-  publicadoEm,
-}: {
-  pendente: boolean;
-  publicadoEm: string | null;
-}) {
-  if (pendente) {
-    return (
-      <span className="entrega-status-pill hoje">
-        Rascunho não publicado
-      </span>
-    );
-  }
-  if (publicadoEm) {
-    return (
-      <span className="entrega-status-pill em-dia">
-        Publicado {fmtHa(publicadoEm)}
-      </span>
-    );
-  }
-  return (
-    <span className="entrega-status-pill aguardando">
-      Sem versão publicada
-    </span>
   );
 }

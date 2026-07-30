@@ -2053,6 +2053,8 @@ export type PostDetalhado = {
   formato: RelacaoItem[];
   funil: RelacaoItem[];
   objetivo: RelacaoItem[];
+  /** "O que precisamos de você" — select do Notion */
+  demanda: string | null;
   formatoTipo: 'post' | 'reels' | 'story' | 'desconhecido';
   driveLinks: { name: string; url: string }[];
   legenda: string | null;
@@ -2608,6 +2610,7 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       formato,
       funil,
       objetivo,
+      demanda: getProp(page, env.notion.postProps.demanda)?.select?.name ?? null,
       formatoTipo,
       driveLinks,
       legenda,
@@ -3163,6 +3166,98 @@ export async function anexarTextoAoPost(postId: string, titulo: string, texto: s
       },
     ],
   });
+}
+
+// ---------- Opções pra selects/relations do post (Formato, Funil, Objetivo, Demanda) ----------
+
+export type OpcaoRelation = { id: string; nome: string };
+export type OpcaoSelect = { nome: string; cor?: string | null };
+
+async function _listOpcoesRelationUncached(propriedade: string): Promise<OpcaoRelation[]> {
+  const db: any = await comRetry(() =>
+    notion.databases.retrieve({ database_id: env.notion.postagensDbId }),
+  );
+  const prop = db.properties?.[propriedade];
+  if (!prop || prop.type !== 'relation') return [];
+  const dbRel = prop.relation.database_id;
+
+  const out: OpcaoRelation[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await comRetry(() =>
+      notion.databases.query({
+        database_id: dbRel,
+        start_cursor: cursor,
+        page_size: 100,
+      }),
+    );
+    for (const p of res.results as any[]) {
+      if (p.archived) continue;
+      const titleProp = Object.values(p.properties).find((x: any) => x.type === 'title') as any;
+      const nome = txt(titleProp?.title) || '';
+      if (nome) out.push({ id: p.id, nome });
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  return out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+const _listOpcoesRelationCached = unstable_cache(
+  _listOpcoesRelationUncached,
+  ['list-opcoes-relation-v1'],
+  { revalidate: 600, tags: [TAG_POSTS] },
+);
+
+export const listOpcoesRelation = (propriedade: string) =>
+  _listOpcoesRelationCached(propriedade);
+
+async function _listOpcoesSelectUncached(propriedade: string): Promise<OpcaoSelect[]> {
+  const db: any = await comRetry(() =>
+    notion.databases.retrieve({ database_id: env.notion.postagensDbId }),
+  );
+  const prop = db.properties?.[propriedade];
+  if (!prop) return [];
+  const opts = prop.select?.options ?? prop.status?.options ?? [];
+  return opts.map((o: any) => ({ nome: o.name, cor: o.color ?? null }));
+}
+
+const _listOpcoesSelectCached = unstable_cache(
+  _listOpcoesSelectUncached,
+  ['list-opcoes-select-v1'],
+  { revalidate: 600, tags: [TAG_POSTS] },
+);
+
+export const listOpcoesSelect = (propriedade: string) =>
+  _listOpcoesSelectCached(propriedade);
+
+/** Atualiza uma prop `relation` do post — passa `ids` (vazio = limpa). */
+export async function atualizarRelationDoPost(
+  postId: string,
+  propriedade: string,
+  ids: string[],
+): Promise<void> {
+  await notion.pages.update({
+    page_id: postId,
+    properties: {
+      [propriedade]: { relation: ids.map((id) => ({ id })) },
+    },
+  });
+  invalidarCachesAposMudanca();
+}
+
+/** Atualiza uma prop `select` do post — passa `nome` ou null pra limpar. */
+export async function atualizarSelectDoPost(
+  postId: string,
+  propriedade: string,
+  nome: string | null,
+): Promise<void> {
+  await notion.pages.update({
+    page_id: postId,
+    properties: {
+      [propriedade]: nome ? { select: { name: nome } } : { select: null },
+    },
+  });
+  invalidarCachesAposMudanca();
 }
 
 /**
