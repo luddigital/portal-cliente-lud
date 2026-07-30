@@ -3,11 +3,13 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import {
+  garantirOpcoesProp,
   getPostComDetalhes,
   listAllProjetos,
   listOpcoesRelation,
   listOpcoesSelect,
   listPostsNoIntervalo,
+  tipoDaPropDoPost,
 } from '@/lib/notion';
 import { supabaseAdmin } from '@/lib/supabase';
 import { PainelTeste } from './PainelTeste';
@@ -136,6 +138,15 @@ export default async function TesteEdicaoPage({
     );
   }
 
+  // Auto-seed Funil = Topo/Meio/Fundo se ainda não tiver essas opções
+  await garantirOpcoesProp('Funil', ['Topo', 'Meio', 'Fundo']).catch((e) =>
+    console.error('[seed funil]', e?.message),
+  );
+
+  // Diagnóstico do Objetivo — loga o tipo pra investigar por que tá vazio
+  const tipoObjetivo = await tipoDaPropDoPost('Objetivo').catch(() => null);
+  console.log('[diag Objetivo] tipo =', tipoObjetivo);
+
   const [rascunho, formatos, funis, objetivos, demandas] = await Promise.all([
     (async () => {
       try {
@@ -164,7 +175,9 @@ export default async function TesteEdicaoPage({
       projetoNome={post.projetoNome}
       ideia={post.ideiaDoPost ?? ''}
       rascunhoPauta={rascunho}
-      formatos={formatos.map((o) => ({ id: o.id, nome: o.nome }))}
+      formatos={formatos
+        .filter((o) => !/direcionamento/i.test(o.nome))
+        .map((o) => ({ id: o.id, nome: o.nome }))}
       funis={funis.map((o) => ({ id: o.id, nome: o.nome }))}
       objetivos={objetivos.map((o) => ({ id: o.id, nome: o.nome }))}
       demandas={demandas.map((o) => ({ nome: o.nome, cor: o.cor ?? null }))}

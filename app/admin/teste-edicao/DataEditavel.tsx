@@ -71,10 +71,11 @@ export function DataEditavel({
       <button
         type="button"
         onClick={() => setEditando(true)}
-        className="font-mono text-ink hover:bg-bgSoft rounded px-1 -mx-1 transition"
+        className="inline-flex items-center gap-1.5 font-mono text-ink border border-dashed border-[rgba(21,21,33,0.25)] hover:border-navy hover:bg-navySoft rounded px-1.5 py-0.5 transition group"
         title="Clique pra editar a data"
       >
         {fmtBR(data)}
+        <span className="text-[10px] text-t3 group-hover:text-navy transition">✏️</span>
       </button>
       {erro && <span className="text-[10.5px] text-hubRed">{erro}</span>}
     </span>

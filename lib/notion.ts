@@ -3281,6 +3281,91 @@ const _listOpcoesSelectCached = unstable_cache(
 export const listOpcoesSelect = (propriedade: string) =>
   _listOpcoesSelectCached(propriedade);
 
+/** Garante que a prop `propriedade` do post tem as options/entries `nomes`.
+ *  Funciona pra select (adiciona options faltantes via databases.update) e
+ *  pra relation (cria páginas com o title = nome no DB relacionado).
+ *  Idempotente — se já existir, não faz nada. */
+export async function garantirOpcoesProp(
+  propriedade: string,
+  nomes: string[],
+): Promise<void> {
+  const db: any = await comRetry(() =>
+    notion.databases.retrieve({ database_id: env.notion.postagensDbId }),
+  );
+  const prop = db.properties?.[propriedade];
+  if (!prop) return;
+
+  if (prop.type === 'select') {
+    const opts = prop.select?.options ?? [];
+    const existentes = new Set(opts.map((o: any) => o.name));
+    const novos = nomes.filter((n) => !existentes.has(n));
+    if (novos.length === 0) return;
+    await comRetry(() =>
+      notion.databases.update({
+        database_id: env.notion.postagensDbId,
+        properties: {
+          [propriedade]: {
+            select: { options: [...opts, ...novos.map((name) => ({ name }))] },
+          },
+        },
+      }),
+    );
+    invalidarCachesAposMudanca();
+    return;
+  }
+
+  if (prop.type === 'status') return; // status options não são editáveis via API
+
+  if (prop.type !== 'relation') return;
+  const dbRel = prop.relation.database_id;
+
+  const dbInfo: any = await comRetry(() =>
+    notion.databases.retrieve({ database_id: dbRel }),
+  );
+  const titlePropEntry = Object.entries(dbInfo.properties).find(
+    ([, p]: [string, any]) => p.type === 'title',
+  );
+  if (!titlePropEntry) return;
+  const titlePropName = titlePropEntry[0];
+
+  const existentes = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const res = await comRetry(() =>
+      notion.databases.query({
+        database_id: dbRel,
+        start_cursor: cursor,
+        page_size: 100,
+      }),
+    );
+    for (const p of res.results as any[]) {
+      const t = Object.values(p.properties).find((x: any) => x.type === 'title') as any;
+      const nome = txt(t?.title) || '';
+      if (nome) existentes.add(nome);
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+
+  const faltantes = nomes.filter((n) => !existentes.has(n));
+  if (faltantes.length === 0) return;
+
+  for (const nome of faltantes) {
+    try {
+      await comRetry(() =>
+        notion.pages.create({
+          parent: { type: 'database_id', database_id: dbRel },
+          properties: {
+            [titlePropName]: { title: [{ type: 'text', text: { content: nome } }] },
+          },
+        }),
+      );
+    } catch (err: any) {
+      console.error(`[garantirOpcoesProp] falha criando "${nome}" em ${propriedade}:`, err?.message);
+    }
+  }
+  invalidarCachesAposMudanca();
+}
+
 /** Atualiza uma prop `relation` do post — passa `ids` (vazio = limpa). */
 export async function atualizarRelationDoPost(
   postId: string,

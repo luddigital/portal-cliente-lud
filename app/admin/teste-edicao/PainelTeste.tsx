@@ -117,14 +117,11 @@ export function PainelTeste({
           </ul>
         </div>
 
-        <div className="text-center pt-2">
-          <Link
-            href="/admin/teste-edicao"
-            className="text-[11px] font-medium text-mauve hover:text-ink"
-          >
-            ← voltar pro calendário do mês
+        <div className="pt-2 flex flex-col items-center gap-2">
+          <Link href="/admin/teste-edicao" className="btn-ghost">
+            ← Voltar pro calendário do mês
           </Link>
-          <div className="text-[10.5px] text-t3 mt-1">
+          <div className="text-[10.5px] text-t3">
             A publicação pro cliente é feita no lote na página de Revisão do mês (em breve).
           </div>
         </div>
