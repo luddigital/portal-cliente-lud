@@ -28,9 +28,9 @@ const FORMATO_LABELS: Record<string, string> = {
 
 type Aba = 'post' | 'materiais' | 'lud';
 
-/** Layout inspirado na página do Notion — título grande, propriedades em
- *  linha, tabs (Post / Info & Materiais / Lud), seções com H3 sublinhado
- *  roxo. Edição inline nos campos que já têm endpoint. */
+/** Sandbox de edição inline. Organização inspirada no Notion (título grande,
+ *  propriedades em linha, tabs Post/Materiais/Lud, seções) — visual em cards
+ *  do design system do portal. */
 export function PainelTeste({
   postId,
   titulo,
@@ -52,8 +52,8 @@ export function PainelTeste({
   const notionUrl = `https://www.notion.so/${postId.replace(/-/g, '')}`;
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Barra fina do sandbox — não é parte do documento, só contexto */}
+    <div className="min-h-screen bg-bgSoft/40 pb-16">
+      {/* Barra fina do sandbox */}
       <div
         className="border-b px-6 py-2 text-[11px]"
         style={{
@@ -77,91 +77,66 @@ export function PainelTeste({
         </div>
       </div>
 
-      <main className="mx-auto max-w-3xl px-6 pt-14 pb-24">
-        {/* Emoji icon estilo Notion */}
-        <div className="mb-3 text-[52px] leading-none">📱</div>
+      <main className="mx-auto max-w-3xl px-6 pt-10 space-y-6">
+        {/* Header — card com título grande + propriedades + tabs */}
+        <div className="card p-6">
+          <div className="text-[44px] leading-none mb-3">📱</div>
+          <h1 className="text-[32px] font-bold leading-[1.15] tracking-[-0.03em] text-ink">
+            {tituloSeguro(titulo)}
+          </h1>
 
-        {/* Título grande */}
-        <h1 className="text-[40px] font-bold leading-[1.15] tracking-[-0.03em] text-ink">
-          {tituloSeguro(titulo)}
-        </h1>
+          <div className="mt-4 space-y-1.5 text-[13px]">
+            <Prop label="Projeto"       valor={projetoNome} />
+            <Prop label="Data Postagem" valor={fmtDataCurta(data)} />
+            <Prop label="Formato"       valor={FORMATO_LABELS[formatoTipo] ?? 'Post'} />
+            <Prop label="Status"        valor="Em Produção" mudo />
+          </div>
 
-        {/* Propriedades — linha de metadata */}
-        <div className="mt-4 space-y-1.5 text-[13px]">
-          <Prop label="Projeto"        valor={projetoNome} />
-          <Prop label="Data Postagem"  valor={fmtDataCurta(data)} />
-          <Prop label="Formato"        valor={FORMATO_LABELS[formatoTipo] ?? 'Post'} />
-          <Prop label="Status"         valor="Em Produção" mudo />
-        </div>
-
-        {/* Divider */}
-        <hr className="my-6 border-[rgba(21,21,33,0.08)]" />
-
-        {/* Tabs estilo Notion (bordinha embaixo do ativo) */}
-        <div className="mb-6 flex gap-4 border-b border-[rgba(21,21,33,0.08)]">
-          <TabBtn ativo={aba === 'post'}      onClick={() => setAba('post')}>Post</TabBtn>
-          <TabBtn ativo={aba === 'materiais'} onClick={() => setAba('materiais')}>Informações e Materiais</TabBtn>
-          <TabBtn ativo={aba === 'lud'}       onClick={() => setAba('lud')}>Lud</TabBtn>
+          <div className="mt-6 flex gap-4 border-b border-[rgba(21,21,33,0.08)]">
+            <TabBtn ativo={aba === 'post'}      onClick={() => setAba('post')}>Post</TabBtn>
+            <TabBtn ativo={aba === 'materiais'} onClick={() => setAba('materiais')}>Informações e Materiais</TabBtn>
+            <TabBtn ativo={aba === 'lud'}       onClick={() => setAba('lud')}>Lud</TabBtn>
+          </div>
         </div>
 
         {aba === 'post' && (
-          <div className="space-y-6">
-            <SectionH3>Vídeo</SectionH3>
-            <PlaceholderNotion
-              texto="Upload/embed do vídeo — ainda vive no Notion nessa rodada."
-            />
-            <hr className="border-[rgba(21,21,33,0.08)]" />
-            <SectionH3>Legenda</SectionH3>
-            <NotionField>
-              <LegendaEditavel postId={postId} legendaInicial={legenda || ''} />
-            </NotionField>
-          </div>
+          <>
+            <PendenteCard titulo="Vídeo" descricao="Upload/embed do vídeo — ainda vive no Notion nessa rodada." />
+            <LegendaEditavel postId={postId} legendaInicial={legenda || ''} />
+          </>
         )}
 
         {aba === 'materiais' && (
-          <div className="space-y-6">
-            <SectionH3 roxo>Informações que precisamos para o post</SectionH3>
-            <NotionCallout icon="📣">
-              <PlaceholderInline texto="editor do callout de informações — próxima rodada" />
-            </NotionCallout>
-
-            <SectionH3 roxo className="mt-8">Materiais que precisamos para o post</SectionH3>
-            <NotionCallout icon="🎬">
-              <PlaceholderInline texto="editor do callout de materiais — próxima rodada" />
-            </NotionCallout>
-
-            <NotionCallout icon="✋">
-              <div className="mb-1 text-[14px] font-semibold text-ink">
-                Texto para gravação de Voice Over
-              </div>
-              <PlaceholderInline texto="editor do roteiro voice over — próxima rodada" />
-            </NotionCallout>
-          </div>
+          <>
+            <PendenteCard
+              titulo="📣 Informações que precisamos para o post"
+              descricao="editor do callout de informações — próxima rodada"
+            />
+            <PendenteCard
+              titulo="🎬 Materiais que precisamos para o post"
+              descricao="editor do callout de materiais — próxima rodada"
+            />
+            <PendenteCard
+              titulo="✋ Texto para gravação de Voice Over"
+              descricao="editor do roteiro voice over — próxima rodada"
+            />
+          </>
         )}
 
         {aba === 'lud' && (
-          <div className="space-y-6">
-            <SectionH3 roxo>Briefing do Post</SectionH3>
-            <NotionField>
-              <IdeiaEditavel postId={postId} ideiaInicial={ideia} podeEditar={true} />
-            </NotionField>
-
-            <SectionH3 roxo className="mt-8">Referências para o post</SectionH3>
-            <PlaceholderNotion texto="Bloco de referências — próxima rodada" />
-
-            <SectionH3 roxo className="mt-8">Materiais</SectionH3>
-            <PlaceholderNotion texto="Checklist e links do material — próxima rodada" />
-          </div>
+          <>
+            <IdeiaEditavel postId={postId} ideiaInicial={ideia} podeEditar={true} />
+            <PendenteCard titulo="Referências para o post" descricao="Bloco de referências — próxima rodada" />
+            <PendenteCard titulo="Materiais" descricao="Checklist e links do material — próxima rodada" />
+          </>
         )}
 
-        {/* Nota do que vem por rodada */}
-        <div className="mt-16 rounded-lg border border-dashed border-[rgba(21,21,33,0.13)] bg-bgSoft/40 p-4 text-[12px] leading-[1.6] text-t3">
-          <b className="text-t2">Nessa rodada</b>: Ideia/Briefing e Legenda são
-          editáveis (escrevem direto no Notion via API).{' '}
-          <b className="text-t2">Próxima</b>: mesmos endpoints pros callouts de
-          Informações, Materiais e Roteiro voice over. <b className="text-t2">Depois</b>:
-          título e data (properties do Notion, já suportadas) + botão &quot;+ Novo
-          post&quot; que cria no template canônico.
+        <div className="rounded-lg border border-dashed border-[rgba(21,21,33,0.13)] bg-white/60 p-4 text-[12px] leading-[1.6] text-t3">
+          <b className="text-t2">Nessa rodada</b>: Ideia/Briefing e Legenda são editáveis
+          (escrevem direto no Notion via API). <b className="text-t2">Próxima</b>: mesmos
+          endpoints pros callouts de Informações, Materiais e Roteiro voice over.{' '}
+          <b className="text-t2">Depois</b>: título e data (properties do Notion, já
+          suportadas) + botão &quot;+ Novo post&quot; que cria no template canônico.
         </div>
       </main>
     </div>
@@ -193,61 +168,18 @@ function TabBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => v
   );
 }
 
-function SectionH3({
-  children,
-  roxo = false,
-  className = '',
-}: {
-  children: React.ReactNode;
-  roxo?: boolean;
-  className?: string;
-}) {
+function PendenteCard({ titulo, descricao }: { titulo: string; descricao: string }) {
   return (
-    <h3
-      className={`text-[18px] font-semibold underline decoration-[1.5px] underline-offset-4 ${className}`}
-      style={{
-        color: roxo ? '#9065B0' : 'var(--ink)',
-        textDecorationColor: roxo ? '#9065B0' : 'rgba(21,21,33,0.35)',
-      }}
-    >
-      {children}
-    </h3>
-  );
-}
-
-/** Container transparente pra encaixar os componentes editáveis dentro do
- *  fluxo do documento — remove o "card" visual dos componentes originais. */
-function NotionField({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="[&_.card]:!border-none [&_.card]:!bg-transparent [&_.card]:!p-0 [&_.card]:!shadow-none"
-    >
-      {children}
-    </div>
-  );
-}
-
-function NotionCallout({ icon, children }: { icon: string; children: React.ReactNode }) {
-  return (
-    <div className="flex gap-3 rounded-md bg-bgSoft/60 p-4">
-      <div className="text-[18px] leading-none">{icon}</div>
-      <div className="min-w-0 flex-1 text-[14px] leading-[1.55] text-ink">
-        {children}
+    <div className="card p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+          {titulo}
+        </div>
+        <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-medium text-t3">
+          próxima rodada
+        </span>
       </div>
+      <p className="mt-3 text-[13px] italic text-t3">{descricao}</p>
     </div>
-  );
-}
-
-function PlaceholderNotion({ texto }: { texto: string }) {
-  return (
-    <p className="rounded-md border border-dashed border-[rgba(21,21,33,0.13)] px-4 py-3 text-[12px] italic text-t3">
-      {texto}
-    </p>
-  );
-}
-
-function PlaceholderInline({ texto }: { texto: string }) {
-  return (
-    <span className="italic text-t3">{texto}</span>
   );
 }
