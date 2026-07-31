@@ -48,7 +48,7 @@ export async function POST() {
     try {
       await notion.databases.update({
         database_id: dbId,
-        properties: { [nomeProp]: { select: { options: [...options] } } },
+        properties: { [nomeProp]: { select: { options: [...options] } } } as any,
       });
       resultado.acoes[nomeProp] = 'criado';
       return;
@@ -76,7 +76,7 @@ export async function POST() {
     try {
       await notion.databases.update({
         database_id: dbId,
-        properties: { [nomeProp]: { select: { options: [...options] } } },
+        properties: { [nomeProp]: { select: { options: [...options] } } } as any,
       });
       resultado.acoes[nomeProp] = 'recriado (a versão anterior estava quebrada)';
     } catch (err: any) {
