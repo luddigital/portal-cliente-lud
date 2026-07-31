@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
+import { BotaoCriarProps } from './BotaoCriarProps';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -29,6 +30,7 @@ export default async function DebugPage() {
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-6 py-8">
+        <BotaoCriarProps />
         <div className="card p-5">
           <pre className="text-[11px] leading-[1.5] font-mono whitespace-pre-wrap text-ink">
 {JSON.stringify(info, null, 2)}
