@@ -437,6 +437,85 @@ export async function salvarConfigProgramacao(
   if (error) throw new Error(`Supabase: ${error.message}`);
 }
 
+// ---- Fila de publicação no Instagram (agendamento via cron) ----
+
+export type IGFilaItem = {
+  postId: string;
+  conta: string;
+  legenda: string;
+};
+
+/** Coloca o post na fila de publicação do Instagram. */
+export async function enfileirarIGPublicacao(
+  postId: string,
+  opts: { conta: string; agendadoPara: string },
+): Promise<void> {
+  const sb = await supabaseAdmin();
+  const { error } = await sb
+    .from('programacao_config')
+    .update({
+      ig_status: 'na_fila',
+      ig_conta: opts.conta,
+      ig_agendado_para: opts.agendadoPara,
+      ig_erro: null,
+    })
+    .eq('post_id', postId);
+  if (error) throw new Error(`Supabase: ${error.message}`);
+}
+
+/** Posts do IG cuja hora já chegou e que ainda estão na fila. */
+export async function listarIGVencidos(agoraISO: string, limite = 5): Promise<IGFilaItem[]> {
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('programacao_config')
+    .select('post_id, ig_conta, legenda')
+    .eq('ig_status', 'na_fila')
+    .lte('ig_agendado_para', agoraISO)
+    .order('ig_agendado_para', { ascending: true })
+    .limit(limite);
+  if (error || !data) return [];
+  return data.map((r: any) => ({
+    postId: r.post_id,
+    conta: r.ig_conta ?? '',
+    legenda: r.legenda ?? '',
+  }));
+}
+
+/**
+ * Transição atômica na_fila -> publicando. Só um processo "ganha" o post —
+ * evita que dois crons sobrepostos publiquem o mesmo post duas vezes.
+ * Retorna true se este processo reivindicou o post.
+ */
+export async function reivindicarIG(postId: string): Promise<boolean> {
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('programacao_config')
+    .update({ ig_status: 'publicando' })
+    .eq('post_id', postId)
+    .eq('ig_status', 'na_fila')
+    .select('post_id');
+  return !error && Array.isArray(data) && data.length > 0;
+}
+
+export async function marcarIGResultado(
+  postId: string,
+  resultado:
+    | { ok: true; mediaId: string; permalink: string | null }
+    | { ok: false; erro: string },
+): Promise<void> {
+  const sb = await supabaseAdmin();
+  const patch: Record<string, any> = resultado.ok
+    ? {
+        ig_status: 'publicado',
+        ig_media_id: resultado.mediaId,
+        ig_permalink: resultado.permalink,
+        ig_publicado_em: new Date().toISOString(),
+        ig_erro: null,
+      }
+    : { ig_status: 'erro', ig_erro: resultado.erro };
+  await sb.from('programacao_config').update(patch).eq('post_id', postId);
+}
+
 export async function limparRascunhoAprovacao(
   tarefaId: string,
   email: string,

@@ -64,6 +64,7 @@ export function ConfigProgramacao({
   legendaOriginal,
   arquivos,
   configInicial,
+  horarioDefault,
 }: {
   postId: string;
   titulo: string;
@@ -73,10 +74,12 @@ export function ConfigProgramacao({
   legendaOriginal: string;
   arquivos: PreviewArquivo[];
   configInicial: ProgramacaoConfig;
+  /** Horário do projeto já com 5 min de antecedência (fallback 09:55). */
+  horarioDefault: string;
 }) {
   const router = useRouter();
   const [data, setData] = useState(configInicial.data || dataPostagem);
-  const [horario, setHorario] = useState(configInicial.horario || '10:00');
+  const [horario, setHorario] = useState(configInicial.horario || horarioDefault);
   const [formato, setFormato] = useState(configInicial.formato || formatoDefault(formatoTipo));
   const [plataformas, setPlataformas] = useState<string[]>(
     configInicial.plataformas.length > 0 ? configInicial.plataformas : ['instagram', 'facebook'],
@@ -175,7 +178,7 @@ export function ConfigProgramacao({
                   1 · Data e horário
                 </div>
                 <p className="mt-0.5 text-[11px] text-t3">
-                  Clique na data pra abrir o calendário. Horário padrão é 10h (do projeto).
+                  Clique na data pra abrir o calendário. O horário já vem com o do projeto, 5 min antes. Ajuste se precisar.
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">

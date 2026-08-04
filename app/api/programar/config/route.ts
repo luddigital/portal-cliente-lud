@@ -4,9 +4,10 @@ import { env } from '@/lib/env';
 import {
   atualizarStatusPost,
   getColaboradorByEmail,
+  getPostComDetalhes,
   invalidarCachesAposMudanca,
 } from '@/lib/notion';
-import { salvarConfigProgramacao } from '@/lib/supabase';
+import { enfileirarIGPublicacao, salvarConfigProgramacao } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -71,6 +72,22 @@ export async function POST(req: Request) {
     await salvarConfigProgramacao(postId, config, session.email);
     if (acao === 'confirmar') {
       await atualizarStatusPost(postId, 'Agendado');
+      // Instagram: entra na fila do cron pra publicar na hora marcada.
+      if (config.plataformas.includes('instagram')) {
+        try {
+          const post = await getPostComDetalhes(postId);
+          const conta = post?.projetoId ? (env.instagram.accounts[post.projetoId] ?? '') : '';
+          const dataFinal = config.data || post?.data || '';
+          const horaFinal = config.horario || '10:00';
+          if (dataFinal) {
+            // Horário da Lud. é BRT (UTC-3, sem horário de verão) -> instante UTC.
+            const agendadoPara = new Date(`${dataFinal}T${horaFinal}:00-03:00`).toISOString();
+            await enfileirarIGPublicacao(postId, { conta, agendadoPara });
+          }
+        } catch {
+          /* não bloqueia o Confirmar se a fila falhar — só não agenda o IG */
+        }
+      }
       invalidarCachesAposMudanca();
     } else if (acao === 'postado') {
       await atualizarStatusPost(postId, 'Postado');

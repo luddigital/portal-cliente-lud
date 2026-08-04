@@ -748,6 +748,21 @@ export async function listAllProjetos(): Promise<ProjetoListItem[]> {
   return _listAllProjetosCached();
 }
 
+/**
+ * Lê a propriedade "Time" do projeto no Notion — é o horário de postagem do
+ * cliente, em texto livre ("12h", "6H55", "10h30"). A programação usa isso pra
+ * pré-preencher o horário (com 5 min de antecedência). Retorna a string crua
+ * (sem parse) ou null se não tiver.
+ */
+export async function getHorarioDoProjeto(projetoId: string): Promise<string | null> {
+  try {
+    const proj = (await cachedPageRetrieve(projetoId)) as any;
+    return txt(getProp(proj, 'Time')?.rich_text) || null;
+  } catch {
+    return null;
+  }
+}
+
 export type ProjetoDetalhe = {
   id: string;
   nome: string;
@@ -2160,6 +2175,16 @@ const FIM_LEGENDA_KEYWORDS = new Set([
   'obs',
   'materiais',
   'materiais:',
+  'informações e materiais',
+  'informacoes e materiais',
+  'informações & materiais',
+  'informacoes & materiais',
+  'informações',
+  'informacoes',
+  'informação',
+  'informacao',
+  'informações:',
+  'informacoes:',
   'tarefas',
   'tarefas lud',
   'tarefas lud.',
