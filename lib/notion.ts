@@ -3465,6 +3465,13 @@ export async function criarPostVazio(
   return { id: page.id };
 }
 
+/** Notion limita o `name` de file property em 100 chars — corta antes de mandar. */
+function truncarNomeArquivo(nome: string): string {
+  const NOTION_FILE_NAME_MAX = 100;
+  if (nome.length <= NOTION_FILE_NAME_MAX) return nome;
+  return nome.slice(0, NOTION_FILE_NAME_MAX - 1) + '…';
+}
+
 export async function atualizarLinkDriveDoPost(postId: string, nome: string, url: string): Promise<void> {
   await notion.pages.update({
     page_id: postId,
@@ -3472,7 +3479,7 @@ export async function atualizarLinkDriveDoPost(postId: string, nome: string, url
       [env.notion.postProps.driveLink]: {
         files: [
           {
-            name: nome,
+            name: truncarNomeArquivo(nome),
             type: 'external',
             external: { url },
           },
@@ -3496,15 +3503,17 @@ export async function adicionarLinkDriveAoPost(
   const atual = page.properties?.[env.notion.postProps.driveLink]?.files ?? [];
   const novos = [
     ...atual.map((f: any) => {
-      // Mantém o formato pra não quebrar — Notion exige type: 'external' ou 'file'
+      // Mantém o formato pra não quebrar — Notion exige type: 'external' ou 'file'.
+      // Trunca nomes antigos também: se o cliente rebateu esse update e algum
+      // arquivo pré-existente tem >100 chars, o Notion recusa o request inteiro.
       if (f.type === 'external') {
-        return { name: f.name, type: 'external', external: f.external };
+        return { name: truncarNomeArquivo(f.name ?? ''), type: 'external', external: f.external };
       }
       // Files internos do Notion não dá pra reescrever em update, então
       // ignora — eles continuam lá só se mantermos como referência.
       return null;
     }).filter(Boolean),
-    { name: nome, type: 'external', external: { url } },
+    { name: truncarNomeArquivo(nome), type: 'external', external: { url } },
   ];
   await notion.pages.update({
     page_id: postId,
