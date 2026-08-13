@@ -372,8 +372,9 @@ export default async function PostDetalhePage({
                     mostrarTexto
                     aceitarLink
                     aceitarComentario={false}
+                    permitirGravarVoz
                     tituloUpload="Fotos, vídeos e áudios"
-                    ajudaUpload="Opcional — se preferir mandar depois na etapa de materiais, sem problema."
+                    ajudaUpload="Anexe quantas fotos e vídeos quiser (cada um até 450 MB). Áudios também — ou grava uma mensagem de voz aqui embaixo."
                     textoBotao="📎 Anexar materiais"
                   />
                 </div>
@@ -499,10 +500,11 @@ export default async function PostDetalhePage({
                       mostrarTexto: false,
                       aceitarComentario: true,
                       aceitarLink: true,
+                      permitirGravarVoz: !roteiroParaGravacao,
                       tituloUpload: 'Outros arquivos (opcional)',
                       ajudaUpload: roteiroParaGravacao
-                        ? 'Fotos, vídeos e outros áudios. A gravação do voice over feita acima já está incluída.'
-                        : 'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
+                        ? 'Fotos, vídeos e outros áudios sem limite de quantidade. A gravação do voice over feita acima já está incluída.'
+                        : 'Anexe quantas fotos e vídeos quiser (cada um até 450 MB). Áudios também — ou grava uma mensagem de voz aqui embaixo.',
                       textoBotao: 'Enviar materiais',
                       textoVoiceOver: roteiroParaGravacao || undefined,
                     }
@@ -510,8 +512,10 @@ export default async function PostDetalhePage({
                     ? {
                         mostrarTexto: true,
                         aceitarLink: true,
+                        permitirGravarVoz: true,
                         tituloUpload: 'Fotos e vídeos pros stories',
-                        ajudaUpload: 'Anexe as artes e arquivos que pretende usar.',
+                        ajudaUpload:
+                          'Anexe quantas artes e arquivos quiser. Áudios e mensagens de voz também.',
                         textoBotao: 'Enviar direcionamento',
                       }
                     : sub === 'previas'
@@ -521,7 +525,7 @@ export default async function PostDetalhePage({
                           permitirGravarVoz: true,
                           tituloUpload: 'Fotos, vídeos e áudios',
                           ajudaUpload:
-                            'Anexe o que já tiver pra ajudar a equipe a montar o post.',
+                            'Sem limite de quantidade — cada arquivo até 450 MB. Pode gravar um áudio aqui também.',
                           textoBotao: 'Enviar informações',
                         }
                       : {};

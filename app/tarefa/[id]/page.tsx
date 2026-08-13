@@ -152,17 +152,19 @@ export default async function TarefaPage({
             {...(ehMateriais
               ? {
                   mostrarTexto: false,
+                  permitirGravarVoz: true,
                   tituloUpload: 'Materiais + voice over',
                   ajudaUpload:
-                    'Anexe fotos, vídeos e a gravação do voice over (.mp3, .m4a, .wav). Pode soltar tudo junto.',
+                    'Sem limite de quantidade — cada arquivo até 450 MB. Áudios também (ou grava direto aqui embaixo).',
                   textoBotao: 'Enviar materiais',
                 }
               : ehPrevias
                 ? {
                     mostrarTexto: true,
+                    permitirGravarVoz: true,
                     tituloUpload: 'Fotos, vídeos e áudios',
                     ajudaUpload:
-                      'Anexe o que já tiver pra ajudar a equipe a montar o post.',
+                      'Sem limite de quantidade — cada arquivo até 450 MB. Pode gravar um áudio aqui também.',
                     textoBotao: 'Enviar informações',
                   }
                 : {})}
