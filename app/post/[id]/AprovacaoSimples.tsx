@@ -151,7 +151,7 @@ export function AprovacaoSimples({
   }
 
   return (
-    <div className="card sticky bottom-2 sm:bottom-6 z-20 space-y-4 border border-[rgba(21,21,33,0.08)] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
+    <div className="card space-y-4 border border-[rgba(21,21,33,0.08)] bg-white p-5 sm:p-6">
       <div>
         <label className="label">
           {aprovacaoColaborativa ? 'Comentário da equipe' : 'Comentário (opcional)'}
