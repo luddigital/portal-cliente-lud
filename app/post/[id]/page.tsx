@@ -9,6 +9,7 @@ import {
   findTarefaClienteProntaDoPost,
   lerComentariosDoPost,
   listarTarefasDoPost,
+  type MaterialBloco,
   type RelacaoItem,
 } from '@/lib/notion';
 import {
@@ -60,6 +61,13 @@ function subtipoMaterial(titulo: string | null): 'materiais' | 'previas' | 'stor
   if (t.includes('prévi') || t.includes('previa') || t.includes('conteúdo') || t.includes('conteudo')) return 'previas';
   if (t.includes('materia')) return 'materiais';
   return 'outro';
+}
+
+/** É a etapa de aprovação de PAUTA (não da arte final)?
+ *  Detecta títulos tipo "Pauta", "Aprovação | Pauta", "Aprovar pauta". */
+function ehEtapaPauta(titulo: string | null): boolean {
+  if (!titulo) return false;
+  return /\bpauta\b/i.test(titulo);
 }
 
 function fmtData(iso: string | null): string {
@@ -325,6 +333,44 @@ export default async function PostDetalhePage({
                   </p>
                 </div>
               )
+            )}
+
+            {/* Etapa PAUTA: mostra info + materiais que a gente vai precisar
+                (leitura) + form pra ADIANTAR materiais opcionalmente.
+                A AprovacaoSimples continua sendo quem fecha a tarefa. */}
+            {modo === 'aprovacao' && ehEtapaPauta(tarefaTitulo) && tarefaId && (
+              <SecoesInfoEMateriais
+                informacoesNecessarias={post.informacoesNecessarias}
+                materiaisNecessarios={post.materiaisNecessarios}
+              />
+            )}
+
+            {modo === 'aprovacao' && ehEtapaPauta(tarefaTitulo) && tarefaId && (
+              <div className="card border-dashed p-5">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="text-[16px]" aria-hidden>📎</span>
+                  <div>
+                    <div className="text-[13px] font-semibold text-ink">
+                      Já quer adiantar materiais? (opcional)
+                    </div>
+                    <div className="text-[11px] text-t2">
+                      Cole aqui infos, arquivos ou link. Aprovar a pauta abaixo
+                      é o que finaliza essa etapa.
+                    </div>
+                  </div>
+                </div>
+                <TarefaForm
+                  tarefaId={tarefaId}
+                  voltarPara={voltarPara}
+                  naoFinalizarTarefa
+                  mostrarTexto
+                  aceitarLink
+                  aceitarComentario={false}
+                  tituloUpload="Fotos, vídeos e áudios"
+                  ajudaUpload="Opcional — se preferir mandar depois na etapa de materiais, sem problema."
+                  textoBotao="📎 Anexar materiais"
+                />
+              </div>
             )}
 
             {modo === 'aprovacao' && arquivos.length === 0 && tarefaId && (
@@ -796,5 +842,93 @@ function FormatoPill({
       {info.label}
       {sufixo && <span className="font-normal opacity-70">{sufixo}</span>}
     </span>
+  );
+}
+
+/** Seções "Informações que precisamos" + "Materiais que precisamos" —
+ *  usado tanto na etapa de MATERIAIS/PRÉVIAS (padrão) quanto na etapa de
+ *  PAUTA (pra o cliente já ver o que a gente vai precisar dele). */
+function SecoesInfoEMateriais({
+  informacoesNecessarias,
+  materiaisNecessarios,
+}: {
+  informacoesNecessarias: MaterialBloco[] | null;
+  materiaisNecessarios: MaterialBloco[] | null;
+}) {
+  const temInfo = informacoesNecessarias && informacoesNecessarias.length > 0;
+  const materiaisComDetalhes = materiaisNecessarios?.filter((m) => m.detalhes.length > 0) ?? [];
+  const materiaisSoTitulo = materiaisNecessarios?.filter((m) => m.detalhes.length === 0) ?? [];
+  const temMateriais = materiaisComDetalhes.length > 0 || materiaisSoTitulo.length > 0;
+  if (!temInfo && !temMateriais) return null;
+
+  return (
+    <section>
+      <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+        O que precisamos de você
+      </div>
+      <div className="space-y-3">
+        {temInfo &&
+          informacoesNecessarias!.map((m, i) => (
+            <div key={`info-${i}`} className="card p-5">
+              <div className="flex items-start gap-2.5">
+                <span className="mt-0.5 text-[18px] leading-none" aria-hidden>📣</span>
+                <div className="text-[14px] font-semibold leading-snug text-ink">
+                  {m.cabecalho || 'Informações que precisamos pra esse post'}
+                </div>
+              </div>
+              {m.detalhes.length > 0 && (
+                <div className="mt-3 space-y-1.5 pl-7">
+                  {m.detalhes.map((d, j) => (
+                    <p key={j} className="whitespace-pre-line text-[13px] leading-[1.6] text-t1">
+                      {d}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+
+        {materiaisComDetalhes.map((m, i) => (
+          <div key={`mat-${i}`} className="card p-5">
+            {m.cabecalho && (
+              <div className="flex items-start gap-2.5">
+                <span className="mt-0.5 text-[18px] leading-none" aria-hidden>📝</span>
+                <div className="text-[14px] font-semibold leading-snug text-ink">
+                  {m.cabecalho}
+                </div>
+              </div>
+            )}
+            <div className={`space-y-2 ${m.cabecalho ? 'mt-3 pl-7' : ''}`}>
+              {m.detalhes.map((d, j) => (
+                <p key={j} className="whitespace-pre-line text-[13px] leading-[1.6] text-t1">
+                  {d}
+                </p>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {materiaisSoTitulo.length > 0 && (
+          <div className="card p-5">
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 text-[18px] leading-none" aria-hidden>🎬</span>
+              <div>
+                <div className="text-[14px] font-semibold text-ink">
+                  Materiais que precisamos
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {materiaisSoTitulo.map((m, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[13px] leading-snug text-t1">
+                      <span className="mt-[7px] inline-block h-1 w-1 shrink-0 rounded-full bg-t3" />
+                      <span>{m.cabecalho}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

@@ -28,6 +28,7 @@ export function TarefaForm({
   ajudaUpload = 'Você pode anexar vários arquivos — incluindo gravações de voice over.',
   textoVoiceOver,
   permitirGravarVoz = false,
+  naoFinalizarTarefa = false,
 }: {
   tarefaId: string;
   voltarPara?: string;
@@ -41,6 +42,9 @@ export function TarefaForm({
   textoVoiceOver?: string;
   /** Quando true, mostra o gravador mesmo sem roteiro — modo "mensagem de voz". */
   permitirGravarVoz?: boolean;
+  /** Quando true, envia arquivos + comentários mas NÃO fecha a tarefa
+   *  (uso: adiantar materiais na etapa de pauta — quem fecha é o Aprovar). */
+  naoFinalizarTarefa?: boolean;
 }) {
   const router = useRouter();
   const [texto, setTexto] = useState('');
@@ -98,6 +102,7 @@ export function TarefaForm({
     if (mostrarTexto && texto.trim()) fd.set('texto', texto.trim());
     if (aceitarComentario && comentario.trim()) fd.set('comentario', comentario.trim());
     if (aceitarLink && linkUrl.trim()) fd.set('linkUrl', linkUrl.trim());
+    if (naoFinalizarTarefa) fd.set('naoConcluirTarefa', 'true');
     const res = await fetch(`/api/tarefas/${tarefaId}/submit`, {
       method: 'POST',
       body: fd,
@@ -167,10 +172,15 @@ export function TarefaForm({
         }
       }
 
-      // Última chamada — finaliza tarefa
+      // Última chamada — finaliza (fecha tarefa OU só sobe, dependendo de naoFinalizarTarefa)
       const ret = await finalizar(feitos);
       setDone({ arquivos: ret.arquivos ?? feitos });
-      setTimeout(() => router.push(voltarPara), 2000);
+      // Só redireciona quando REALMENTE fechou a tarefa. No modo "adiantar
+      // materiais" (naoFinalizarTarefa), o cliente continua na página pra
+      // clicar Aprovar/Pedir alteração logo abaixo.
+      if (!naoFinalizarTarefa) {
+        setTimeout(() => router.push(voltarPara), 2000);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -179,6 +189,21 @@ export function TarefaForm({
   }
 
   if (done) {
+    if (naoFinalizarTarefa) {
+      return (
+        <div className="card p-5 text-center">
+          <div className="text-[14px] font-semibold text-ink">
+            ✓ Materiais anexados
+          </div>
+          <p className="mt-1 text-[12px] text-t2">
+            {done.arquivos > 0
+              ? `${done.arquivos} arquivo${done.arquivos > 1 ? 's' : ''} no Drive. `
+              : ''}
+            Agora é só aprovar a pauta abaixo pra a gente seguir.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="card p-8 text-center">
         <div className="text-[16px] font-semibold text-ink">Enviado ✨</div>

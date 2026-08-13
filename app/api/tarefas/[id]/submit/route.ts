@@ -47,6 +47,10 @@ async function handle(req: Request, tarefaId: string) {
   // chegarem. Não finaliza tarefa enquanto finalize !== 'true'.
   const arquivos = form.getAll('arquivos').filter((f): f is File => f instanceof File && f.size > 0);
   const finalize = form.get('finalize') === 'true';
+  // Quando o cliente adianta materiais numa etapa de "pauta" (aprovação),
+  // sobe arquivos + comenta, mas a tarefa fica aberta — quem fecha é o
+  // clique de "Aprovar" via /aprovar.
+  const naoConcluirTarefa = form.get('naoConcluirTarefa') === 'true';
   // Contagem acumulada vinda do client — só pro comentário final ficar
   // certo ("52 arquivos no Drive" em vez de "1 arquivo").
   const totalAcumulado = parseInt(
@@ -152,7 +156,9 @@ async function handle(req: Request, tarefaId: string) {
   }
   await comentarPost(t.postId, partes.join('\n'));
 
-  await concluirTarefa(t.tarefaId);
+  if (!naoConcluirTarefa) {
+    await concluirTarefa(t.tarefaId);
+  }
   invalidarCachesAposMudanca();
 
   return NextResponse.json({
@@ -160,5 +166,6 @@ async function handle(req: Request, tarefaId: string) {
     driveLink,
     arquivos: totalArquivos,
     linkAdicionado: !!linkUrl,
+    tarefaConcluida: !naoConcluirTarefa,
   });
 }
