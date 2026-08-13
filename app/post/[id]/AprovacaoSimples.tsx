@@ -285,51 +285,82 @@ export function AprovacaoSimples({
       ) : aprovacaoColaborativa ? (
         // ===== MODO COLABORATIVO =====
         <div className="space-y-5">
-          {/* Bloco 1: comentar */}
-          <button
-            type="button"
-            onClick={comentarSemEncerrar}
-            disabled={loading || !temComentario}
-            className="btn-primary w-full justify-center whitespace-nowrap"
-          >
-            {modo === 'comentando' ? 'Enviando…' : '💬 Enviar comentário'}
-          </button>
-
-          {/* Separador com rótulo */}
-          <div className="relative pt-1">
-            <div className="absolute inset-x-0 top-1/2 h-px bg-[rgba(21,21,33,0.08)]" />
-            <div className="relative mx-auto inline-flex w-full justify-center">
-              <span className="bg-white px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-t3">
-                Quando o feedback estiver final
-              </span>
-            </div>
-          </div>
-
-          {/* Bloco 2: encerrar */}
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          {/* Comentar (só faz sentido quando tem texto no bloco 1 ou no textarea local) */}
+          {!(esconderTextarea && preparandoAlteracao) && (
             <button
               type="button"
-              onClick={aprovar}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-              style={{ background: 'var(--prazo-em-dia)' }}
-            >
-              {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar'}
-            </button>
-            <button
-              type="button"
-              onClick={pedirAlteracao}
+              onClick={comentarSemEncerrar}
               disabled={loading || !temComentario}
-              className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-[rgba(21,21,33,0.1)] px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-50"
-              style={{
-                background: 'var(--prazo-hoje-soft)',
-                color: 'var(--prazo-hoje)',
-                borderColor: 'var(--prazo-hoje)',
-              }}
+              className="btn-primary w-full justify-center whitespace-nowrap"
             >
-              {modo === 'pedindoAlteracao' ? 'Enviando…' : '✏️ Reprovar'}
+              {modo === 'comentando' ? 'Enviando…' : '💬 Enviar comentário'}
             </button>
-          </div>
+          )}
+
+          {!(esconderTextarea && preparandoAlteracao) && (
+            <div className="relative pt-1">
+              <div className="absolute inset-x-0 top-1/2 h-px bg-[rgba(21,21,33,0.08)]" />
+              <div className="relative mx-auto inline-flex w-full justify-center">
+                <span className="bg-white px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-t3">
+                  Quando o feedback estiver final
+                </span>
+              </div>
+            </div>
+          )}
+
+          {esconderTextarea && preparandoAlteracao ? (
+            // Fluxo em 2 passos: textarea "O que precisa mudar?" já expandido acima.
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,auto]">
+              <button
+                type="button"
+                onClick={pedirAlteracao}
+                disabled={loading || pedidoAlteracao.trim().length < 3}
+                className="inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'var(--prazo-hoje)' }}
+              >
+                {modo === 'pedindoAlteracao'
+                  ? 'Enviando…'
+                  : '✏️ Enviar pedido de alteração'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreparandoAlteracao(false);
+                  setPedidoAlteracao('');
+                  setError(null);
+                }}
+                disabled={loading}
+                className="btn-ghost whitespace-nowrap"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={aprovar}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'var(--prazo-em-dia)' }}
+              >
+                {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar'}
+              </button>
+              <button
+                type="button"
+                onClick={pedirAlteracao}
+                disabled={loading || (!esconderTextarea && !temComentario)}
+                className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-[rgba(21,21,33,0.1)] px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-50"
+                style={{
+                  background: 'var(--prazo-hoje-soft)',
+                  color: 'var(--prazo-hoje)',
+                  borderColor: 'var(--prazo-hoje)',
+                }}
+              >
+                {modo === 'pedindoAlteracao' ? 'Enviando…' : '✏️ Reprovar'}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         // ===== MODO INDIVIDUAL (padrão) =====
