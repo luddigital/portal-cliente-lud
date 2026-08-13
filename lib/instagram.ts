@@ -41,6 +41,9 @@ export type IgMediaItem = {
   shares: number;
   /** Views/plays de vídeo. 0 se não é vídeo. */
   views: number;
+  /** Seguidores ganhos pelo post (métrica `follows`). 0 se a API não expõe
+   *  essa métrica pra conta/versão. */
+  seguidores: number;
 };
 
 export type IgPontoSerie = { dia: string; valor: number };
@@ -57,6 +60,9 @@ export type IgAnalytics = {
   /** Todos os conteúdos do período (feed + reels), pra aba Conteúdo com busca
    *  e ordenação por métrica. Limitado às últimas ~50 publicações. */
   conteudos: IgMediaItem[];
+  /** True se a API devolveu `follows` (seguidores por post) pra pelo menos um
+   *  conteúdo — habilita a coluna/ordenação por Seguidores. */
+  temSeguidoresPorPost: boolean;
   taxaEngajamento: number;
   /** Reach diário no período. */
   serieAlcance: IgPontoSerie[];
@@ -258,32 +264,40 @@ async function getMediaInsights(
   saved: number;
   shares: number;
   views: number;
+  seguidores: number;
 }> {
   // shares/views só fazem sentido em vídeo/reels. IMAGE e CAROUSEL_ALBUM
   // não têm shares (a API rejeita a métrica).
   const ehVideo = mediaType === 'VIDEO' || mediaType === 'REELS';
-  const metrics = ehVideo
+  const base = ehVideo
     ? 'reach,total_interactions,saved,shares,views'
     : 'reach,total_interactions,saved';
-  try {
-    const json = await graph<any>(`${mediaId}/insights`, { metric: metrics });
-    let reach = 0;
-    let interactions = 0;
-    let saved = 0;
-    let shares = 0;
-    let views = 0;
-    for (const m of json?.data ?? []) {
-      const v = m?.values?.[0]?.value ?? 0;
-      if (m.name === 'reach') reach = v;
-      else if (m.name === 'total_interactions') interactions = v;
-      else if (m.name === 'saved') saved = v;
-      else if (m.name === 'shares') shares = v;
-      else if (m.name === 'views') views = v;
+  // Tenta incluir `follows` (seguidores ganhos pelo post — o que o Business
+  // Suite mostra na coluna "Seguidores"). Se a versão da API recusar a
+  // métrica, refaz sem ela — sem quebrar as outras.
+  const zero = { reach: 0, interactions: 0, saved: 0, shares: 0, views: 0, seguidores: 0 };
+  for (const metrics of [`${base},follows`, base]) {
+    try {
+      const json = await graph<any>(`${mediaId}/insights`, { metric: metrics });
+      const out = { ...zero };
+      for (const m of json?.data ?? []) {
+        const v =
+          m?.values?.[0]?.value ??
+          m?.total_value?.value ??
+          0;
+        if (m.name === 'reach') out.reach = v;
+        else if (m.name === 'total_interactions') out.interactions = v;
+        else if (m.name === 'saved') out.saved = v;
+        else if (m.name === 'shares') out.shares = v;
+        else if (m.name === 'views') out.views = v;
+        else if (m.name === 'follows') out.seguidores = v;
+      }
+      return out;
+    } catch {
+      // tenta a próxima combinação (sem follows)
     }
-    return { reach, interactions, saved, shares, views };
-  } catch {
-    return { reach: 0, interactions: 0, saved: 0, shares: 0, views: 0 };
   }
+  return zero;
 }
 
 /** Traz todos os posts do período ordenados por engajamento (desc).
@@ -324,6 +338,7 @@ async function getMediaOrdenada(
         saved: ins.saved,
         shares: ins.shares,
         views: ins.views,
+        seguidores: ins.seguidores,
       };
     }),
   );
@@ -598,6 +613,7 @@ export async function getIgAnalytics(
     topMedia,
     topPiores,
     conteudos: mediaOrdenada,
+    temSeguidoresPorPost: mediaOrdenada.some((m) => m.seguidores > 0),
     taxaEngajamento: atual.reach > 0 ? atual.interactions / atual.reach : 0,
     serieAlcance,
     serieSeguidores,

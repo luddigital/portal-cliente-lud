@@ -440,12 +440,14 @@ type CriterioOrdem =
   | 'likes'
   | 'comments'
   | 'saved'
-  | 'shares';
+  | 'shares'
+  | 'seguidores';
 
 const METRICA_OPTS: { c: CriterioOrdem; label: string }[] = [
   { c: 'views', label: 'Views' },
   { c: 'reach', label: 'Alcance' },
   { c: 'interactions', label: 'Interações' },
+  { c: 'seguidores', label: 'Seguidores' },
   { c: 'likes', label: 'Curtidas' },
   { c: 'comments', label: 'Comentários' },
   { c: 'saved', label: 'Salvos' },
@@ -456,7 +458,13 @@ const LABEL_METRICA = Object.fromEntries(
   METRICA_OPTS.map((o) => [o.c, o.label]),
 ) as Record<CriterioOrdem, string>;
 
-function MediaCard({ m }: { m: IgMediaItem }) {
+function MediaCard({
+  m,
+  comSeguidores,
+}: {
+  m: IgMediaItem;
+  comSeguidores?: boolean;
+}) {
   const data = m.timestamp
     ? new Date(m.timestamp).toLocaleDateString('pt-BR', {
         day: '2-digit',
@@ -503,6 +511,9 @@ function MediaCard({ m }: { m: IgMediaItem }) {
         <div className="mt-3 grid grid-cols-3 gap-x-3 gap-y-3 border-t border-[rgba(21,21,33,0.06)] pt-3">
           <StatCell icon="▶" label="Views" valor={m.views} />
           <StatCell icon="👁" label="Alcance" valor={m.reach} />
+          {comSeguidores && (
+            <StatCell icon="👥" label="Seguidores" valor={m.seguidores} />
+          )}
           <StatCell icon="♡" label="Curtidas" valor={m.likes} />
           <StatCell icon="💬" label="Coment." valor={m.comments} />
           <StatCell icon="↗" label="Compart." valor={m.shares} />
@@ -565,7 +576,15 @@ function FiltroOrdem({
 }
 
 // === LINHA DE CONTEÚDO (lista da aba Conteúdo — dados em colunas) ===
-function ContentRow({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem }) {
+function ContentRow({
+  m,
+  criterio,
+  comSeguidores,
+}: {
+  m: IgMediaItem;
+  criterio: CriterioOrdem;
+  comSeguidores?: boolean;
+}) {
   const data = m.timestamp
     ? new Date(m.timestamp).toLocaleDateString('pt-BR', {
         day: '2-digit',
@@ -575,6 +594,16 @@ function ContentRow({ m, criterio }: { m: IgMediaItem; criterio: CriterioOrdem }
   const colunas: { c: CriterioOrdem; label: string; icon: string; valor: number }[] = [
     { c: 'views', label: 'Views', icon: '▶', valor: m.views },
     { c: 'reach', label: 'Alcance', icon: '👁', valor: m.reach },
+    ...(comSeguidores
+      ? [
+          {
+            c: 'seguidores' as CriterioOrdem,
+            label: 'Seguidores',
+            icon: '👥',
+            valor: m.seguidores,
+          },
+        ]
+      : []),
     { c: 'likes', label: 'Curtidas', icon: '♡', valor: m.likes },
     { c: 'comments', label: 'Coment.', icon: '💬', valor: m.comments },
     { c: 'shares', label: 'Compart.', icon: '↗', valor: m.shares },
@@ -724,7 +753,9 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
             onChange={(e) => setCriterio(e.target.value as CriterioOrdem)}
             className="cursor-pointer rounded-full bg-transparent py-2 pl-1 pr-1 font-semibold text-ink outline-none"
           >
-            {METRICA_OPTS.map((o) => (
+            {METRICA_OPTS.filter(
+              (o) => o.c !== 'seguidores' || a.temSeguidoresPorPost,
+            ).map((o) => (
               <option key={o.c} value={o.c}>
                 {o.label}
               </option>
@@ -764,7 +795,11 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {destaques.map((m) => (
-              <MediaCard key={m.id} m={m} />
+              <MediaCard
+                key={m.id}
+                m={m}
+                comSeguidores={a.temSeguidoresPorPost}
+              />
             ))}
           </div>
         </div>
@@ -790,7 +825,12 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
           </p>
         ) : (
           filtrados.map((m) => (
-            <ContentRow key={m.id} m={m} criterio={criterio} />
+            <ContentRow
+              key={m.id}
+              m={m}
+              criterio={criterio}
+              comSeguidores={a.temSeguidoresPorPost}
+            />
           ))
         )}
       </div>
