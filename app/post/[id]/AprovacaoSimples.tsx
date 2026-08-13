@@ -20,6 +20,9 @@ export function AprovacaoSimples({
   aprovacaoColaborativa = false,
   labelComentario,
   placeholderComentario,
+  esconderTextarea = false,
+  comentarioExterno,
+  semCardWrapper = false,
 }: {
   tarefaId: string;
   tarefaTitulo: string;
@@ -29,6 +32,12 @@ export function AprovacaoSimples({
   labelComentario?: string;
   /** Sobrescreve o placeholder do textarea. */
   placeholderComentario?: string;
+  /** Não renderiza o textarea local (o texto vem de fora via comentarioExterno). */
+  esconderTextarea?: boolean;
+  /** Comentário controlado externamente (usado com esconderTextarea=true). */
+  comentarioExterno?: string;
+  /** Não usa o wrapper .card externo — pra quando renderizado dentro de outro card. */
+  semCardWrapper?: boolean;
 }) {
   const router = useRouter();
   const [comentario, setComentario] = useState('');
@@ -76,7 +85,10 @@ export function AprovacaoSimples({
     }
   }
 
-  const temComentario = comentario.trim() !== '';
+  // Comentário efetivo: se veio de fora (esconderTextarea), usa o externo;
+  // senão usa o que o próprio componente segura.
+  const comentarioEfetivo = (comentarioExterno ?? comentario).trim();
+  const temComentario = comentarioEfetivo !== '';
 
   async function aprovar() {
     setLoading(true);
@@ -86,7 +98,7 @@ export function AprovacaoSimples({
       const res = await fetch(`/api/tarefas/${tarefaId}/aprovar`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ comentario: comentario.trim() || undefined }),
+        body: JSON.stringify({ comentario: comentarioEfetivo || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
@@ -102,7 +114,7 @@ export function AprovacaoSimples({
   }
 
   async function pedirAlteracao() {
-    if (comentario.trim().length < 3) {
+    if (comentarioEfetivo.length < 3) {
       setError('Conta o que precisa ajustar antes de pedir alteração.');
       return;
     }
@@ -113,7 +125,7 @@ export function AprovacaoSimples({
       const res = await fetch(`/api/tarefas/${tarefaId}/alterar`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ comentario: comentario.trim() }),
+        body: JSON.stringify({ comentario: comentarioEfetivo }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
@@ -129,7 +141,7 @@ export function AprovacaoSimples({
   }
 
   async function comentarSemEncerrar() {
-    if (comentario.trim().length < 2) {
+    if (comentarioEfetivo.length < 2) {
       setError('Escreve algo antes de comentar.');
       return;
     }
@@ -140,7 +152,7 @@ export function AprovacaoSimples({
       const res = await fetch(`/api/tarefas/${tarefaId}/comentar`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ comentario: comentario.trim() }),
+        body: JSON.stringify({ comentario: comentarioEfetivo }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
@@ -157,26 +169,39 @@ export function AprovacaoSimples({
   }
 
   return (
-    <div className="card space-y-4 border border-[rgba(21,21,33,0.08)] bg-white p-5 sm:p-6">
-      <div>
-        <label className="label">
-          {labelComentario ??
-            (aprovacaoColaborativa ? 'Comentário da equipe' : 'Comentário (opcional)')}
-        </label>
-        <textarea
-          rows={aprovacaoColaborativa ? 6 : 4}
-          value={comentario}
-          onChange={(e) => setComentario(e.target.value)}
-          placeholder={
-            placeholderComentario ??
-            (aprovacaoColaborativa
-              ? 'Escreve seu feedback aqui. Vários da equipe podem comentar — só Aprovar/Reprovar fecham o post.'
-              : 'Algum recado pra equipe?')
-          }
-          className="input resize-y text-[13px]"
-          disabled={loading || !!done}
-        />
-      </div>
+    <div
+      className={
+        semCardWrapper
+          ? 'space-y-4'
+          : 'card space-y-4 border border-[rgba(21,21,33,0.08)] bg-white p-5 sm:p-6'
+      }
+    >
+      {!esconderTextarea && (
+        <div>
+          <label className="label">
+            {labelComentario ??
+              (aprovacaoColaborativa ? 'Comentário da equipe' : 'Comentário (opcional)')}
+          </label>
+          <textarea
+            rows={aprovacaoColaborativa ? 6 : 4}
+            value={comentario}
+            onChange={(e) => setComentario(e.target.value)}
+            placeholder={
+              placeholderComentario ??
+              (aprovacaoColaborativa
+                ? 'Escreve seu feedback aqui. Vários da equipe podem comentar — só Aprovar/Reprovar fecham o post.'
+                : 'Algum recado pra equipe?')
+            }
+            className="input resize-y text-[13px]"
+            disabled={loading || !!done}
+          />
+        </div>
+      )}
+      {esconderTextarea && temComentario && !done && (
+        <p className="text-[11px] italic text-t3">
+          Vamos enviar sua resposta acima junto com a aprovação.
+        </p>
+      )}
 
       {error && <p className="text-[12px] font-medium text-hubRed">{error}</p>}
       {aviso && (

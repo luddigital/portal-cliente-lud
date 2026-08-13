@@ -21,6 +21,7 @@ import {
 import { env } from '@/lib/env';
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
+import { EtapaPautaCards } from './EtapaPautaCards';
 import { TarefasDoPostPanel } from './TarefasDoPostPanel';
 import { PostSidebarLud } from './PostSidebarLud';
 import { TarefaForm } from '../../tarefa/[id]/form';
@@ -341,48 +342,14 @@ export default async function PostDetalhePage({
                 adiantar materiais. Só o Aprovar/Pedir alteração fecha
                 a tarefa; adiantar materiais não. */}
             {modo === 'aprovacao' && ehEtapaPauta(tarefaTitulo) && tarefaId && (
-              <>
-                <div className="-mb-4">
-                  <SecoesInfoEMateriais
-                    informacoesNecessarias={post.informacoesNecessarias}
-                    materiaisNecessarios={post.materiaisNecessarios}
-                  />
-                </div>
-                <AprovacaoSimples
-                  tarefaId={tarefaId}
-                  tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
-                  voltarPara={voltarPara}
-                  aprovacaoColaborativa={post.aprovacaoColaborativa}
-                  labelComentario="Suas respostas / observações"
-                  placeholderComentario="Responde aqui as perguntas acima ou deixa qualquer recado pra equipe."
-                />
-                <div className="card border-dashed p-5">
-                  <div className="mb-3 flex items-center gap-2">
-                    <span className="text-[16px]" aria-hidden>📎</span>
-                    <div>
-                      <div className="text-[13px] font-semibold text-ink">
-                        Já quer adiantar materiais? (opcional)
-                      </div>
-                      <div className="text-[11px] text-t2">
-                        Anexe arquivos ou grave um áudio. Aprovar a pauta acima
-                        é o que finaliza essa etapa.
-                      </div>
-                    </div>
-                  </div>
-                  <TarefaForm
-                    tarefaId={tarefaId}
-                    voltarPara={voltarPara}
-                    naoFinalizarTarefa
-                    mostrarTexto={false}
-                    aceitarLink
-                    aceitarComentario={false}
-                    permitirGravarVoz
-                    tituloUpload="Fotos, vídeos e áudios"
-                    ajudaUpload="Anexe quantas fotos e vídeos quiser (cada um até 450 MB). Áudios também — ou grava uma mensagem de voz aqui embaixo."
-                    textoBotao="📎 Anexar materiais"
-                  />
-                </div>
-              </>
+              <EtapaPautaCards
+                tarefaId={tarefaId}
+                tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+                voltarPara={voltarPara}
+                aprovacaoColaborativa={post.aprovacaoColaborativa}
+                informacoesNecessarias={post.informacoesNecessarias}
+                materiaisNecessarios={post.materiaisNecessarios}
+              />
             )}
 
             {modo === 'aprovacao' &&
