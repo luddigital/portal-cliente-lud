@@ -91,6 +91,10 @@ function CabecalhoSeguidores({ a }: { a: IgAnalytics }) {
   const base = total - novos;
   const pct = base > 0 ? (novos / base) * 100 : 0;
   const positivo = novos >= 0;
+  // O Instagram só entrega o crescimento DIÁRIO de seguidores dos últimos ~30
+  // dias. Em ranges maiores, o "+N" cobre só essa janela — deixamos explícito.
+  const diasDados = a.serieSeguidores.length;
+  const parcial = diasDados > 0 && diasDados < a.period.dias - 3;
   return (
     <div className="rounded-3xl border border-[rgba(21,21,33,0.06)] bg-bgSoft p-5 sm:p-6">
       <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-t3">
@@ -118,8 +122,22 @@ function CabecalhoSeguidores({ a }: { a: IgAnalytics }) {
             </span>
           )}
         </span>
-        <span className="text-[12px] text-t3">no período</span>
+        <span className="text-[12px] text-t3">
+          {parcial ? `· últimos ${diasDados} dias` : 'no período'}
+        </span>
       </div>
+      {parcial && (
+        <p className="mt-2 text-[11px] leading-snug text-t3">
+          ℹ️ O Instagram só entrega o crescimento diário de seguidores dos
+          últimos ~30 dias, então esse{' '}
+          <span className="font-semibold">
+            {novos > 0 ? '+' : ''}
+            {fmt(novos)}
+          </span>{' '}
+          não cobre o período todo. O número total ao lado está sempre
+          atualizado.
+        </p>
+      )}
     </div>
   );
 }
