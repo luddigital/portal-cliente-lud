@@ -41,6 +41,8 @@ export function AprovacaoSimples({
 }) {
   const router = useRouter();
   const [comentario, setComentario] = useState('');
+  const [pedidoAlteracao, setPedidoAlteracao] = useState('');
+  const [preparandoAlteracao, setPreparandoAlteracao] = useState(false);
   const [loading, setLoading] = useState(false);
   const [modo, setModo] = useState<Modo>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -114,10 +116,40 @@ export function AprovacaoSimples({
   }
 
   async function pedirAlteracao() {
-    if (comentarioEfetivo.length < 3) {
+    // Modo "esconderTextarea" (bloco 3 da etapa pauta): primeiro clique abre
+    // o textarea inline; segundo clique envia. Assim o cliente tem onde
+    // escrever o que precisa mudar sem duplicar textarea na tela.
+    if (esconderTextarea && !preparandoAlteracao) {
+      setPreparandoAlteracao(true);
+      setError(null);
+      return;
+    }
+
+    // Texto do pedido de alteração — vem do textarea local, seja o normal
+    // ou o "inline" que aparece com esconderTextarea+preparandoAlteracao.
+    const textoAlteracao = esconderTextarea
+      ? pedidoAlteracao.trim()
+      : comentarioEfetivo;
+
+    if (textoAlteracao.length < 3) {
       setError('Conta o que precisa ajustar antes de pedir alteração.');
       return;
     }
+
+    // Se veio resposta do bloco 1 (comentarioExterno) + pedido de alteração,
+    // combina os dois — a equipe recebe as duas informações no comentário.
+    const partes: string[] = [];
+    if (esconderTextarea && comentarioExterno && comentarioExterno.trim()) {
+      partes.push(`Suas respostas: ${comentarioExterno.trim()}`);
+      partes.push('');
+    }
+    partes.push(
+      esconderTextarea
+        ? `O que precisa mudar: ${textoAlteracao}`
+        : textoAlteracao,
+    );
+    const comentarioFinal = partes.join('\n');
+
     setLoading(true);
     setError(null);
     setModo('pedindoAlteracao');
@@ -125,7 +157,7 @@ export function AprovacaoSimples({
       const res = await fetch(`/api/tarefas/${tarefaId}/alterar`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ comentario: comentarioEfetivo }),
+        body: JSON.stringify({ comentario: comentarioFinal }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
@@ -197,10 +229,30 @@ export function AprovacaoSimples({
           />
         </div>
       )}
-      {esconderTextarea && temComentario && !done && (
+      {esconderTextarea && temComentario && !done && !preparandoAlteracao && (
         <p className="text-[11px] italic text-t3">
           Vamos enviar sua resposta acima junto com a aprovação.
         </p>
+      )}
+
+      {esconderTextarea && preparandoAlteracao && !done && (
+        <div>
+          <label className="label">O que precisa mudar?</label>
+          <textarea
+            rows={4}
+            autoFocus
+            value={pedidoAlteracao}
+            onChange={(e) => setPedidoAlteracao(e.target.value)}
+            placeholder="Conta o que você quer que a gente ajuste no tema/pauta."
+            className="input resize-y text-[13px]"
+            disabled={loading}
+          />
+          {temComentario && (
+            <p className="mt-1.5 text-[11px] italic text-t3">
+              Suas respostas do bloco Informações vão junto.
+            </p>
+          )}
+        </div>
       )}
 
       {error && <p className="text-[12px] font-medium text-hubRed">{error}</p>}
@@ -282,56 +334,88 @@ export function AprovacaoSimples({
       ) : (
         // ===== MODO INDIVIDUAL (padrão) =====
         <div className="space-y-2.5">
-          <div
-            className="rounded-lg px-3 py-2 text-[12px] leading-snug"
-            style={{
-              background: temComentario
-                ? 'var(--prazo-hoje-soft)'
-                : 'var(--prazo-em-dia-soft)',
-              color: temComentario ? 'var(--prazo-hoje)' : 'var(--prazo-em-dia)',
-            }}
-          >
-            {temComentario ? (
-              <>
-                Você adicionou um comentário. Clique em{' '}
-                <b>Enviar pedido de alteração</b> pra mandar pra equipe ajustar.
-              </>
-            ) : (
-              <>
-                Tudo certo com o tema? Clique em <b>Aprovar</b> pra liberar a
-                produção.
-              </>
-            )}
-          </div>
+          {!(esconderTextarea && preparandoAlteracao) && (
+            <div
+              className="rounded-lg px-3 py-2 text-[12px] leading-snug"
+              style={{
+                background: temComentario
+                  ? 'var(--prazo-hoje-soft)'
+                  : 'var(--prazo-em-dia-soft)',
+                color: temComentario ? 'var(--prazo-hoje)' : 'var(--prazo-em-dia)',
+              }}
+            >
+              {temComentario ? (
+                <>
+                  Você adicionou um comentário. Clique em{' '}
+                  <b>Enviar pedido de alteração</b> pra mandar pra equipe ajustar.
+                </>
+              ) : (
+                <>
+                  Tudo certo com o tema? Clique em <b>Aprovar</b> pra liberar a
+                  produção.
+                </>
+              )}
+            </div>
+          )}
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={aprovar}
-              disabled={loading}
-              className={`${temComentario ? 'btn-ghost' : 'btn-primary'} w-full justify-center whitespace-nowrap`}
-              style={
-                temComentario ? undefined : { background: 'var(--prazo-em-dia)' }
-              }
-            >
-              {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar'}
-            </button>
-            <button
-              type="button"
-              onClick={pedirAlteracao}
-              disabled={loading}
-              className={`${temComentario ? 'btn-primary' : 'btn-ghost'} w-full justify-center whitespace-nowrap`}
-              style={
-                temComentario ? { background: 'var(--prazo-hoje)' } : undefined
-              }
-            >
-              {modo === 'pedindoAlteracao'
-                ? 'Enviando…'
-                : temComentario
-                  ? '✏️ Enviar alteração'
-                  : 'Pedir alteração'}
-            </button>
-          </div>
+          {esconderTextarea && preparandoAlteracao ? (
+            // Fluxo em 2 passos: textarea "O que precisa mudar?" já expandido acima,
+            // aqui só os botões Enviar / Cancelar.
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,auto]">
+              <button
+                type="button"
+                onClick={pedirAlteracao}
+                disabled={loading || pedidoAlteracao.trim().length < 3}
+                className="btn-primary w-full justify-center whitespace-nowrap"
+                style={{ background: 'var(--prazo-hoje)' }}
+              >
+                {modo === 'pedindoAlteracao'
+                  ? 'Enviando…'
+                  : '✏️ Enviar pedido de alteração'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreparandoAlteracao(false);
+                  setPedidoAlteracao('');
+                  setError(null);
+                }}
+                disabled={loading}
+                className="btn-ghost whitespace-nowrap"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={aprovar}
+                disabled={loading}
+                className={`${temComentario ? 'btn-ghost' : 'btn-primary'} w-full justify-center whitespace-nowrap`}
+                style={
+                  temComentario ? undefined : { background: 'var(--prazo-em-dia)' }
+                }
+              >
+                {modo === 'aprovando' ? 'Aprovando…' : '✓ Aprovar'}
+              </button>
+              <button
+                type="button"
+                onClick={pedirAlteracao}
+                disabled={loading}
+                className={`${temComentario ? 'btn-primary' : 'btn-ghost'} w-full justify-center whitespace-nowrap`}
+                style={
+                  temComentario ? { background: 'var(--prazo-hoje)' } : undefined
+                }
+              >
+                {modo === 'pedindoAlteracao'
+                  ? 'Enviando…'
+                  : temComentario
+                    ? '✏️ Enviar alteração'
+                    : 'Pedir alteração'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
