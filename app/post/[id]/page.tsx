@@ -336,51 +336,61 @@ export default async function PostDetalhePage({
             )}
 
             {/* Etapa PAUTA: mostra info + materiais que a gente vai precisar
-                (leitura) + form pra ADIANTAR materiais opcionalmente.
-                A AprovacaoSimples continua sendo quem fecha a tarefa. */}
+                (leitura) → LOGO ABAIXO caixa de aprovação (comentário
+                responde as perguntas) → e depois o card opcional pra
+                adiantar materiais. Só o Aprovar/Pedir alteração fecha
+                a tarefa; adiantar materiais não. */}
             {modo === 'aprovacao' && ehEtapaPauta(tarefaTitulo) && tarefaId && (
-              <SecoesInfoEMateriais
-                informacoesNecessarias={post.informacoesNecessarias}
-                materiaisNecessarios={post.materiaisNecessarios}
-              />
-            )}
-
-            {modo === 'aprovacao' && ehEtapaPauta(tarefaTitulo) && tarefaId && (
-              <div className="card border-dashed p-5">
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="text-[16px]" aria-hidden>📎</span>
-                  <div>
-                    <div className="text-[13px] font-semibold text-ink">
-                      Já quer adiantar materiais? (opcional)
-                    </div>
-                    <div className="text-[11px] text-t2">
-                      Cole aqui infos, arquivos ou link. Aprovar a pauta abaixo
-                      é o que finaliza essa etapa.
+              <>
+                <SecoesInfoEMateriais
+                  informacoesNecessarias={post.informacoesNecessarias}
+                  materiaisNecessarios={post.materiaisNecessarios}
+                />
+                <AprovacaoSimples
+                  tarefaId={tarefaId}
+                  tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+                  voltarPara={voltarPara}
+                  aprovacaoColaborativa={post.aprovacaoColaborativa}
+                />
+                <div className="card border-dashed p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="text-[16px]" aria-hidden>📎</span>
+                    <div>
+                      <div className="text-[13px] font-semibold text-ink">
+                        Já quer adiantar materiais? (opcional)
+                      </div>
+                      <div className="text-[11px] text-t2">
+                        Cole aqui arquivos, texto ou link. Aprovar a pauta acima
+                        é o que finaliza essa etapa.
+                      </div>
                     </div>
                   </div>
+                  <TarefaForm
+                    tarefaId={tarefaId}
+                    voltarPara={voltarPara}
+                    naoFinalizarTarefa
+                    mostrarTexto
+                    aceitarLink
+                    aceitarComentario={false}
+                    tituloUpload="Fotos, vídeos e áudios"
+                    ajudaUpload="Opcional — se preferir mandar depois na etapa de materiais, sem problema."
+                    textoBotao="📎 Anexar materiais"
+                  />
                 </div>
-                <TarefaForm
-                  tarefaId={tarefaId}
-                  voltarPara={voltarPara}
-                  naoFinalizarTarefa
-                  mostrarTexto
-                  aceitarLink
-                  aceitarComentario={false}
-                  tituloUpload="Fotos, vídeos e áudios"
-                  ajudaUpload="Opcional — se preferir mandar depois na etapa de materiais, sem problema."
-                  textoBotao="📎 Anexar materiais"
-                />
-              </div>
+              </>
             )}
 
-            {modo === 'aprovacao' && arquivos.length === 0 && tarefaId && (
-              <AprovacaoSimples
-                tarefaId={tarefaId}
-                tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
-                voltarPara={voltarPara}
-                aprovacaoColaborativa={post.aprovacaoColaborativa}
-              />
-            )}
+            {modo === 'aprovacao' &&
+              !ehEtapaPauta(tarefaTitulo) &&
+              arquivos.length === 0 &&
+              tarefaId && (
+                <AprovacaoSimples
+                  tarefaId={tarefaId}
+                  tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+                  voltarPara={voltarPara}
+                  aprovacaoColaborativa={post.aprovacaoColaborativa}
+                />
+              )}
 
             {modo === 'material' &&
               subtipoMaterial(tarefaTitulo) === 'previas' &&
