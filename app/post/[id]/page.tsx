@@ -342,15 +342,19 @@ export default async function PostDetalhePage({
                 a tarefa; adiantar materiais não. */}
             {modo === 'aprovacao' && ehEtapaPauta(tarefaTitulo) && tarefaId && (
               <>
-                <SecoesInfoEMateriais
-                  informacoesNecessarias={post.informacoesNecessarias}
-                  materiaisNecessarios={post.materiaisNecessarios}
-                />
+                <div className="-mb-4">
+                  <SecoesInfoEMateriais
+                    informacoesNecessarias={post.informacoesNecessarias}
+                    materiaisNecessarios={post.materiaisNecessarios}
+                  />
+                </div>
                 <AprovacaoSimples
                   tarefaId={tarefaId}
                   tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
                   voltarPara={voltarPara}
                   aprovacaoColaborativa={post.aprovacaoColaborativa}
+                  labelComentario="Suas respostas / observações"
+                  placeholderComentario="Responde aqui as perguntas acima ou deixa qualquer recado pra equipe."
                 />
                 <div className="card border-dashed p-5">
                   <div className="mb-3 flex items-center gap-2">
@@ -360,7 +364,7 @@ export default async function PostDetalhePage({
                         Já quer adiantar materiais? (opcional)
                       </div>
                       <div className="text-[11px] text-t2">
-                        Cole aqui arquivos, texto ou link. Aprovar a pauta acima
+                        Anexe arquivos ou grave um áudio. Aprovar a pauta acima
                         é o que finaliza essa etapa.
                       </div>
                     </div>
@@ -369,7 +373,7 @@ export default async function PostDetalhePage({
                     tarefaId={tarefaId}
                     voltarPara={voltarPara}
                     naoFinalizarTarefa
-                    mostrarTexto
+                    mostrarTexto={false}
                     aceitarLink
                     aceitarComentario={false}
                     permitirGravarVoz

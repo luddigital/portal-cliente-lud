@@ -18,11 +18,17 @@ export function AprovacaoSimples({
   tarefaTitulo,
   voltarPara = '/',
   aprovacaoColaborativa = false,
+  labelComentario,
+  placeholderComentario,
 }: {
   tarefaId: string;
   tarefaTitulo: string;
   voltarPara?: string;
   aprovacaoColaborativa?: boolean;
+  /** Sobrescreve o label do textarea (padrão: "Comentário (opcional)"). */
+  labelComentario?: string;
+  /** Sobrescreve o placeholder do textarea. */
+  placeholderComentario?: string;
 }) {
   const router = useRouter();
   const [comentario, setComentario] = useState('');
@@ -154,16 +160,18 @@ export function AprovacaoSimples({
     <div className="card space-y-4 border border-[rgba(21,21,33,0.08)] bg-white p-5 sm:p-6">
       <div>
         <label className="label">
-          {aprovacaoColaborativa ? 'Comentário da equipe' : 'Comentário (opcional)'}
+          {labelComentario ??
+            (aprovacaoColaborativa ? 'Comentário da equipe' : 'Comentário (opcional)')}
         </label>
         <textarea
           rows={aprovacaoColaborativa ? 6 : 4}
           value={comentario}
           onChange={(e) => setComentario(e.target.value)}
           placeholder={
-            aprovacaoColaborativa
+            placeholderComentario ??
+            (aprovacaoColaborativa
               ? 'Escreve seu feedback aqui. Vários da equipe podem comentar — só Aprovar/Reprovar fecham o post.'
-              : 'Algum recado pra equipe?'
+              : 'Algum recado pra equipe?')
           }
           className="input resize-y text-[13px]"
           disabled={loading || !!done}
