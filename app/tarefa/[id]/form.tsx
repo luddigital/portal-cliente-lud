@@ -55,6 +55,7 @@ export function TarefaForm({
   const [error, setError] = useState<string | null>(null);
   const [progresso, setProgresso] = useState<{ feitos: number; total: number } | null>(null);
   const [done, setDone] = useState<{ arquivos: number } | null>(null);
+  const [popupGrandes, setPopupGrandes] = useState<File[]>([]);
 
   function escolherArquivos(novos: File[]) {
     setFila((prev) => [
@@ -64,6 +65,10 @@ export function TarefaForm({
       ...novos.map((f) => ({ file: f, status: 'pendente' as const })),
     ]);
     setError(null);
+    // Abre popup pra qualquer arquivo que exceda o limite — assim o cliente
+    // não descobre só quando tenta enviar.
+    const grandes = novos.filter((f) => f.size > TAMANHO_MAX_MB * 1024 * 1024);
+    if (grandes.length > 0) setPopupGrandes(grandes);
   }
 
   function adicionarGravacao(file: File) {
@@ -279,9 +284,24 @@ export function TarefaForm({
               ? `${fila.length} arquivo${fila.length > 1 ? 's' : ''} selecionado${fila.length > 1 ? 's' : ''} · ${tamanhoTotalMB.toFixed(1)} MB`
               : 'Selecione os arquivos do seu computador ou celular'}
           </div>
-          <div className="mt-1 text-[11px] text-t3">{ajudaUpload}</div>
-          <div className="mt-1 text-[10px] text-t3">
-            Cada arquivo até {TAMANHO_MAX_MB} MB. Acima disso, use "Link externo".
+          <div className="mt-1 text-[12px] text-t2">{ajudaUpload}</div>
+        </div>
+
+        {/* Aviso destacado de limite — sempre visível, cor amber */}
+        <div
+          className="mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-[12px]"
+          style={{
+            background: 'var(--prazo-chegando-soft)',
+            borderColor: 'rgba(199,161,46,0.35)',
+            color: '#7A5A00',
+          }}
+        >
+          <span aria-hidden className="mt-0.5">⚠️</span>
+          <div>
+            <b>Cada arquivo pode ter até {TAMANHO_MAX_MB} MB.</b> Acima disso,
+            {aceitarLink
+              ? ' cole um link de Drive/Dropbox/WeTransfer no campo "Link externo" mais abaixo.'
+              : ' mande esse arquivo por Drive/Dropbox/WeTransfer.'}
           </div>
         </div>
 
@@ -400,6 +420,68 @@ export function TarefaForm({
           {loading ? 'Enviando…' : textoBotao}
         </button>
       </div>
+
+      {popupGrandes.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setPopupGrandes([])}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start gap-3">
+              <span className="text-[24px]" aria-hidden>⚠️</span>
+              <div>
+                <h3 className="text-[16px] font-semibold text-ink">
+                  {popupGrandes.length === 1
+                    ? 'Esse arquivo é grande demais'
+                    : `${popupGrandes.length} arquivos são grandes demais`}
+                </h3>
+                <p className="mt-1 text-[13px] text-t2">
+                  O portal aceita até <b>{TAMANHO_MAX_MB} MB</b> por arquivo.
+                  Passando disso, o mais rápido é mandar por outra plataforma
+                  e colar o link aqui embaixo.
+                </p>
+              </div>
+            </div>
+
+            <ul className="mb-4 max-h-32 space-y-1 overflow-y-auto rounded-lg bg-bgSoft p-2 text-[12px] font-mono">
+              {popupGrandes.map((f, i) => (
+                <li key={i} className="flex justify-between gap-2">
+                  <span className="truncate">{f.name}</span>
+                  <span className="shrink-0 text-[var(--prazo-atrasado)]">
+                    {(f.size / 1024 / 1024).toFixed(1)} MB
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mb-4 rounded-lg bg-bgSoft/60 p-3 text-[12px] text-t1">
+              <b>Como fazer:</b>
+              <ol className="mt-1.5 list-decimal space-y-1 pl-4">
+                <li>Sobe pro seu Google Drive, Dropbox ou WeTransfer</li>
+                <li>Deixa o link como "qualquer pessoa com link pode ver"</li>
+                <li>
+                  Cola o link {aceitarLink
+                    ? 'no campo "Link externo" logo abaixo'
+                    : 'aqui pelo WhatsApp/email'}
+                </li>
+              </ol>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPopupGrandes([])}
+                className="btn-primary"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
