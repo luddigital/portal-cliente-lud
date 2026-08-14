@@ -99,7 +99,16 @@ export function EtapaPautaCards({
         )}
 
         <label className="label">
-          {temPerguntas ? 'Suas respostas' : 'Alguma info pra gente? (opcional)'}
+          {temPerguntas ? (
+            <>
+              Suas respostas{' '}
+              <span className="font-normal text-[var(--prazo-atrasado)]">
+                * obrigatório
+              </span>
+            </>
+          ) : (
+            'Alguma info pra gente? (opcional)'
+          )}
         </label>
         <textarea
           rows={temPerguntas ? 6 : 3}
@@ -111,6 +120,11 @@ export function EtapaPautaCards({
               : 'Se quiser deixar um recado pra equipe…'
           }
           className="input resize-y text-[13px]"
+          style={
+            temPerguntas && respostaInfo.trim() === ''
+              ? { borderColor: 'rgba(199,161,46,0.6)' }
+              : undefined
+          }
         />
       </div>
 
@@ -204,6 +218,8 @@ export function EtapaPautaCards({
           esconderTextarea
           comentarioExterno={respostaInfo}
           semCardWrapper
+          respostasObrigatorias={temPerguntas}
+          mensagemBloqueio="Suba lá pro bloco 📣 Informações e responde as perguntas — depois volta aqui pra aprovar."
         />
       </div>
     </div>

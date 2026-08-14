@@ -23,6 +23,8 @@ export function AprovacaoSimples({
   esconderTextarea = false,
   comentarioExterno,
   semCardWrapper = false,
+  respostasObrigatorias = false,
+  mensagemBloqueio,
 }: {
   tarefaId: string;
   tarefaTitulo: string;
@@ -38,6 +40,12 @@ export function AprovacaoSimples({
   comentarioExterno?: string;
   /** Não usa o wrapper .card externo — pra quando renderizado dentro de outro card. */
   semCardWrapper?: boolean;
+  /** Quando true, Aprovar/Pedir alteração ficam bloqueados sem comentarioExterno.
+   *  Usado quando o post tem perguntas do briefing pra garantir que o cliente
+   *  responda antes de continuar. */
+  respostasObrigatorias?: boolean;
+  /** Texto do aviso mostrado quando o botão fica bloqueado. */
+  mensagemBloqueio?: string;
 }) {
   const router = useRouter();
   const [comentario, setComentario] = useState('');
@@ -91,8 +99,19 @@ export function AprovacaoSimples({
   // senão usa o que o próprio componente segura.
   const comentarioEfetivo = (comentarioExterno ?? comentario).trim();
   const temComentario = comentarioEfetivo !== '';
+  // Se respostas são obrigatórias e o cliente não escreveu nada, bloqueia
+  // Aprovar/Pedir alteração até ele responder.
+  const bloqueadoPorRespostas =
+    respostasObrigatorias && !temComentario && !preparandoAlteracao;
 
   async function aprovar() {
+    if (bloqueadoPorRespostas) {
+      setError(
+        mensagemBloqueio ??
+          'Responde as perguntas do bloco Informações antes de aprovar.',
+      );
+      return;
+    }
     setLoading(true);
     setError(null);
     setModo('aprovando');
@@ -235,6 +254,24 @@ export function AprovacaoSimples({
         </p>
       )}
 
+      {bloqueadoPorRespostas && !done && (
+        <div
+          className="flex items-start gap-2 rounded-lg border px-3 py-2 text-[12px]"
+          style={{
+            background: 'var(--prazo-chegando-soft)',
+            borderColor: 'rgba(199,161,46,0.35)',
+            color: '#7A5A00',
+          }}
+        >
+          <span aria-hidden className="mt-0.5">📝</span>
+          <div>
+            <b>Precisamos das suas respostas antes de continuar.</b>{' '}
+            {mensagemBloqueio ??
+              'Responde as perguntas do bloco Informações — assim a equipe consegue seguir com o que você quer.'}
+          </div>
+        </div>
+      )}
+
       {esconderTextarea && preparandoAlteracao && !done && (
         <div>
           <label className="label">O que precisa mudar?</label>
@@ -340,7 +377,7 @@ export function AprovacaoSimples({
               <button
                 type="button"
                 onClick={aprovar}
-                disabled={loading}
+                disabled={loading || bloqueadoPorRespostas}
                 className="inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                 style={{ background: 'var(--prazo-em-dia)' }}
               >
@@ -349,7 +386,11 @@ export function AprovacaoSimples({
               <button
                 type="button"
                 onClick={pedirAlteracao}
-                disabled={loading || (!esconderTextarea && !temComentario)}
+                disabled={
+                  loading ||
+                  bloqueadoPorRespostas ||
+                  (!esconderTextarea && !temComentario)
+                }
                 className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-[rgba(21,21,33,0.1)] px-4 py-3 text-sm font-semibold transition hover:opacity-90 disabled:opacity-50"
                 style={{
                   background: 'var(--prazo-hoje-soft)',
@@ -422,7 +463,7 @@ export function AprovacaoSimples({
               <button
                 type="button"
                 onClick={aprovar}
-                disabled={loading}
+                disabled={loading || bloqueadoPorRespostas}
                 className={`${temComentario ? 'btn-ghost' : 'btn-primary'} w-full justify-center whitespace-nowrap`}
                 style={
                   temComentario ? undefined : { background: 'var(--prazo-em-dia)' }
@@ -433,7 +474,7 @@ export function AprovacaoSimples({
               <button
                 type="button"
                 onClick={pedirAlteracao}
-                disabled={loading}
+                disabled={loading || bloqueadoPorRespostas}
                 className={`${temComentario ? 'btn-primary' : 'btn-ghost'} w-full justify-center whitespace-nowrap`}
                 style={
                   temComentario ? { background: 'var(--prazo-hoje)' } : undefined
