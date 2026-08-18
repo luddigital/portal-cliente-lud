@@ -9,11 +9,21 @@
 import { env } from './env';
 import type { IgAnalytics, IgMediaItem } from './instagram';
 
-export type InsightAcionavel = {
-  /** Categoria pra ícone/cor no front. */
-  tipo: 'trafego' | 'repetir' | 'cortar' | 'timing' | 'publico' | 'geral';
-  titulo: string;
-  texto: string;
+/** Análise estruturada do período, escrita pela IA no estilo do guia de copy
+ *  da Lud. (frases curtas, específicas, sem travessão, sem genérico). */
+export type AnaliseIA = {
+  /** Frase-resumo do topo: o fato mais forte e honesto do período. */
+  resumo: string;
+  /** O que funcionou (padrão de conteúdo vencedor). */
+  funcionou: string;
+  /** O que evitar repetir. */
+  evitar: string;
+  /** Quem estamos atraindo (público). */
+  publico: string;
+  /** Leitura do crescimento de seguidores. */
+  seguidores: string;
+  /** 3 a 5 ações pro próximo período. */
+  sugestoes: string[];
 };
 
 function formatoDoPost(m: IgMediaItem): string {
@@ -127,42 +137,59 @@ export function detectarEventos(a: IgAnalytics) {
     },
     viewsPorTipo: a.viewsPorTipo.map((i) => ({ tipo: i.chave, views: i.valor })),
     publico: a.publico,
+    demografia: a.demografia
+      ? {
+          genero: a.demografia.genero.slice(0, 3),
+          idade: a.demografia.idade,
+          paises: a.demografia.paises.slice(0, 4),
+        }
+      : null,
+    // Crescimento de seguidores só cobre a janela recente da API (~30 dias).
+    // Em períodos maiores, o ganho NÃO representa o período todo.
+    seguidoresGanhoParcial:
+      serie.length > 0 && serie.length < a.period.dias - 3,
+    diasComDadoSeguidores: serie.length,
   };
 }
 
 export type Audiencia = 'interno' | 'cliente';
 
+const REGRAS_COPY = `REGRAS DE ESCRITA (guia de copy da Lud.):
+- Frases curtas e específicas. Sempre com número ou nome real do post.
+- NUNCA use travessão (—). Use dois pontos, vírgula ou nova frase.
+- PROIBIDO frase genérica: nada de "muda completamente", "crescimento consistente", "deixa de X e vira Y", "quando você entende", "é aí que", "ou seja", "e é por isso que", nem tom de guru ("eu sempre digo").
+- Nada de inventar. Use SÓ os números que estão nos fatos.
+- Tom de conversa, direto, sem enrolação.`;
+
 function systemPrompt(audiencia: Audiencia): string {
   const tom =
     audiencia === 'cliente'
-      ? `AUDIÊNCIA: o CLIENTE (dono da conta) vai ler no portal dele.
-Tom: acolhedor, positivo e claro — mostra o valor que a Lud. entrega. Fale como parceira que está cuidando da conta ("a gente", "vamos").
-- Foque no que ESTÁ FUNCIONANDO e no que a Lud. vai fazer a seguir.
-- Evite jargão interno e ordens secas tipo "corta isso"; enquadre como "vamos ajustar", "vamos priorizar".
-- Não exponha estratégia interna crua (verba, corte agressivo); traduza pra benefício do cliente.`
-      : `AUDIÊNCIA: a EQUIPE INTERNA da Lud. (uso no admin).
-Tom: tático, direto, sem rodeio. Pode dizer "corta isso", "sobe campanha", "aumenta a cadência". Cheio de número. É ferramenta de decisão do time.`;
+      ? 'AUDIÊNCIA: o CLIENTE lê no portal dele. Tom acolhedor e claro, mostrando o valor. Fale como parceira ("a gente", "vamos"). Sem jargão interno nem ordens secas.'
+      : 'AUDIÊNCIA: a EQUIPE da Lud. (admin). Tom tático e direto, pode ser mais cru ("priorizar", "reduzir a cadência"), bem apoiado em número.';
 
-  return `Você é estrategista de social media da Lud. Digital, um hub de marketing digital.
-Recebe FATOS REAIS de performance de uma conta de Instagram no período e escreve insights ACIONÁVEIS.
+  return `Você é estrategista de social media da Lud. Digital.
+Recebe FATOS REAIS de um período de Instagram e escreve uma ANÁLISE DO PERÍODO estruturada.
 
 ${tom}
 
-REGRAS INEGOCIÁVEIS (valem pros dois tons):
-- Use APENAS os números que estão nos fatos. NUNCA invente valores, datas ou métricas.
-- A API do Instagram NÃO diz quantos seguidores um post trouxe. Se um post coincide com um pico, fale em PROBABILIDADE ("provavelmente puxou", "coincidiu com"), nunca como causa provada.
-- Se o cliente TEM tráfego pago ativo e um post teve tração orgânica forte, sugira impulsionar esse criativo. Se NÃO tem tráfego pago, não invente que tem.
-- Se houver META do mês, PRIORIZE os insights que ajudam a bater essa meta, e referencie o progresso real rumo a ela.
-- Cada insight termina com uma AÇÃO concreta.
+${REGRAS_COPY}
 
-HIERARQUIA: o PRIMEIRO insight do array é o mais importante do período (vira destaque na tela). Escolha o de maior impacto pra ser o #1. Gere de 3 a 5 insights no total.
+Escreva um texto curto pra cada campo:
+- "resumo": frase de abertura. Puxe o fato mais forte e HONESTO do período: de preferência VIEWS e ALCANCE (que cobrem o período todo) + o padrão de conteúdo que liderou. NUNCA lidere por número de seguidores se "seguidoresGanhoParcial" for true. Proibido frase genérica.
+- "funcionou": o formato/padrão de conteúdo que mais performou, com nome de post e número real.
+- "evitar": o que rendeu menos e vale repetir menos, com o porquê curto.
+- "publico": quem a conta atrai (use a demografia: gênero, idade, país). Sem demografia, fale do split seguidores/não-seguidores. Sem nada, devolva "".
+- "seguidores": leitura do crescimento. Se "seguidoresGanhoParcial" for true, deixe claro que o ganho é só dos últimos dias (a API não guarda o histórico). Se um post coincide com o pico, diga "provavelmente puxou", nunca como certeza.
+- "sugestoes": 3 a 5 ações concretas pro PRÓXIMO período. Se houver META, priorize o que ajuda a bater. Se o cliente TEM tráfego pago e um post bombou, sugira impulsionar esse criativo.
 
-Responda APENAS com um JSON válido, sem texto antes ou depois, no formato:
-[{"tipo":"trafego|repetir|cortar|timing|publico|geral","titulo":"...","texto":"..."}]`;
+Se um campo não tiver dado suficiente, devolva "" (ou [] em sugestoes). Não invente.
+
+Responda APENAS com JSON válido, sem texto antes ou depois:
+{"resumo":"...","funcionou":"...","evitar":"...","publico":"...","seguidores":"...","sugestoes":["...","..."]}`;
 }
 
-/** Gera os insights acionáveis chamando o Claude com os fatos já detectados. */
-export async function gerarInsightsAnalise(params: {
+/** Gera a análise estruturada do período chamando o Claude. */
+export async function gerarAnaliseIA(params: {
   a: IgAnalytics;
   clienteNome?: string;
   temTrafegoPago: boolean;
@@ -170,7 +197,7 @@ export async function gerarInsightsAnalise(params: {
   audiencia: Audiencia;
   /** Resumo do objetivo + progresso rumo às metas do mês (do Notion). */
   metaContexto?: string;
-}): Promise<InsightAcionavel[]> {
+}): Promise<AnaliseIA> {
   if (!env.anthropic.apiKey) {
     throw new Error('ANTHROPIC_API_KEY não configurada');
   }
@@ -194,12 +221,12 @@ export async function gerarInsightsAnalise(params: {
 
   const resp = await client.messages.create({
     model: env.anthropic.model,
-    max_tokens: 1400,
+    max_tokens: 1500,
     system: systemPrompt(params.audiencia),
     messages: [
       {
         role: 'user',
-        content: `${contexto}\n\nFATOS DO PERÍODO (JSON):\n${JSON.stringify(fatos, null, 2)}\n\nEscreva os insights acionáveis pra Lud.`,
+        content: `${contexto}\n\nFATOS DO PERÍODO (JSON):\n${JSON.stringify(fatos, null, 2)}\n\nEscreva a análise do período.`,
       },
     ],
   });
@@ -207,36 +234,43 @@ export async function gerarInsightsAnalise(params: {
   const bloco = resp.content.find((b: any) => b.type === 'text') as
     | { type: 'text'; text: string }
     | undefined;
-  const raw = (bloco?.text ?? '').trim();
-  return parseInsights(raw);
+  return parseAnalise((bloco?.text ?? '').trim());
 }
 
-/** Extrai o array JSON da resposta, resiliente a texto extra em volta. */
-function parseInsights(raw: string): InsightAcionavel[] {
+/** Extrai o objeto JSON da resposta, resiliente a texto extra em volta. */
+function parseAnalise(raw: string): AnaliseIA {
+  const vazio: AnaliseIA = {
+    resumo: '',
+    funcionou: '',
+    evitar: '',
+    publico: '',
+    seguidores: '',
+    sugestoes: [],
+  };
   const tentativas = [raw];
-  const ini = raw.indexOf('[');
-  const fim = raw.lastIndexOf(']');
+  const ini = raw.indexOf('{');
+  const fim = raw.lastIndexOf('}');
   if (ini >= 0 && fim > ini) tentativas.push(raw.slice(ini, fim + 1));
 
   for (const t of tentativas) {
     try {
-      const arr = JSON.parse(t);
-      if (Array.isArray(arr)) {
-        return arr
-          .filter((x) => x && typeof x.titulo === 'string' && typeof x.texto === 'string')
-          .map((x) => ({
-            tipo: (
-              ['trafego', 'repetir', 'cortar', 'timing', 'publico', 'geral'].includes(x.tipo)
-                ? x.tipo
-                : 'geral'
-            ) as InsightAcionavel['tipo'],
-            titulo: String(x.titulo),
-            texto: String(x.texto),
-          }));
+      const o = JSON.parse(t);
+      if (o && typeof o === 'object') {
+        const str = (v: unknown) => (typeof v === 'string' ? v : '');
+        return {
+          resumo: str(o.resumo),
+          funcionou: str(o.funcionou),
+          evitar: str(o.evitar),
+          publico: str(o.publico),
+          seguidores: str(o.seguidores),
+          sugestoes: Array.isArray(o.sugestoes)
+            ? o.sugestoes.filter((s: unknown) => typeof s === 'string').slice(0, 5)
+            : [],
+        };
       }
     } catch {
       // tenta a próxima
     }
   }
-  return [];
+  return vazio;
 }

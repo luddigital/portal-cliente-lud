@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { IgAnalytics, IgMediaItem } from '@/lib/instagram';
-import type { InsightAcionavel } from '@/lib/insights';
+import type { AnaliseIA } from '@/lib/insights';
 import type { ProjetoConfig } from '@/lib/notion';
 import { parseNumBR, fmtCompacto } from '@/lib/num';
 import { GraficoLinha } from './GraficoLinha';
@@ -944,42 +944,80 @@ function AbaPublico({ a }: { a: IgAnalytics }) {
   );
 }
 
-// === ABA INSIGHTS (IA) ===
-const INSIGHT_ICON: Record<InsightAcionavel['tipo'], string> = {
-  trafego: '🚀',
-  repetir: '🔁',
-  cortar: '✂️',
-  timing: '⏰',
-  publico: '👥',
-  geral: '✦',
-};
+// === ABA INSIGHTS — análise do período (layout editorial) ===
+
+/** Leitura curta de um post a partir dos próprios números (determinística). */
+function leituraDoPost(m: IgMediaItem, maxViews: number): string {
+  const salvRate = m.views > 0 ? m.saved / m.views : 0;
+  const shareRate = m.views > 0 ? m.shares / m.views : 0;
+  if (m.seguidores > 0)
+    return `Trouxe ${fmt(m.seguidores)} ${m.seguidores === 1 ? 'seguidor' : 'seguidores'} no período.`;
+  if (maxViews > 0 && m.views >= maxViews * 0.9)
+    return 'Seu conteúdo de maior alcance no período.';
+  if (salvRate > 0.02)
+    return 'Campeão de salvamento: o público guardou pra usar depois.';
+  if (shareRate > 0.01)
+    return 'Muito compartilhado: as pessoas indicaram pra outras.';
+  if (m.comments >= 100) return 'Gerou bastante conversa nos comentários.';
+  return 'Boa entrega de alcance no período.';
+}
+
+function BlocoAnalise({
+  icon,
+  label,
+  cor,
+  texto,
+}: {
+  icon: string;
+  label: string;
+  cor: string;
+  texto: string;
+}) {
+  if (!texto) return null;
+  return (
+    <div className="mt-5" style={{ borderLeft: `3px solid ${cor}`, paddingLeft: 14 }}>
+      <div
+        className="text-[11px] font-bold uppercase tracking-[0.1em]"
+        style={{ color: cor }}
+      >
+        {icon} {label}
+      </div>
+      <p className="mt-1.5 text-[14px] leading-[1.55] text-ink">{texto}</p>
+    </div>
+  );
+}
 
 function AbaInsights({
-  insights,
-  audiencia,
+  analise,
+  a,
   erro,
   carregando,
   onAtualizar,
 }: {
-  insights: InsightAcionavel[] | null;
-  audiencia: 'interno' | 'cliente';
+  analise: AnaliseIA | null;
+  a: IgAnalytics;
   erro: string;
   carregando: boolean;
   onAtualizar: () => void;
 }) {
-  const hero = insights?.[0];
-  const apoio = insights?.slice(1) ?? [];
-  const heroCliente = audiencia === 'cliente';
+  const temAnalise =
+    analise &&
+    (analise.resumo || analise.funcionou || analise.sugestoes.length > 0);
+
+  const maxViews = Math.max(0, ...a.conteudos.map((m) => m.views));
+  const melhores = [...a.conteudos]
+    .sort((x, y) => y.views - x.views || y.interactions - x.interactions)
+    .slice(0, 3);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
-            ✦ Insights da Lud. IA
+            Insights do período
           </h2>
           <p className="text-[12px] text-t2">
-            Leitura automática dos dados do período, com ações sugeridas.
+            Análise dos dados do período e o que fazer no próximo.
           </p>
         </div>
         <button
@@ -992,16 +1030,8 @@ function AbaInsights({
         </button>
       </div>
 
-      {carregando && !insights && (
-        <div className="space-y-2">
-          <div className="h-[140px] animate-pulse rounded-3xl bg-bgSoft" />
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-[80px] animate-pulse rounded-2xl border border-[rgba(21,21,33,0.06)] bg-bgSoft"
-            />
-          ))}
-        </div>
+      {carregando && !analise && (
+        <div className="h-[420px] animate-pulse rounded-3xl bg-bgSoft" />
       )}
 
       {erro && !carregando && (
@@ -1010,75 +1040,105 @@ function AbaInsights({
         </p>
       )}
 
-      {insights && !erro && insights.length === 0 && !carregando && (
+      {analise && !erro && !temAnalise && !carregando && (
         <p className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-6 text-center text-[13px] text-t3">
-          Sem insights pra esse período ainda — publique mais conteúdo ou amplie
-          a janela de datas.
+          Ainda não dá pra analisar esse período — publique mais conteúdo ou
+          amplie a janela de datas.
         </p>
       )}
 
-      {hero && (
-        <div className="space-y-2">
-          {/* HERO — o insight #1 do período */}
-          <div
-            className={`rounded-3xl p-6 sm:p-7 ${
-              heroCliente
-                ? 'border border-[rgba(21,21,33,0.06)] bg-gradient-to-br from-[#F1EBE5] to-[#F4F6FB]'
-                : 'bg-ink text-white'
-            }`}
-          >
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${
-                heroCliente
-                  ? 'bg-white text-fern'
-                  : 'bg-white/12 text-lavender'
-              }`}
-            >
-              {INSIGHT_ICON[hero.tipo] ?? '✦'}{' '}
-              {heroCliente ? 'destaque do mês' : 'prioridade do mês'}
-            </span>
-            <h3
-              className={`mt-3 text-[20px] font-semibold leading-tight tracking-[-0.02em] ${
-                heroCliente ? 'text-ink' : 'text-white'
-              }`}
-            >
-              {hero.titulo}
-            </h3>
-            <p
-              className={`mt-2 text-[13.5px] leading-[1.55] ${
-                heroCliente ? 'text-t2' : 'text-white/80'
-              }`}
-            >
-              {hero.texto}
+      {temAnalise && analise && (
+        <div className="rounded-3xl border border-[rgba(21,21,33,0.08)] bg-white p-6 sm:p-7">
+          {/* headline */}
+          {analise.resumo && (
+            <p className="text-[19px] font-semibold leading-snug tracking-[-0.02em] text-ink">
+              {analise.resumo}
             </p>
+          )}
+
+          {/* placar */}
+          <div className="mt-5 grid grid-cols-2 overflow-hidden rounded-2xl border border-[rgba(21,21,33,0.06)] sm:grid-cols-4">
+            {[
+              { l: 'Seguidores', v: fmtCompacto(a.account.followersCount) },
+              { l: 'Views', v: fmtCompacto(a.atual.views) },
+              { l: 'Alcance', v: fmtCompacto(a.atual.reach) },
+              {
+                l: 'Novos seguidores',
+                v: `${a.atual.novosSeguidores > 0 ? '+' : ''}${fmtCompacto(a.atual.novosSeguidores)}`,
+              },
+            ].map((k, i) => (
+              <div
+                key={k.l}
+                className={`p-3.5 ${i > 0 ? 'border-l border-[rgba(21,21,33,0.06)]' : ''}`}
+              >
+                <div className="text-[20px] font-bold tracking-[-0.02em] text-ink">
+                  {k.v}
+                </div>
+                <div className="text-[11px] text-t3">{k.l}</div>
+              </div>
+            ))}
           </div>
 
-          {/* APOIO */}
-          {apoio.map((ins, i) => (
-            <div
-              key={i}
-              className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-4 sm:p-5"
-            >
-              <div className="flex items-start gap-3">
-                <span className="text-[17px] leading-none" aria-hidden>
-                  {INSIGHT_ICON[ins.tipo] ?? '✦'}
-                </span>
-                <div className="min-w-0">
-                  <div className="text-[13.5px] font-semibold text-ink">
-                    {ins.titulo}
+          {/* blocos */}
+          <BlocoAnalise icon="✅" label="O que funcionou" cor="var(--fern)" texto={analise.funcionou} />
+          <BlocoAnalise icon="⚠️" label="O que evitar" cor="var(--crimson)" texto={analise.evitar} />
+          <BlocoAnalise icon="👥" label="Quem estamos atraindo" cor="var(--navy)" texto={analise.publico} />
+          <BlocoAnalise icon="📈" label="Seguidores" cor="#B68A2E" texto={analise.seguidores} />
+
+          {/* melhores conteúdos com leitura */}
+          {melhores.length > 0 && (
+            <div className="mt-6 border-t border-[rgba(21,21,33,0.06)] pt-5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-t3">
+                Melhores conteúdos
+              </div>
+              <div className="mt-3 space-y-4">
+                {melhores.map((m) => (
+                  <div key={m.id} className="flex gap-3">
+                    <div className="h-16 w-12 shrink-0 overflow-hidden rounded-lg bg-bgSoft">
+                      {m.thumbnail ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.thumbnail} alt="" className="h-full w-full object-cover" />
+                      ) : null}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-semibold text-ink">
+                        {m.caption || 'Sem legenda'}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-t3">
+                        {formatoLabel(m.mediaType, m.caption)} · ▶ {fmt(m.views)} ·
+                        👁 {fmt(m.reach)}
+                      </div>
+                      <div className="mt-1.5 rounded-lg bg-bgSoft px-3 py-2 text-[12.5px] text-ink">
+                        {leituraDoPost(m, maxViews)}
+                      </div>
+                    </div>
                   </div>
-                  <p className="mt-1 text-[12.5px] leading-[1.5] text-t2">
-                    {ins.texto}
-                  </p>
-                </div>
+                ))}
               </div>
             </div>
-          ))}
+          )}
 
-          <p className="pt-1 text-[11px] text-t3">
-            {heroCliente
-              ? 'Análise da Lud. a partir dos seus dados do mês.'
-              : 'Gerado por IA a partir dos dados reais do período · correlações são indicativas, não prova de causa.'}
+          {/* próximo período */}
+          {analise.sugestoes.length > 0 && (
+            <div className="mt-6 rounded-2xl bg-gradient-to-br from-[#F1EBE5] to-[#F4F6FB] p-5">
+              <div className="text-[14px] font-bold text-ink">
+                🚀 Pro próximo período
+              </div>
+              <ol className="mt-3 space-y-2.5">
+                {analise.sugestoes.map((s, i) => (
+                  <li key={i} className="flex gap-2.5 text-[14px] leading-[1.5] text-ink">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-ink text-[11px] font-bold text-white">
+                      {i + 1}
+                    </span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          <p className="mt-5 text-[11px] text-t3">
+            Feito a partir dos dados reais do período. Atualiza a cada leitura.
           </p>
         </div>
       )}
@@ -1129,8 +1189,7 @@ export function AnalisePainel({
 
   // Pré-carrega os insights de IA assim que a página abre (em segundo plano),
   // pra quando a pessoa clicar na aba eles já estarem prontos.
-  const [insights, setInsights] = useState<InsightAcionavel[] | null>(null);
-  const [audienciaIns, setAudienciaIns] = useState<'interno' | 'cliente'>('interno');
+  const [analise, setAnalise] = useState<AnaliseIA | null>(null);
   const [erroIns, setErroIns] = useState('');
   const [carregandoIns, setCarregandoIns] = useState(false);
 
@@ -1143,10 +1202,7 @@ export function AnalisePainel({
         .then((r) => r.json())
         .then((j) => {
           if (j.error) setErroIns(j.error);
-          else {
-            setInsights(j.insights ?? []);
-            if (j.audiencia) setAudienciaIns(j.audiencia);
-          }
+          else if (j.analise) setAnalise(j.analise);
         })
         .catch((e) => setErroIns(String(e?.message ?? e)))
         .finally(() => setCarregandoIns(false));
@@ -1250,8 +1306,8 @@ export function AnalisePainel({
       {aba === 'conteudo' && <AbaConteudo a={a} />}
       {aba === 'insights' && (
         <AbaInsights
-          insights={insights}
-          audiencia={audienciaIns}
+          analise={analise}
+          a={a}
           erro={erroIns}
           carregando={carregandoIns}
           onAtualizar={() => carregarInsights(true)}

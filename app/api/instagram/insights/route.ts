@@ -5,14 +5,14 @@ import { getIgAnalytics, igConfigured } from '@/lib/instagram';
 import { getMetaAdsRelatorio, getMetaAdsCampanhas } from '@/lib/metaAds';
 import { getProjetoConfig } from '@/lib/notion';
 import { parseNumBR } from '@/lib/num';
-import { gerarInsightsAnalise, type InsightAcionavel } from '@/lib/insights';
+import { gerarAnaliseIA, type AnaliseIA } from '@/lib/insights';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // Cache em memória — insight de IA custa token, então guardamos por 12h por
 // (conta + período). O botão "Atualizar" no front manda refresh=1 pra furar.
-const cache = new Map<string, { exp: number; data: InsightAcionavel[] }>();
+const cache = new Map<string, { exp: number; data: AnaliseIA }>();
 const TTL_MS = 12 * 60 * 60 * 1000;
 
 function periodoMs(
@@ -84,7 +84,7 @@ export async function GET(req: Request) {
   if (!refresh) {
     const hit = cache.get(chave);
     if (hit && hit.exp > Date.now()) {
-      return NextResponse.json({ insights: hit.data, audiencia, cache: true });
+      return NextResponse.json({ analise: hit.data, audiencia, cache: true });
     }
   }
 
@@ -142,7 +142,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const insights = await gerarInsightsAnalise({
+    const analise = await gerarAnaliseIA({
       a: analytics,
       clienteNome: analytics.account.name || analytics.account.username,
       temTrafegoPago,
@@ -151,8 +151,8 @@ export async function GET(req: Request) {
       metaContexto,
     });
 
-    cache.set(chave, { exp: Date.now() + TTL_MS, data: insights });
-    return NextResponse.json({ insights, audiencia, cache: false });
+    cache.set(chave, { exp: Date.now() + TTL_MS, data: analise });
+    return NextResponse.json({ analise, audiencia, cache: false });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? 'erro ao gerar insights' },
