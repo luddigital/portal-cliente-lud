@@ -305,15 +305,18 @@ async function getMediaInsights(
 async function getMediaOrdenada(
   igUserId: string,
   sinceUnix: number,
+  fimUnix: number,
 ): Promise<IgMediaItem[]> {
   const json = await graph<{ data: any[] }>(`${igUserId}/media`, {
     fields:
       'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
     limit: '50',
   });
+  // Filtra pelo período INTEIRO (início E fim). Antes só checava o início, então
+  // posts posteriores ao "até" vazavam (ex: post de agosto num filtro de julho).
   const recentes = (json.data ?? []).filter((m) => {
     const t = Date.parse(m.timestamp) / 1000;
-    return Number.isFinite(t) && t >= sinceUnix;
+    return Number.isFinite(t) && t >= sinceUnix && t <= fimUnix;
   });
 
   const comInsights = await Promise.all(
@@ -533,7 +536,7 @@ export async function getIgAnalytics(
   ] = await Promise.all([
     Promise.all(pedacosAtual.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
     Promise.all(pedacosAnterior.map(([a, b]) => getPeriodInsights(igUserId, s(a), s(b)))),
-    getMediaOrdenada(igUserId, inicioAtualU),
+    getMediaOrdenada(igUserId, inicioAtualU, fimU),
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'reach', s(a), s(b)))),
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'follower_count', s(a), s(b)))),
     Promise.all(pedacosAtual.map(([a, b]) => timeSeries(igUserId, 'accounts_engaged', s(a), s(b)))),

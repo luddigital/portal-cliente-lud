@@ -123,7 +123,9 @@ function CabecalhoSeguidores({ a }: { a: IgAnalytics }) {
           )}
         </span>
         <span className="text-[12px] text-t3">
-          {parcial ? `· últimos ${diasDados} dias` : 'no período'}
+          {parcial
+            ? `· ${diasDados === 1 ? 'último 1 dia' : `últimos ${diasDados} dias`}`
+            : 'no período'}
         </span>
       </div>
       {parcial && (
@@ -670,11 +672,23 @@ function AbaGeral({ a }: { a: IgAnalytics }) {
       )}
 
       <div className="space-y-4">
-        {a.serieSeguidores.length > 0 && (
+        {a.serieSeguidores.length >= 3 ? (
           <GraficoBarras
             dados={a.serieSeguidores}
             label="Novos seguidores por dia"
           />
+        ) : (
+          <div className="card p-5">
+            <h3 className="text-[13px] font-semibold text-ink">
+              Novos seguidores por dia
+            </h3>
+            <p className="mt-2 text-[12px] leading-snug text-t3">
+              Sem dados suficientes neste período. O Instagram só guarda o
+              crescimento diário de seguidores dos últimos ~30 dias, e o período
+              escolhido está fora (ou quase todo fora) dessa janela. Escolha um
+              período mais recente pra ver esse gráfico.
+            </p>
+          </div>
         )}
         {a.serieAlcance.length > 0 && (
           <GraficoLinha dados={a.serieAlcance} label="Alcance (por dia)" />
