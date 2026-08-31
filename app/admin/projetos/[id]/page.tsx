@@ -3,13 +3,18 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import {
   getProjetoDetalhe,
+  listPostsDoMes,
   type ProjetoConfig,
   type ProjetoDetalhe,
+  type PostCalendario,
 } from '@/lib/notion';
 import { getHotmartResumo, type HotmartResumo } from '@/lib/hotmart';
 import { getMetaAdsRelatorio, getMetaAdsCampanhas, type CampanhaAds } from '@/lib/metaAds';
 import { getIgAnalyticsDoProjeto, type IgAnalytics } from '@/lib/instagram';
 import type { RelatorioAds } from '@/lib/csvAds';
+import { CalendarMes } from '@/app/_components/CalendarMes';
+import { resumoEntregas, type ResumoEntregas } from '@/lib/entregas';
+import { EntregasKanban } from './EntregasKanban';
 import { EditarProjeto } from '../EditarProjeto';
 import { FiltroPeriodo } from './FiltroPeriodo';
 

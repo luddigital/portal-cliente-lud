@@ -221,3 +221,11 @@
   .prazo-pill.em-dia { background: var(--prazo-em-dia-soft); color: var(--prazo-em-dia); }
   .prazo-pill.tranquilo { background: var(--prazo-tranquilo-soft); color: var(--prazo-tranquilo); }
 }
+
+/* Barra de progresso da Esteira — animação enche até 95% em 60s */
+@keyframes esteira-progresso {
+  0% { width: 0%; background-position: 0% 50%; }
+  30% { width: 60%; }
+  60% { width: 85%; }
+  100% { width: 95%; background-position: 100% 50%; }
+}

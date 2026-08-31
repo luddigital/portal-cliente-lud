@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+
+// Chave do filtro de serviço lembrado entre visitas (localStorage).
+const STORAGE_KEY = 'admin:projetos:servico';
 
 export type ItemProjeto = {
   id: string;
@@ -39,6 +42,31 @@ export function ProjetosTabs({ itens }: { itens: ItemProjeto[] }) {
 
   const [ativo, setAtivo] = useState<string>('todos');
 
+  // Restaura o serviço salvo depois de montar (evita mismatch de hydration).
+  // Só aceita se ainda existir um projeto desse serviço; senão fica em "todos".
+  useEffect(() => {
+    try {
+      const salvo = localStorage.getItem(STORAGE_KEY);
+      if (salvo && (salvo === 'todos' || itens.some((it) => it.servico === salvo))) {
+        setAtivo(salvo);
+      }
+    } catch {
+      /* localStorage indisponível — segue em "todos" */
+    }
+    // roda uma vez, na montagem
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Troca o filtro e lembra a escolha pra próxima visita.
+  function escolher(servico: string) {
+    setAtivo(servico);
+    try {
+      localStorage.setItem(STORAGE_KEY, servico);
+    } catch {
+      /* sem localStorage — só não persiste */
+    }
+  }
+
   const filtrados =
     ativo === 'todos' ? itens : itens.filter((it) => it.servico === ativo);
 
@@ -48,7 +76,7 @@ export function ProjetosTabs({ itens }: { itens: ItemProjeto[] }) {
       <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <TabBtn
           ativo={ativo === 'todos'}
-          onClick={() => setAtivo('todos')}
+          onClick={() => escolher('todos')}
           label="Todos"
           count={itens.length}
         />
@@ -56,7 +84,7 @@ export function ProjetosTabs({ itens }: { itens: ItemProjeto[] }) {
           <TabBtn
             key={s}
             ativo={ativo === s}
-            onClick={() => setAtivo(s)}
+            onClick={() => escolher(s)}
             label={s}
             count={contagem.get(s) ?? 0}
           />

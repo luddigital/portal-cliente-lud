@@ -10,6 +10,16 @@ const DIAS = ['seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.', 'dom.'];
 
 type Tipo = 'post' | 'reels' | 'story';
 
+// Mesmas cores de status da home (/gestao) — mapeadas pelo campo `cor` do post.
+const COR_STATUS: Record<PostCalendario['cor'], { bg: string; fg: string }> = {
+  rascunho: { bg: 'var(--cal-rascunho-soft)', fg: 'var(--cal-rascunho)' },
+  aprovacao: { bg: 'var(--cal-aprovacao-soft)', fg: 'var(--cal-aprovacao)' },
+  alteracao: { bg: 'var(--cal-alteracao-soft)', fg: 'var(--cal-alteracao)' },
+  aguardando: { bg: 'var(--cal-aprovacao-soft)', fg: 'var(--cal-aprovacao)' },
+  agendado: { bg: 'var(--cal-agendado-soft)', fg: 'var(--cal-agendado)' },
+  publicado: { bg: 'var(--prazo-em-dia-soft)', fg: 'var(--prazo-em-dia)' },
+};
+
 type CalPost = {
   id: string;
   titulo: string;
@@ -19,6 +29,7 @@ type CalPost = {
   icon: string | null;
   tag: string;
   status: string | null;
+  cor: PostCalendario['cor'];
   local: boolean;
 };
 
@@ -74,7 +85,10 @@ function PostCard({ p, onClick }: { p: CalPost; onClick: () => void }) {
         </span>
       </div>
       <div className="mt-1 truncate text-[10px] text-t3">{p.projetoNome}</div>
-      <span className="mt-1.5 inline-block max-w-full truncate rounded bg-bgSoft px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.03em] text-t2">
+      <span
+        className="mt-1.5 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.03em]"
+        style={{ background: COR_STATUS[p.cor].bg, color: COR_STATUS[p.cor].fg }}
+      >
         {p.tag}
       </span>
     </button>
@@ -126,6 +140,7 @@ export function PostagensView({
         ? 'Postado'
         : p.tarefaAtualTitulo ?? p.etapaLabel,
       status: p.status,
+      cor: p.cor,
       local: false,
     }));
     return [...doNotion, ...locais];
@@ -167,6 +182,7 @@ export function PostagensView({
         icon: null,
         tag: 'Rascunho local',
         status: null,
+        cor: 'rascunho',
         local: true,
       },
     ]);

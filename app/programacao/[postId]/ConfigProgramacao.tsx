@@ -124,7 +124,7 @@ export function ConfigProgramacao({
   return (
     <div className="min-h-screen bg-bgSoft/40 pb-16">
       <header className="border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-none flex-wrap items-center justify-between gap-3 px-6 py-4">
           <div>
             <Link href="/programacao" className="text-[11px] text-mauve transition hover:text-ink">
               ← Programação
@@ -136,10 +136,20 @@ export function ConfigProgramacao({
               {projetoNome} · {tituloSeguro(titulo)}
             </p>
           </div>
+          {dataPostagem && (
+            <div className="rounded-xl border border-[rgba(21,21,33,0.1)] bg-bgSoft/60 px-4 py-2 text-right">
+              <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-t3">
+                Data no calendário
+              </div>
+              <div className="text-[14px] font-semibold text-ink">
+                {fmtDataLonga(dataPostagem)}
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-8 space-y-6">
+      <main className="mx-auto max-w-none px-6 py-8 space-y-6">
         {/* Preview completo do post — igual o cliente vê na aprovação */}
         <section className="card p-5">
           <div className="mb-4 flex items-baseline justify-between gap-3">
@@ -351,29 +361,37 @@ export function ConfigProgramacao({
               </button>
             </div>
 
-            {/* Confirmar — Agendado no Notion */}
-            <div className="rounded-xl border border-[rgba(21,21,33,0.13)] bg-white p-4 flex flex-col">
+            {/* Programar no Instagram — entra na fila e o robô publica na hora */}
+            <div className="rounded-xl border-2 border-[var(--cal-agendado)] bg-[var(--cal-agendado-soft)]/50 p-4 flex flex-col">
               <div className="mb-1 flex items-center gap-2">
-                <span className="rounded-full bg-ink px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
-                  Agendar
+                <span className="rounded-full bg-[var(--cal-agendado)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                  Instagram
                 </span>
-                <span className="text-[13px] font-semibold text-ink">Confirmar</span>
+                <span className="text-[13px] font-semibold text-ink">Programar no Instagram</span>
               </div>
               <p className="mb-3 flex-1 text-[11px] leading-[1.5] text-t2">
-                Muda o status pra <b>Agendado</b> no Notion do cliente. Use quando o post ainda vai subir (por você ou por scheduler).
+                Agenda a publicação <b>automática no Instagram</b>
+                {plataformas.includes('facebook') && ' e Facebook'} na data e horário acima.
+                O robô publica sozinho na hora marcada e marca <b>Agendado</b> no Notion.
               </p>
               <button
                 type="button"
                 onClick={() => submit('confirmar')}
-                disabled={loading !== null || feito !== null}
+                disabled={loading !== null || feito !== null || !plataformas.includes('instagram')}
                 className="btn-primary w-full justify-center whitespace-nowrap"
+                title={!plataformas.includes('instagram') ? 'Selecione o Instagram nas plataformas acima' : undefined}
               >
                 {feito === 'confirmar'
-                  ? '✓ Agendado'
+                  ? '✓ Programado no Instagram'
                   : loading === 'confirmar'
-                    ? 'Confirmando…'
-                    : 'Confirmar programação'}
+                    ? 'Programando…'
+                    : '📅 Programar no Instagram'}
               </button>
+              {!plataformas.includes('instagram') && (
+                <p className="mt-1.5 text-[10px] text-[var(--prazo-atrasado)]">
+                  Marque o Instagram nas plataformas pra liberar.
+                </p>
+              )}
             </div>
 
             {/* Postar agora — marca Postado no Notion */}
@@ -385,7 +403,7 @@ export function ConfigProgramacao({
                 <span className="text-[13px] font-semibold text-ink">Postar agora</span>
               </div>
               <p className="mb-3 flex-1 text-[11px] leading-[1.5] text-t2">
-                Marca como <b>Postado</b> no Notion. Use quando você já publicou no IG/FB manualmente (ou tá publicando agora). O portal ainda não sobe post por conta própria.
+                Só marca como <b>Postado</b> no Notion, sem publicar nada. Use quando você <b>já publicou na mão</b> no IG/FB e só quer registrar.
               </p>
               <button
                 type="button"

@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/publicar-ig",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/esteira/produzir-todos",
+      "schedule": "0 1 * * 2-6"
     }
   ]
 }

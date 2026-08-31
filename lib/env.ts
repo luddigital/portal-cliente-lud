@@ -106,6 +106,7 @@ export const env = {
       .split(',')
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
+    cronSecret: optSoft('CRON_SECRET'), // pra scheduled tasks chamarem endpoints
   },
   mail: {
     resendKey: optSoft('RESEND_API_KEY'),

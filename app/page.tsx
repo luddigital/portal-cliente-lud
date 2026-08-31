@@ -21,6 +21,7 @@ import {
 } from './_components/Skeletons';
 import { AvisosToggle } from './_components/AvisosToggle';
 import { NotificacoesBell, type NotificacaoItem } from './_components/NotificacoesBell';
+import { SincronizarNotion } from './_components/SincronizarNotion';
 import { EnviarMateriais } from './_components/EnviarMateriais';
 import Link from 'next/link';
 import { listarGruposDoUsuario } from '@/lib/supabase';
@@ -40,6 +41,7 @@ export default async function Dashboard() {
 
   // Admin sem projetos vinculados não tem o que ver na área do cliente — manda pro admin.
   const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+  const ehEquipe = ehAdmin || !!session.colaboradorId;
   if (ehAdmin && session.projetoIds.length === 0) redirect('/admin');
   // Colaborador sem projetos vinculados vai pra área da equipe.
   if (session.colaboradorId && session.projetoIds.length === 0) redirect('/equipe/me');
@@ -82,6 +84,7 @@ export default async function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {ehEquipe && <SincronizarNotion />}
             {multiplos && (
               <ProjetoSwitcher
                 projetos={projetosCliente.map((p) => ({ id: p.id, nome: p.nome }))}

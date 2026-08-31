@@ -19,6 +19,7 @@ import {
   type DriveFileResumido,
 } from '@/lib/drive';
 import { env } from '@/lib/env';
+import { lerConfigProgramacao } from '@/lib/supabase';
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
 import { EtapaPautaCards } from './EtapaPautaCards';
@@ -187,6 +188,22 @@ export default async function PostDetalhePage({
     statusLower.includes('briefing') ||
     statusLower.includes('curador') ||
     modo === 'material';
+
+  // Dados extras da sidebar Lud. — só faz sentido buscar quando a vista
+  // vai ser interna. Server components dão erro se retornar Promise sem await,
+  // então busca sempre pra simplificar (barato porque já vem cacheado).
+  const [tarefasDoPost, configProgramacao] = await Promise.all([
+    listarTarefasDoPost(post.id).catch(() => []),
+    lerConfigProgramacao(post.id).catch(() => ({
+      data: '',
+      horario: '',
+      plataformas: [],
+      formato: '',
+      legenda: '',
+      atualizadoEm: null,
+      atualizadoPor: null,
+    })),
+  ]);
 
   // Resolve arquivos do Drive: se for pasta, lista o conteúdo; se for arquivo, monta um item.
   const arquivos: PreviewArquivo[] = [];
@@ -634,23 +651,15 @@ export default async function PostDetalhePage({
                 não faz essas ações. Vira lugar do preview + sidebar. */}
           </div>
 
-          {/* SIDEBAR LUD. — programar, comentários geral+interno, tarefas */}
+          {/* SIDEBAR LUD. — Status do post, Todas as tarefas, Programação */}
           <aside className="space-y-4 lg:sticky lg:top-16 lg:self-start">
             <PostSidebarLud
               postId={post.id}
-              tarefaId={tarefaId}
               status={post.status}
-              bloqueadoProgramar={bloqueadoProgramar}
+              tarefas={tarefasDoPost}
+              configProgramacao={configProgramacao}
+              dataPostagem={post.data}
             />
-            {ehAdmin && (
-              <Suspense
-                fallback={
-                  <div className="h-[120px] rounded-2xl bg-bgSoft animate-pulse" />
-                }
-              >
-                <TarefasDoPostSection postId={post.id} />
-              </Suspense>
-            )}
           </aside>
         </div>
 

@@ -1595,6 +1595,292 @@ export async function listarTarefasDoPost(
   return _listarTarefasDoPostCached(postId);
 }
 
+// ============================================================
+// listarTarefasDaEsteira — dados reais pro kanban /esteira.
+// Usa getEntregaDetalhe pra garantir que a lista bata com a página
+// da entrega no Notion (mesma query). Filtra só social media.
+// ============================================================
+
+export type ColunaEsteira = 'fila' | 'produzindo' | 'revisar' | 'pronto';
+
+export type CardEsteiraNotion = {
+  tarefaId: string;
+  postId: string;
+  postTitulo: string;
+  postData: string | null;
+  projetoId: string;
+  projetoNome: string;
+  clienteNome: string | null;
+  responsavelId: string | null;
+  responsavelNome: string | null;
+  responsavelAvatar: string | null;
+  prazo: string | null;
+  status: string | null;
+  finalizada: string | null;
+  entregaNome: string; // "Briefing & Copy", "Aprovação | Post", etc
+  coluna: ColunaEsteira;
+};
+
+// Fonte de cards da Esteira. v1 = só Briefing & Copy + sua aprovação.
+// Fila vem de uma ENTREGA (mesma página do Notion).
+// Revisar vem de TAREFAS avulsas por título (a entrega não existe no Notion).
+const ENTREGAS_ESTEIRA: Array<{
+  id: string;
+  nome: string;
+  coluna: ColunaEsteira;
+}> = [
+  {
+    id: '2b5d04d23b4a80fdb3b6d7a79c36f5ba',
+    nome: 'Briefing & Copy',
+    coluna: 'fila',
+  },
+];
+
+const TAREFAS_AVULSAS_ESTEIRA: Array<{
+  tituloExato: string;
+  coluna: ColunaEsteira;
+}> = [
+  {
+    tituloExato: 'Aprovação | Briefing & Copy',
+    coluna: 'revisar',
+  },
+];
+
+const SERVICOS_SOCIAL_ESTEIRA = new Set(['Instagram', 'TikTok', 'Stories']);
+
+async function resolverResponsavel(
+  tarefaId: string,
+): Promise<{ id: string | null; nome: string | null; avatar: string | null }> {
+  try {
+    const t = (await cachedPageRetrieve(tarefaId)) as any;
+    const pessoa = getProp(t, 'Pessoa')?.people?.[0] ?? null;
+    return {
+      id: pessoa?.id ?? null,
+      nome: pessoa?.name ?? null,
+      avatar: pessoa?.avatar_url ?? null,
+    };
+  } catch {
+    return { id: null, nome: null, avatar: null };
+  }
+}
+
+/**
+ * Query direta no banco de tarefas por título exato. Usado pras tarefas
+ * "Aprovação | Briefing & Copy" que são criadas dinamicamente pelo fluxo
+ * de alteração — não estão vinculadas a nenhuma entrega recorrente.
+ */
+async function _listarTarefasPorTitulo(
+  tituloExato: string,
+): Promise<TarefaDaEntrega[]> {
+  const tarefas: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await comRetry(() =>
+      notion.databases.query({
+        database_id: env.notion.tarefasDbId,
+        start_cursor: cursor,
+        page_size: 100,
+        filter: {
+          and: [
+            { property: 'Tarefa', title: { equals: tituloExato } },
+            {
+              property: env.notion.taskProps.pronto,
+              formula: { checkbox: { equals: true } },
+            },
+            ...STATUS_TAREFA_FECHADOS.map((s) => ({
+              property: env.notion.taskProps.status,
+              status: { does_not_equal: s },
+            })),
+          ],
+        },
+      }),
+    );
+    tarefas.push(...(res.results as any[]));
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+
+  const resolvidas = await Promise.all(
+    tarefas.map(async (t: any): Promise<TarefaDaEntrega | null> => {
+      try {
+        if (t.archived) return null;
+        const titleProp = Object.values(t.properties).find(
+          (p: any) => p.type === 'title',
+        ) as any;
+        const titulo = txt(titleProp?.title) || '';
+        const status = t.properties.Status?.status?.name ?? null;
+        const prazo =
+          t.properties['Data Entrega']?.date?.start ??
+          t.properties['Data Inicial']?.date?.start ??
+          null;
+        const finalizada = t.properties['Finalizada em ']?.date?.start ?? null;
+        const postRel = t.properties.Post?.relation ?? [];
+        const projetoRel = t.properties.Projeto?.relation ?? [];
+
+        const [postPage, projPage] = await Promise.all([
+          postRel[0] ? cachedPageRetrieve(postRel[0].id).catch(() => null) : null,
+          projetoRel[0] ? cachedPageRetrieve(projetoRel[0].id).catch(() => null) : null,
+        ]);
+
+        let postTitulo: string | null = null;
+        if (postPage) {
+          const ptp = Object.values((postPage as any).properties).find(
+            (x: any) => x.type === 'title',
+          ) as any;
+          postTitulo = txt(ptp?.title) || null;
+        }
+
+        let projetoNome: string | null = null;
+        let clienteNome: string | null = null;
+        if (projPage) {
+          const pa = projPage as any;
+          const ptp = Object.values(pa.properties).find(
+            (x: any) => x.type === 'title',
+          ) as any;
+          projetoNome = txt(ptp?.title) || null;
+          const clienteRel = pa.properties.Cliente?.relation ?? [];
+          if (clienteRel[0]) {
+            try {
+              const cli = (await cachedPageRetrieve(clienteRel[0].id)) as any;
+              const ctp = Object.values(cli.properties).find(
+                (x: any) => x.type === 'title',
+              ) as any;
+              clienteNome = txt(ctp?.title) || null;
+            } catch {}
+          }
+        }
+
+        return {
+          tarefaId: t.id,
+          titulo,
+          status,
+          prazo,
+          finalizada,
+          postId: postRel[0]?.id ?? null,
+          postTitulo,
+          projetoId: projetoRel[0]?.id ?? null,
+          projetoNome,
+          clienteNome,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return resolvidas.filter((r): r is TarefaDaEntrega => r !== null);
+}
+
+async function _listarTarefasDaEsteiraUncached(): Promise<CardEsteiraNotion[]> {
+  const { classificarProjeto } = await import('./projetoServico');
+
+  // Puxa tudo em paralelo: entregas + tarefas avulsas por título
+  const [detalhesEntregas, tarefasAvulsas] = await Promise.all([
+    Promise.all(
+      ENTREGAS_ESTEIRA.map(async (e) => ({
+        cfg: e,
+        det: await getEntregaDetalhe(e.id),
+      })),
+    ),
+    Promise.all(
+      TAREFAS_AVULSAS_ESTEIRA.map(async (a) => ({
+        cfg: a,
+        tarefas: await _listarTarefasPorTitulo(a.tituloExato),
+      })),
+    ),
+  ]);
+
+  const cards: CardEsteiraNotion[] = [];
+
+  // Fonte 1: entregas do Notion. Se o post já tem copy produzida no Notion
+  // (marcador "🤖 Copy Produzida — v" ou "🤖 Reescrita Claude — v"), muda
+  // a coluna de 'fila' pra 'revisar' — a Luiza vê que já foi produzido.
+  for (const { cfg, det } of detalhesEntregas) {
+    if (!det) continue;
+    // Detecta em paralelo quais tarefas já têm copy produzida
+    const jaProduzidos = new Map<string, boolean>();
+    await Promise.all(
+      det.tarefasRelacionadas.map(async (t) => {
+        if (!t.postId) return;
+        try {
+          const c = await lerCopyDoPost(t.postId);
+          jaProduzidos.set(t.postId, !!(c.legenda || c.carrossel || c.voice));
+        } catch {
+          jaProduzidos.set(t.postId, false);
+        }
+      }),
+    );
+    for (const t of det.tarefasRelacionadas) {
+      if (!t.projetoNome || !SERVICOS_SOCIAL_ESTEIRA.has(classificarProjeto(t.projetoNome)))
+        continue;
+      if (!t.postId || !t.postTitulo) continue;
+      const resp = await resolverResponsavel(t.tarefaId);
+      const jaTemCopy = jaProduzidos.get(t.postId) === true;
+      cards.push({
+        tarefaId: t.tarefaId,
+        postId: t.postId,
+        postTitulo: t.postTitulo,
+        postData: null,
+        projetoId: t.projetoId ?? '',
+        projetoNome: t.projetoNome,
+        clienteNome: t.clienteNome,
+        responsavelId: resp.id,
+        responsavelNome: resp.nome,
+        responsavelAvatar: resp.avatar,
+        prazo: t.prazo,
+        status: t.status,
+        finalizada: t.finalizada,
+        entregaNome: cfg.nome,
+        // Se já tem copy no Notion, joga direto pra Revisar
+        coluna: jaTemCopy && cfg.coluna === 'fila' ? 'revisar' : cfg.coluna,
+      });
+    }
+  }
+
+  // Fonte 2: tarefas avulsas por título
+  for (const { cfg, tarefas } of tarefasAvulsas) {
+    for (const t of tarefas) {
+      if (!t.projetoNome || !SERVICOS_SOCIAL_ESTEIRA.has(classificarProjeto(t.projetoNome)))
+        continue;
+      if (!t.postId || !t.postTitulo) continue;
+      const resp = await resolverResponsavel(t.tarefaId);
+      cards.push({
+        tarefaId: t.tarefaId,
+        postId: t.postId,
+        postTitulo: t.postTitulo,
+        postData: null,
+        projetoId: t.projetoId ?? '',
+        projetoNome: t.projetoNome,
+        clienteNome: t.clienteNome,
+        responsavelId: resp.id,
+        responsavelNome: resp.nome,
+        responsavelAvatar: resp.avatar,
+        prazo: t.prazo,
+        status: t.status,
+        finalizada: t.finalizada,
+        entregaNome: cfg.tituloExato,
+        coluna: cfg.coluna,
+      });
+    }
+  }
+
+  cards.sort((a, b) => {
+    if (!a.prazo && !b.prazo) return 0;
+    if (!a.prazo) return 1;
+    if (!b.prazo) return -1;
+    return a.prazo.localeCompare(b.prazo);
+  });
+  return cards;
+}
+
+const _listarTarefasDaEsteiraCached = unstable_cache(
+  _listarTarefasDaEsteiraUncached,
+  ['listar-tarefas-da-esteira-v4'],
+  { revalidate: 60, tags: [TAG_TAREFAS] },
+);
+
+export async function listarTarefasDaEsteira(): Promise<CardEsteiraNotion[]> {
+  return _listarTarefasDaEsteiraCached();
+}
+
 export async function getResumoTarefasCliente(
   projetoIds: string[],
 ): Promise<ResumoTarefasCliente> {
@@ -2114,17 +2400,25 @@ async function coletarBlocosRecursivo(
     if (profundidade > 4) return [];
     try {
       const out: any[] = [];
-      const res = await notion.blocks.children.list({
-        block_id: blockId,
-        page_size: 100,
-      });
-      for (const b of res.results as any[]) {
-        out.push(b);
-        if (b.has_children) {
-          const filhos = await coletarBlocosRecursivo(b.id, profundidade + 1);
-          out.push(...filhos);
+      let cursor: string | undefined;
+      do {
+        const res = await notion.blocks.children.list({
+          block_id: blockId,
+          page_size: 100,
+          start_cursor: cursor,
+        });
+        for (const b of res.results as any[]) {
+          out.push(b);
+          if (b.has_children) {
+            const filhos = await coletarBlocosRecursivo(
+              b.id,
+              profundidade + 1,
+            );
+            out.push(...filhos);
+          }
         }
-      }
+        cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+      } while (cursor);
       return out;
     } catch {
       return [];
@@ -2413,6 +2707,163 @@ async function lerBodyCompletoDoPost(postId: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Lê a copy produzida (voice over, carrossel, legenda) de um post no Notion.
+ * Estratégia: pega o body completo em markdown/texto e extrai as seções
+ * marcadas por headings "Voice over", "Copy para Carrossel" e "Legenda".
+ * Usado pelo painel de revisão da Esteira.
+ */
+export type CopyDoPost = {
+  voice: string | null;
+  carrossel: string | null;
+  legenda: string | null;
+};
+
+async function _lerCopyDoPostUncached(postId: string): Promise<CopyDoPost> {
+  // Estratégia: as copies produzidas ficam nos SLOTS DO TEMPLATE marcadas
+  // por sub-headings "🤖 Copy Produzida — v[N] · [Campo]" ou
+  // "🤖 Reescrita Claude — v[N] · [Campo]". Pega a versão de maior N.
+  const out: CopyDoPost = { voice: null, carrossel: null, legenda: null };
+  out.voice = await pegarCampoMaisRecente(postId, /voice\s*over/i);
+  out.carrossel = await pegarCampoMaisRecente(postId, /carrossel/i);
+  out.legenda = await pegarCampoMaisRecente(postId, /^legenda$/i);
+  return out;
+}
+
+async function pegarCampoMaisRecente(
+  postId: string,
+  campoRegex: RegExp,
+): Promise<string | null> {
+  type NodeFlat = { block: any; parentId: string; index: number; siblings: any[] };
+  const todosNodes: NodeFlat[] = [];
+
+  async function descer(parentId: string, depth = 0): Promise<void> {
+    if (depth > 4) return;
+    let cursor: string | undefined;
+    const siblings: any[] = [];
+    do {
+      const res = await notion.blocks.children.list({
+        block_id: parentId,
+        page_size: 100,
+        start_cursor: cursor,
+      });
+      siblings.push(...(res.results as any[]));
+      cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+    } while (cursor);
+    for (let i = 0; i < siblings.length; i++) {
+      const b = siblings[i];
+      todosNodes.push({ block: b, parentId, index: i, siblings });
+      if (b.has_children) await descer(b.id, depth + 1);
+    }
+  }
+  await descer(postId);
+
+  const marcadorRegex =
+    /(?:copy\s*produzida|reescrita\s*claude)\s*[—-]\s*v(\d+)\s*[·•]\s*([^·]+)/i;
+
+  let melhor: { node: NodeFlat; versao: number } | null = null;
+  for (const n of todosNodes) {
+    if (!ehHeading(n.block)) continue;
+    const t = rtTexto(n.block);
+    const m = t.match(marcadorRegex);
+    if (!m) continue;
+    const nomeCampo = m[2].trim();
+    if (!campoRegex.test(nomeCampo)) continue;
+    const versao = parseInt(m[1], 10);
+    if (!melhor || versao > melhor.versao) melhor = { node: n, versao };
+  }
+
+  if (!melhor) return null;
+
+  const { siblings, index } = melhor.node;
+  const partes: string[] = [];
+  for (let i = index + 1; i < siblings.length; i++) {
+    const b = siblings[i];
+    if (b.type === 'divider') break;
+    if (b.type === 'heading_1' || b.type === 'heading_2') break;
+    if (ehHeading(b) && marcadorRegex.test(rtTexto(b))) break;
+    const t = rtTexto(b);
+    if (ehHeading(b) && t) {
+      if (partes.length > 0) partes.push('');
+      partes.push(t);
+      continue;
+    }
+    if (t) partes.push(t);
+  }
+  return partes.join('\n').trim() || null;
+}
+
+const _lerCopyDoPostCached = unstable_cache(
+  _lerCopyDoPostUncached,
+  ['ler-copy-do-post-v7'],
+  { revalidate: 30, tags: [TAG_POSTS] },
+);
+
+export async function lerCopyDoPost(postId: string): Promise<CopyDoPost> {
+  return _lerCopyDoPostCached(postId);
+}
+
+/**
+ * Lê o BRIEFING do post no Notion (tudo que a equipe/cliente escreveu no
+ * template: Ideia do Post, Informações que precisamos, Materiais, Briefing
+ * livre). Usado pela rotina de produção pra dar contexto ao Claude.
+ */
+export type BriefingDoPost = {
+  ideiaPost: string | null;
+  informacoes: string | null;
+  materiais: string | null;
+  briefingLivre: string | null;
+};
+
+export async function lerBriefingDoPost(
+  postId: string,
+): Promise<BriefingDoPost> {
+  const rootBlocks = await coletarBlocosRecursivo(postId);
+  // O briefing fica dentro do tab "Briefing" — headings e callouts específicos
+  const tabs = rootBlocks.filter((b: any) => b.type === 'tab');
+  const briefing: BriefingDoPost = {
+    ideiaPost: null,
+    informacoes: null,
+    materiais: null,
+    briefingLivre: null,
+  };
+
+  for (const tab of tabs) {
+    const tabTxt = rtTexto(tab).toLowerCase();
+    if (!tabTxt.includes('briefing')) continue;
+    const filhos = await coletarBlocosRecursivo(tab.id);
+
+    let secao: 'ideia' | 'info' | 'mat' | 'brief' | null = null;
+    for (const b of filhos) {
+      if (ehHeading(b)) {
+        const t = rtTexto(b).toLowerCase();
+        if (t.includes('ideia do post')) secao = 'ideia';
+        else if (t.includes('informações') || t.includes('informacoes'))
+          secao = 'info';
+        else if (t.includes('materiais que precisamos')) secao = 'mat';
+        else if (/^briefing$/i.test(rtTexto(b))) secao = 'brief';
+        else secao = null;
+        continue;
+      }
+      if (!secao) continue;
+      // Callouts têm filhos; parágrafos texto direto
+      const t = rtTexto(b);
+      if (!t) continue;
+      const acumulado =
+        secao === 'ideia'
+          ? 'ideiaPost'
+          : secao === 'info'
+            ? 'informacoes'
+            : secao === 'mat'
+              ? 'materiais'
+              : 'briefingLivre';
+      briefing[acumulado] = (briefing[acumulado] ? briefing[acumulado] + '\n' : '') + t;
+    }
+  }
+
+  return briefing;
 }
 
 /**
