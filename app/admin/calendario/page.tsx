@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import {
   getColaboradorByEmail,
   listAllProjetos,
-  listPostsDoMes,
+  listPostsNoIntervalo,
 } from '@/lib/notion';
 import { classificarProjeto } from '@/lib/projetoServico';
 import { CalendarioAdminView } from './CalendarioAdminView';
@@ -14,10 +15,23 @@ export const maxDuration = 60;
 
 const SERVICOS_SOCIAL = new Set(['Instagram', 'TikTok', 'Stories']);
 
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+}
+
+function inicioDaSemana(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - x.getDay()); // Domingo
+  return x;
+}
+
 export default async function CalendarioAdminPage({
   searchParams,
 }: {
-  searchParams: { projetoId?: string; ym?: string };
+  searchParams: { projetoId?: string; semana?: string };
 }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -34,52 +48,36 @@ export default async function CalendarioAdminPage({
   }
   if (!ehAdmin && !ehColaborador) redirect('/');
 
-  const projetos = (await listAllProjetos()).filter((p) =>
-    SERVICOS_SOCIAL.has(classificarProjeto(p.nome)),
-  );
-  if (projetos.length === 0) {
-    return (
-      <main className="mx-auto max-w-2xl px-6 py-20 text-center">
-        <h1 className="text-[18px] font-semibold text-ink">
-          Nenhum projeto de social media ativo
-        </h1>
-        <p className="mt-2 text-[13px] text-t2">
-          O calendário só cobre projetos de Instagram, TikTok e Stories.
-        </p>
-      </main>
-    );
-  }
+  // Base da semana: ?semana=YYYY-MM-DD (qualquer dia da semana desejada) ou hoje.
+  const base = searchParams.semana ? new Date(searchParams.semana + 'T00:00:00') : new Date();
+  const baseValida = Number.isNaN(base.getTime()) ? new Date() : base;
+  const inicio = inicioDaSemana(baseValida);
+  const fim = new Date(inicio);
+  fim.setDate(inicio.getDate() + 6);
+
+  // Projetos só pra popular o dropdown. Se demorar, roda em paralelo com posts.
+  const [projetos, postsRaw] = await Promise.all([
+    listAllProjetos().then((all) =>
+      all.filter((p) => SERVICOS_SOCIAL.has(classificarProjeto(p.nome))),
+    ),
+    listPostsNoIntervalo(ymd(inicio), ymd(fim)),
+  ]);
 
   const paramProjeto = searchParams.projetoId?.trim();
-  const verTodos = !paramProjeto || paramProjeto === 'todos';
-  const projetoIdSelecionado = verTodos
-    ? 'todos'
-    : projetos.find((p) => p.id === paramProjeto)?.id || 'todos';
-
-  const hoje = new Date();
-  const ymRaw = searchParams.ym?.trim();
-  let year = hoje.getFullYear();
-  let month = hoje.getMonth() + 1;
-  if (ymRaw && /^\d{4}-\d{2}$/.test(ymRaw)) {
-    const [y, m] = ymRaw.split('-').map(Number);
-    if (y >= 2020 && y <= 2100 && m >= 1 && m <= 12) {
-      year = y;
-      month = m;
-    }
-  }
-
-  const idsBuscar =
-    projetoIdSelecionado === 'todos' ? projetos.map((p) => p.id) : [projetoIdSelecionado];
-
-  const posts = await listPostsDoMes(idsBuscar, year, month);
+  const projetoIdSelecionado =
+    !paramProjeto || paramProjeto === 'todos'
+      ? 'todos'
+      : projetos.find((p) => p.id === paramProjeto)?.id || 'todos';
 
   return (
-    <CalendarioAdminView
-      projetos={projetos}
-      projetoIdSelecionado={projetoIdSelecionado}
-      year={year}
-      month={month}
-      posts={posts}
-    />
+    <Suspense>
+      <CalendarioAdminView
+        projetos={projetos}
+        projetoIdSelecionado={projetoIdSelecionado}
+        inicioIso={ymd(inicio)}
+        fimIso={ymd(fim)}
+        posts={postsRaw}
+      />
+    </Suspense>
   );
 }

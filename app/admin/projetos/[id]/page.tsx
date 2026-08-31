@@ -519,7 +519,281 @@ const METRICAS: {
   { chave: 'alcance', label: 'Alcance' },
 ];
 
-async function Conteudo({
+// ============================================================================
+// Página em abas: Calendário · Entregas · Desempenho · Ficha
+// ============================================================================
+
+type Aba = 'calendario' | 'entregas' | 'desempenho' | 'ficha';
+
+function normalizeAba(v: string | string[] | undefined): Aba {
+  const s = Array.isArray(v) ? v[0] : v;
+  if (s === 'entregas' || s === 'desempenho' || s === 'ficha') return s;
+  return 'calendario';
+}
+
+const MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+function resolveMes(v: string | string[] | undefined): { year: number; month: number } {
+  const s = Array.isArray(v) ? v[0] : v;
+  const m = s?.match(/^(\d{4})-(\d{2})$/);
+  if (m) {
+    const mo = Number(m[2]);
+    if (mo >= 1 && mo <= 12) return { year: Number(m[1]), month: mo };
+  }
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+}
+
+function deslocarMes(year: number, month: number, delta: number): { year: number; month: number } {
+  const idx = year * 12 + (month - 1) + delta;
+  return { year: Math.floor(idx / 12), month: (idx % 12) + 1 };
+}
+
+function mesParam(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function hrefProjeto(id: string, aba: Aba, mes: string): string {
+  const q = new URLSearchParams();
+  if (aba !== 'calendario') q.set('aba', aba);
+  q.set('mes', mes);
+  return `/admin/projetos/${id}?${q.toString()}`;
+}
+
+function hojeISO(): string {
+  const h = new Date();
+  return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`;
+}
+
+// ---- header ----------------------------------------------------------------
+
+function ProjetoHeader({
+  d,
+  aba,
+  year,
+  month,
+}: {
+  d: ProjetoDetalhe;
+  aba: Aba;
+  year: number;
+  month: number;
+}) {
+  const mostrarMes = aba === 'calendario' || aba === 'entregas';
+  const prev = deslocarMes(year, month, -1);
+  const next = deslocarMes(year, month, 1);
+  const inicial = d.nome.trim()[0]?.toUpperCase() ?? '·';
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0">
+        <Link href="/admin/projetos" className="text-[12px] text-mauve transition hover:text-ink">
+          ← Projetos
+        </Link>
+        <div className="mt-1.5 flex flex-wrap items-center gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[16px] font-bold text-white"
+            style={{ background: 'linear-gradient(150deg, #436F95, #1E476A)' }}
+          >
+            {inicial}
+          </div>
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">{d.nome}</h1>
+          {d.status && (
+            <span
+              className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.06em]"
+              style={{ background: 'var(--cal-publicado-soft)', color: 'var(--cal-publicado)' }}
+            >
+              ● {d.status}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        {mostrarMes && (
+          <div className="flex items-center gap-2">
+            <Link
+              href={hrefProjeto(d.id, aba, mesParam(prev.year, prev.month))}
+              className="flex h-8 w-8 items-center justify-center rounded-[9px] border border-[rgba(21,21,33,0.12)] bg-white text-t2 transition hover:bg-bgSoft"
+              aria-label="Mês anterior"
+            >
+              ‹
+            </Link>
+            <span className="min-w-[128px] text-center text-[14px] font-semibold capitalize text-ink">
+              {MESES[month - 1]} {year}
+            </span>
+            <Link
+              href={hrefProjeto(d.id, aba, mesParam(next.year, next.month))}
+              className="flex h-8 w-8 items-center justify-center rounded-[9px] border border-[rgba(21,21,33,0.12)] bg-white text-t2 transition hover:bg-bgSoft"
+              aria-label="Próximo mês"
+            >
+              ›
+            </Link>
+          </div>
+        )}
+        <EditarProjeto projetoId={d.id} projetoNome={d.nome} configInicial={d.config} />
+      </div>
+    </div>
+  );
+}
+
+// ---- banner + cards --------------------------------------------------------
+
+function ChipResumo({ cor, n, txt }: { cor: string; n: number; txt: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(21,21,33,0.08)] bg-white px-3 py-1.5 text-[12px] font-semibold text-t1">
+      <span className="h-2 w-2 rounded-full" style={{ background: cor }} />
+      <span className="font-mono">{n}</span> {txt}
+    </span>
+  );
+}
+
+function StatCard({
+  n,
+  k,
+  cor,
+  borda,
+}: {
+  n: number;
+  k: string;
+  cor?: string;
+  borda?: 'atrasada' | 'hoje';
+}) {
+  const bordaCor =
+    borda === 'atrasada'
+      ? 'rgba(110,42,44,0.25)'
+      : borda === 'hoje'
+        ? 'rgba(182,138,46,0.35)'
+        : 'rgba(21,21,33,0.08)';
+  return (
+    <div className="rounded-2xl border bg-white p-4" style={{ borderColor: bordaCor }}>
+      <div
+        className="text-[30px] font-semibold leading-none tracking-[-0.03em]"
+        style={{ color: cor ?? 'var(--ink)' }}
+      >
+        {n}
+      </div>
+      <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-t3">{k}</div>
+    </div>
+  );
+}
+
+function BannerResumo({ resumo, id, mes }: { resumo: ResumoEntregas; id: string; mes: string }) {
+  const nAtencao = resumo.atrasados + resumo.aguardandoCliente;
+  return (
+    <div className="mt-5 space-y-4">
+      <div className="flex flex-col gap-4 rounded-2xl border border-[rgba(21,21,33,0.06)] bg-bgSoft p-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <div className="min-w-0">
+          <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-ink">
+            {nAtencao > 0
+              ? `${nAtencao} ${nAtencao === 1 ? 'coisa precisa' : 'coisas precisam'} de atenção`
+              : 'Tudo em dia por aqui 🎉'}
+          </h3>
+          <p className="mt-0.5 text-[12.5px] text-t2">
+            Panorama do mês — o que está travado ou esperando alguém agir.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ChipResumo cor="var(--prazo-atrasado)" n={resumo.atrasados} txt="atrasados" />
+            <ChipResumo cor="var(--cal-aguardando)" n={resumo.aguardandoCliente} txt="aguardando cliente" />
+            <ChipResumo cor="var(--cal-aprovacao)" n={resumo.aprovacaoHoje} txt="aprovação hoje" />
+          </div>
+        </div>
+        {resumo.atrasados > 0 && (
+          <Link href={hrefProjeto(id, 'entregas', mes)} className="btn-primary shrink-0 self-start">
+            Ver atrasados →
+          </Link>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+        <StatCard n={resumo.total} k="Posts no mês" />
+        <StatCard n={resumo.publicados} k="Publicados" cor="var(--cal-publicado)" />
+        <StatCard n={resumo.emProducao} k="Em produção" cor="var(--cal-agendado)" />
+        <StatCard n={resumo.aguardandoCliente} k="Aguardando cliente" cor="var(--cal-aprovacao)" borda="hoje" />
+        <StatCard n={resumo.atrasados} k="Atrasados" cor="var(--hubRed)" borda="atrasada" />
+      </div>
+    </div>
+  );
+}
+
+// ---- tab nav ---------------------------------------------------------------
+
+function TabNav({
+  id,
+  aba,
+  mes,
+  atrasados,
+}: {
+  id: string;
+  aba: Aba;
+  mes: string;
+  atrasados: number;
+}) {
+  const tabs: { id: Aba; label: string; badge?: number }[] = [
+    { id: 'calendario', label: '📅 Calendário' },
+    { id: 'entregas', label: '📦 Entregas', badge: atrasados },
+    { id: 'desempenho', label: '📊 Desempenho' },
+    { id: 'ficha', label: '📋 Ficha' },
+  ];
+  return (
+    <div className="mt-6 flex gap-1 overflow-x-auto border-b border-[rgba(21,21,33,0.08)]">
+      {tabs.map((t) => {
+        const on = t.id === aba;
+        return (
+          <Link
+            key={t.id}
+            href={hrefProjeto(id, t.id, mes)}
+            className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-[13.5px] font-semibold transition ${
+              on ? 'border-ink text-ink' : 'border-transparent text-t3 hover:text-t2'
+            }`}
+          >
+            {t.label}
+            {t.badge ? (
+              <span className="rounded-full bg-[var(--prazo-atrasado)] px-1.5 text-[10px] font-bold text-white">
+                {t.badge}
+              </span>
+            ) : null}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- abas ------------------------------------------------------------------
+
+function CalendarioTab({
+  posts,
+  year,
+  month,
+}: {
+  posts: PostCalendario[];
+  year: number;
+  month: number;
+}) {
+  const legenda: [string, string][] = [
+    ['publicado', 'Publicado'],
+    ['agendado', 'Em produção'],
+    ['aprovacao', 'Aprovação'],
+    ['alteracao', 'Em alteração'],
+    ['aguardando', 'Aguardando cliente'],
+    ['rascunho', 'Rascunho'],
+  ];
+  return (
+    <div>
+      <CalendarMes year={year} month={month} posts={posts} />
+      <div className="mt-3.5 flex flex-wrap gap-x-4 gap-y-2 text-[11.5px] text-t2">
+        {legenda.map(([cor, label]) => (
+          <span key={cor} className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: `var(--cal-${cor})` }} />
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+async function DesempenhoTab({
   id,
   inicioMs,
   fimMs,
@@ -528,185 +802,162 @@ async function Conteudo({
   inicioMs: number;
   fimMs: number;
 }) {
-  const [d, hotmart, ads, campanhas, ig] = await Promise.all([
-    getProjetoDetalhe(id),
+  const [hotmart, ads, campanhas, ig] = await Promise.all([
     getHotmartResumo(id, inicioMs, fimMs),
     getMetaAdsRelatorio(id, inicioMs, fimMs),
     getMetaAdsCampanhas(id, inicioMs, fimMs),
     getIgAnalyticsDoProjeto(id, inicioMs, fimMs),
   ]);
-  if (!d) notFound();
+  const temAlgo = !!(hotmart || ads || (campanhas && campanhas.length > 0) || ig);
+  return (
+    <div className="space-y-6">
+      {temAlgo && <FiltroPeriodo />}
+      {ig && <Instagram a={ig} />}
+      {campanhas && campanhas.length > 0 && <CampanhasMeta campanhas={campanhas} />}
+      {ads && <TrafegoMeta relatorio={ads} />}
+      {hotmart && <VendasHotmart resumo={hotmart} />}
+      {!temAlgo && (
+        <div className="card p-8 text-center text-[13px] text-t3">
+          Nenhuma integração (Instagram, Meta Ads ou Hotmart) configurada para
+          este projeto ainda.
+        </div>
+      )}
+    </div>
+  );
+}
 
+function FichaTab({ d }: { d: ProjetoDetalhe }) {
   const { config } = d;
   const temMetas = METRICAS.some((m) => temAlgumaMeta(config.metas[m.chave]));
-
   return (
-    <div className="mx-auto -mt-16 max-w-7xl px-6">
-      {/* cabeçalho */}
-      <div className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-6">
-        <Link
-          href="/admin/projetos"
-          className="text-[12px] text-t3 transition hover:text-ink"
-        >
-          ← Projetos
-        </Link>
-        <div className="mt-1 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-[26px] font-semibold tracking-[-0.03em] text-ink">
-              {d.nome}
-            </h1>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {d.status && (
-                <span
-                  className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em]"
-                  style={{
-                    background: 'var(--prazo-em-dia-soft)',
-                    color: 'var(--prazo-em-dia)',
-                  }}
-                >
-                  {d.status}
-                </span>
+    <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+      <div className="space-y-6">
+        <div className="card p-6">
+          <SecTitle>Objetivo principal</SecTitle>
+          {config.objetivo ? (
+            <>
+              <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.55] text-ink">
+                {config.objetivo}
+              </p>
+              {config.foco.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {config.foco.map((f) => (
+                    <span
+                      key={f}
+                      className="rounded-full bg-bgSoft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-t2"
+                    >
+                      {f}
+                    </span>
+                  ))}
+                </div>
               )}
-              {d.clienteNome && (
-                <span className="rounded-full bg-bgSoft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-t2">
-                  {d.clienteNome}
-                </span>
-              )}
+            </>
+          ) : (
+            <p className="mt-3 text-[13px] text-t3">
+              Sem objetivo cadastrado. Clique em "Editar projeto" pra preencher.
+            </p>
+          )}
+        </div>
+
+        {temMetas && (
+          <div className="card p-6">
+            <SecTitle>Metas</SecTitle>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {METRICAS.filter((m) => temAlgumaMeta(config.metas[m.chave])).map((m) => {
+                const v = config.metas[m.chave];
+                return (
+                  <div key={m.chave} className="rounded-xl bg-bgSoft p-4">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+                      {m.label}
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-1.5">
+                      {v.inicio && <span className="text-[12px] text-t3">{v.inicio}</span>}
+                      <span className="text-[18px] font-semibold tracking-[-0.02em] text-ink">
+                        {v.atual || '—'}
+                      </span>
+                      {v.meta && <span className="text-[12px] text-t3">→ {v.meta}</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <EditarProjeto
-            projetoId={d.id}
-            projetoNome={d.nome}
-            configInicial={config}
-          />
+        )}
+
+        <div className="card p-6">
+          <SecTitle>Tarefas pendentes</SecTitle>
+          {d.tarefas.length === 0 ? (
+            <p className="mt-3 text-[13px] text-t3">Nenhuma tarefa pendente.</p>
+          ) : (
+            <TarefasAgrupadas tarefas={d.tarefas} />
+          )}
         </div>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
-        <div className="space-y-6">
-          {/* objetivo */}
-          <div className="card p-6">
-            <SecTitle>Objetivo principal</SecTitle>
-            {config.objetivo ? (
-              <>
-                <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.55] text-ink">
-                  {config.objetivo}
-                </p>
-                {config.foco.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {config.foco.map((f) => (
-                      <span
-                        key={f}
-                        className="rounded-full bg-bgSoft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-t2"
-                      >
-                        {f}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="mt-3 text-[13px] text-t3">
-                Sem objetivo cadastrado. Clique em "Editar projeto" pra
-                preencher.
-              </p>
-            )}
-          </div>
-
-          {/* metas */}
-          {temMetas && (
-            <div className="card p-6">
-              <SecTitle>Metas</SecTitle>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {METRICAS.filter((m) => temAlgumaMeta(config.metas[m.chave])).map(
-                  (m) => {
-                    const v = config.metas[m.chave];
-                    return (
-                      <div key={m.chave} className="rounded-xl bg-bgSoft p-4">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
-                          {m.label}
-                        </div>
-                        <div className="mt-2 flex items-baseline gap-1.5">
-                          {v.inicio && (
-                            <span className="text-[12px] text-t3">
-                              {v.inicio}
-                            </span>
-                          )}
-                          <span className="text-[18px] font-semibold tracking-[-0.02em] text-ink">
-                            {v.atual || '—'}
-                          </span>
-                          {v.meta && (
-                            <span className="text-[12px] text-t3">
-                              → {v.meta}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  },
-                )}
-              </div>
+      <aside className="space-y-4">
+        <div className="card p-5">
+          <SecTitle>Informações</SecTitle>
+          <dl className="mt-3 divide-y divide-[rgba(21,21,33,0.06)]">
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-[12px] text-t3">Cliente</dt>
+              <dd className="text-[12px] font-medium text-ink">{d.clienteNome ?? '—'}</dd>
             </div>
-          )}
-
-          {/* filtro de período — só quando há alguma integração configurada */}
-          {(hotmart || ads || (campanhas && campanhas.length > 0) || ig) && (
-            <FiltroPeriodo />
-          )}
-
-          {/* Instagram orgânico — só aparece se o projeto tem conta mapeada */}
-          {ig && <Instagram a={ig} />}
-
-          {/* tráfego pago Meta por campanha — quando há campanhas mapeadas */}
-          {campanhas && campanhas.length > 0 && (
-            <CampanhasMeta campanhas={campanhas} />
-          )}
-
-          {/* tráfego pago Meta nível conta — fallback quando não há campanhas */}
-          {ads && <TrafegoMeta relatorio={ads} />}
-
-          {/* vendas Hotmart — só aparece se o projeto tem produto mapeado */}
-          {hotmart && <VendasHotmart resumo={hotmart} />}
-
-          {/* tarefas — agrupadas por tipo */}
-          <div className="card p-6">
-            <SecTitle>Tarefas pendentes</SecTitle>
-            {d.tarefas.length === 0 ? (
-              <p className="mt-3 text-[13px] text-t3">
-                Nenhuma tarefa pendente.
-              </p>
-            ) : (
-              <TarefasAgrupadas tarefas={d.tarefas} />
-            )}
-          </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-[12px] text-t3">Gestor</dt>
+              <dd className="text-[12px] font-medium text-ink">{d.gestor ?? '—'}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-[12px] text-t3">Status</dt>
+              <dd className="text-[12px] font-medium text-ink">{d.status ?? '—'}</dd>
+            </div>
+          </dl>
         </div>
+      </aside>
+    </div>
+  );
+}
 
-        {/* sidebar */}
-        <aside className="space-y-4">
-          <div className="card p-5">
-            <SecTitle>Informações</SecTitle>
-            <dl className="mt-3 divide-y divide-[rgba(21,21,33,0.06)]">
-              <div className="flex items-center justify-between gap-3 py-2">
-                <dt className="text-[12px] text-t3">Cliente</dt>
-                <dd className="text-[12px] font-medium text-ink">
-                  {d.clienteNome ?? '—'}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 py-2">
-                <dt className="text-[12px] text-t3">Gestor</dt>
-                <dd className="text-[12px] font-medium text-ink">
-                  {d.gestor ?? '—'}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3 py-2">
-                <dt className="text-[12px] text-t3">Status</dt>
-                <dd className="text-[12px] font-medium text-ink">
-                  {d.status ?? '—'}
-                </dd>
-              </div>
-            </dl>
-          </div>
-        </aside>
+// ---- shell + página --------------------------------------------------------
+
+async function ProjetoShell({
+  id,
+  aba,
+  year,
+  month,
+  inicioMs,
+  fimMs,
+}: {
+  id: string;
+  aba: Aba;
+  year: number;
+  month: number;
+  inicioMs: number;
+  fimMs: number;
+}) {
+  const [d, posts] = await Promise.all([
+    getProjetoDetalhe(id),
+    listPostsDoMes([id], year, month),
+  ]);
+  if (!d) notFound();
+
+  const hoje = hojeISO();
+  const resumo = resumoEntregas(posts, hoje);
+  const mes = mesParam(year, month);
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+      <ProjetoHeader d={d} aba={aba} year={year} month={month} />
+      <BannerResumo resumo={resumo} id={id} mes={mes} />
+      <TabNav id={id} aba={aba} mes={mes} atrasados={resumo.atrasados} />
+      <div className="mt-5">
+        {aba === 'calendario' && <CalendarioTab posts={posts} year={year} month={month} />}
+        {aba === 'entregas' && <EntregasKanban posts={posts} hojeIso={hoje} />}
+        {aba === 'desempenho' && (
+          <Suspense fallback={<div className="h-[320px] animate-pulse rounded-2xl bg-bgSoft" />}>
+            <DesempenhoTab id={id} inicioMs={inicioMs} fimMs={fimMs} />
+          </Suspense>
+        )}
+        {aba === 'ficha' && <FichaTab d={d} />}
       </div>
     </div>
   );
@@ -719,26 +970,22 @@ export default function ProjetoPage({
   params: { id: string };
   searchParams: Record<string, string | string[] | undefined>;
 }) {
+  const aba = normalizeAba(searchParams.aba);
+  const { year, month } = resolveMes(searchParams.mes);
   const { inicioMs, fimMs } = resolverPeriodo(searchParams);
   return (
-    <div className="pb-14">
-      <div
-        className="h-44 w-full"
-        style={{
-          background:
-            'linear-gradient(135deg, #BAC4E6 0%, #8485A3 55%, #313D65 100%)',
-        }}
-      />
+    <div className="min-h-screen bg-bg pb-16">
       <Suspense
-        key={`${inicioMs}-${fimMs}`}
+        key={`${aba}-${year}-${month}-${inicioMs}-${fimMs}`}
         fallback={
-          <div className="mx-auto -mt-16 max-w-7xl px-6">
-            <div className="h-[120px] rounded-2xl bg-white" />
-            <div className="mt-6 h-[300px] rounded-2xl bg-bgSoft animate-pulse" />
+          <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+            <div className="h-[52px] w-64 rounded-xl bg-bgSoft" />
+            <div className="mt-5 h-[140px] animate-pulse rounded-2xl bg-bgSoft" />
+            <div className="mt-6 h-[420px] animate-pulse rounded-2xl bg-bgSoft" />
           </div>
         }
       >
-        <Conteudo id={params.id} inicioMs={inicioMs} fimMs={fimMs} />
+        <ProjetoShell id={params.id} aba={aba} year={year} month={month} inicioMs={inicioMs} fimMs={fimMs} />
       </Suspense>
     </div>
   );
