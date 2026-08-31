@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo } from 'react';
 import type { PostCalendario, ProjetoListItem } from '@/lib/notion';
+import { corDoStatus } from '@/lib/statusCor';
 
 const DIAS_ABREV = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 const MESES = [
@@ -18,6 +19,7 @@ function ymd(d: Date): string {
 
 function PostCardLink({ p }: { p: PostCalendario }) {
   const label = p.statusGeral ?? p.etapaLabel;
+  const cores = corDoStatus(p);
   return (
     <Link
       href={`/post/${p.id}`}
@@ -31,10 +33,7 @@ function PostCardLink({ p }: { p: PostCalendario }) {
       </div>
       <span
         className="mt-1 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[9.5px] font-semibold"
-        style={{
-          background: `var(--cal-${p.cor}-soft)`,
-          color: `var(--cal-${p.cor})`,
-        }}
+        style={{ background: cores.bg, color: cores.fg }}
       >
         {label}
       </span>

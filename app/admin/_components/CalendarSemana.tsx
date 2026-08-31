@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { PostCalendario } from '@/lib/notion';
+import { corDoStatus } from '@/lib/statusCor';
 
 export type DiaSemana = {
   iso: string;
@@ -10,8 +11,8 @@ export type DiaSemana = {
 };
 
 function PostCard({ p }: { p: PostCalendario }) {
-  // Mostra o "Status Geral" do Notion. Cai pro etapaLabel se estiver vazio.
   const label = p.statusGeral ?? p.etapaLabel;
+  const cores = corDoStatus(p);
   return (
     <div className="rounded-md border border-[rgba(21,21,33,0.1)] bg-white px-1.5 py-1 sm:px-2 sm:py-1.5">
       <div className="truncate text-[9px] font-semibold uppercase tracking-[0.06em] text-t3">
@@ -22,10 +23,7 @@ function PostCard({ p }: { p: PostCalendario }) {
       </div>
       <span
         className="mt-1 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[9.5px] font-semibold"
-        style={{
-          background: `var(--cal-${p.cor}-soft)`,
-          color: `var(--cal-${p.cor})`,
-        }}
+        style={{ background: cores.bg, color: cores.fg }}
       >
         {label}
       </span>

@@ -16,6 +16,12 @@
   --cal-aguardando-soft: #F4E8DD;
   --cal-rascunho: #9A9AA6;
   --cal-rascunho-soft: #EEF0F4;
+  /* Status Geral do Notion — cores dedicadas pra diferenciar visualmente
+     dois estágios que caíam em azul/verde e confundiam a leitura: */
+  --cal-programar: #C25E1E;         /* terracota — pede ação */
+  --cal-programar-soft: #FBE4D2;
+  --cal-conferir: #2E8A94;          /* turquesa escuro — só verificar */
+  --cal-conferir-soft: #DDEFF1;
 
   /* Prazo / urgência (timing) — semântica de tempo */
   --prazo-atrasado: #C04737;        /* vermelho */

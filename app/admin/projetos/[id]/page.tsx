@@ -523,11 +523,11 @@ const METRICAS: {
 // Página em abas: Calendário · Entregas · Desempenho · Ficha
 // ============================================================================
 
-type Aba = 'calendario' | 'entregas' | 'desempenho' | 'ficha';
+type Aba = 'calendario' | 'entregas' | 'desempenho';
 
 function normalizeAba(v: string | string[] | undefined): Aba {
   const s = Array.isArray(v) ? v[0] : v;
-  if (s === 'entregas' || s === 'desempenho' || s === 'ficha') return s;
+  if (s === 'entregas' || s === 'desempenho') return s;
   return 'calendario';
 }
 
@@ -608,6 +608,11 @@ function ProjetoHeader({
             </span>
           )}
         </div>
+        {(d.clienteNome || d.gestor) && (
+          <div className="mt-1.5 pl-[52px] text-[12px] text-t2">
+            {[d.clienteNome, d.gestor && `Gestor: ${d.gestor}`].filter(Boolean).join(' · ')}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-3">
         {mostrarMes && (
@@ -732,7 +737,6 @@ function TabNav({
     { id: 'calendario', label: '📅 Calendário' },
     { id: 'entregas', label: '📦 Entregas', badge: atrasados },
     { id: 'desempenho', label: '📊 Desempenho' },
-    { id: 'ficha', label: '📋 Ficha' },
   ];
   return (
     <div className="mt-6 flex gap-1 overflow-x-auto border-b border-[rgba(21,21,33,0.08)]">
@@ -797,10 +801,12 @@ async function DesempenhoTab({
   id,
   inicioMs,
   fimMs,
+  config,
 }: {
   id: string;
   inicioMs: number;
   fimMs: number;
+  config: ProjetoConfig;
 }) {
   const [hotmart, ads, campanhas, ig] = await Promise.all([
     getHotmartResumo(id, inicioMs, fimMs),
@@ -811,6 +817,7 @@ async function DesempenhoTab({
   const temAlgo = !!(hotmart || ads || (campanhas && campanhas.length > 0) || ig);
   return (
     <div className="space-y-6">
+      <ObjetivoMetas config={config} />
       {temAlgo && <FiltroPeriodo />}
       {ig && <Instagram a={ig} />}
       {campanhas && campanhas.length > 0 && <CampanhasMeta campanhas={campanhas} />}
@@ -826,93 +833,80 @@ async function DesempenhoTab({
   );
 }
 
-function FichaTab({ d }: { d: ProjetoDetalhe }) {
-  const { config } = d;
+/** Objetivo + metas do projeto — mostrado no topo da aba Desempenho (as metas
+ *  fazem sentido junto dos números). Editável pelo botão "Editar projeto". */
+function ObjetivoMetas({ config }: { config: ProjetoConfig }) {
   const temMetas = METRICAS.some((m) => temAlgumaMeta(config.metas[m.chave]));
+  if (!config.objetivo && !temMetas) return null;
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-      <div className="space-y-6">
-        <div className="card p-6">
-          <SecTitle>Objetivo principal</SecTitle>
-          {config.objetivo ? (
-            <>
-              <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.55] text-ink">
-                {config.objetivo}
-              </p>
-              {config.foco.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {config.foco.map((f) => (
-                    <span
-                      key={f}
-                      className="rounded-full bg-bgSoft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-t2"
-                    >
-                      {f}
-                    </span>
-                  ))}
+    <div className="card p-6">
+      <SecTitle>Objetivo &amp; Metas</SecTitle>
+      {config.objetivo ? (
+        <>
+          <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.55] text-ink">
+            {config.objetivo}
+          </p>
+          {config.foco.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {config.foco.map((f) => (
+                <span
+                  key={f}
+                  className="rounded-full bg-bgSoft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-t2"
+                >
+                  {f}
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="mt-3 text-[13px] text-t3">
+          Sem objetivo cadastrado. Use "Editar projeto" pra preencher.
+        </p>
+      )}
+
+      {temMetas && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {METRICAS.filter((m) => temAlgumaMeta(config.metas[m.chave])).map((m) => {
+            const v = config.metas[m.chave];
+            return (
+              <div key={m.chave} className="rounded-xl bg-bgSoft p-4">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+                  {m.label}
                 </div>
-              )}
-            </>
-          ) : (
-            <p className="mt-3 text-[13px] text-t3">
-              Sem objetivo cadastrado. Clique em "Editar projeto" pra preencher.
-            </p>
-          )}
+                <div className="mt-2 flex items-baseline gap-1.5">
+                  {v.inicio && <span className="text-[12px] text-t3">{v.inicio}</span>}
+                  <span className="text-[18px] font-semibold tracking-[-0.02em] text-ink">
+                    {v.atual || '—'}
+                  </span>
+                  {v.meta && <span className="text-[12px] text-t3">→ {v.meta}</span>}
+                </div>
+              </div>
+            );
+          })}
         </div>
+      )}
+    </div>
+  );
+}
 
-        {temMetas && (
-          <div className="card p-6">
-            <SecTitle>Metas</SecTitle>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {METRICAS.filter((m) => temAlgumaMeta(config.metas[m.chave])).map((m) => {
-                const v = config.metas[m.chave];
-                return (
-                  <div key={m.chave} className="rounded-xl bg-bgSoft p-4">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
-                      {m.label}
-                    </div>
-                    <div className="mt-2 flex items-baseline gap-1.5">
-                      {v.inicio && <span className="text-[12px] text-t3">{v.inicio}</span>}
-                      <span className="text-[18px] font-semibold tracking-[-0.02em] text-ink">
-                        {v.atual || '—'}
-                      </span>
-                      {v.meta && <span className="text-[12px] text-t3">→ {v.meta}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="card p-6">
-          <SecTitle>Tarefas pendentes</SecTitle>
-          {d.tarefas.length === 0 ? (
-            <p className="mt-3 text-[13px] text-t3">Nenhuma tarefa pendente.</p>
-          ) : (
-            <TarefasAgrupadas tarefas={d.tarefas} />
-          )}
-        </div>
+/** Tarefas pendentes do projeto, agrupadas por tipo — o detalhe granular das
+ *  entregas, mostrado abaixo do kanban na aba Entregas. */
+function TarefasPendentes({ tarefas }: { tarefas: ProjetoDetalhe['tarefas'] }) {
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-t3">
+        <span className="h-3 w-0.5 rounded-full bg-navy" />
+        Tarefas pendentes
+        <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-semibold text-t2">
+          {tarefas.length}
+        </span>
       </div>
-
-      <aside className="space-y-4">
-        <div className="card p-5">
-          <SecTitle>Informações</SecTitle>
-          <dl className="mt-3 divide-y divide-[rgba(21,21,33,0.06)]">
-            <div className="flex items-center justify-between gap-3 py-2">
-              <dt className="text-[12px] text-t3">Cliente</dt>
-              <dd className="text-[12px] font-medium text-ink">{d.clienteNome ?? '—'}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-3 py-2">
-              <dt className="text-[12px] text-t3">Gestor</dt>
-              <dd className="text-[12px] font-medium text-ink">{d.gestor ?? '—'}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-3 py-2">
-              <dt className="text-[12px] text-t3">Status</dt>
-              <dd className="text-[12px] font-medium text-ink">{d.status ?? '—'}</dd>
-            </div>
-          </dl>
-        </div>
-      </aside>
+      {tarefas.length === 0 ? (
+        <p className="text-[13px] text-t3">Nenhuma tarefa pendente 🎉</p>
+      ) : (
+        <TarefasAgrupadas tarefas={tarefas} />
+      )}
     </div>
   );
 }
@@ -951,13 +945,17 @@ async function ProjetoShell({
       <TabNav id={id} aba={aba} mes={mes} atrasados={resumo.atrasados} />
       <div className="mt-5">
         {aba === 'calendario' && <CalendarioTab posts={posts} year={year} month={month} />}
-        {aba === 'entregas' && <EntregasKanban posts={posts} hojeIso={hoje} />}
+        {aba === 'entregas' && (
+          <div className="space-y-8">
+            <EntregasKanban posts={posts} hojeIso={hoje} />
+            <TarefasPendentes tarefas={d.tarefas} />
+          </div>
+        )}
         {aba === 'desempenho' && (
           <Suspense fallback={<div className="h-[320px] animate-pulse rounded-2xl bg-bgSoft" />}>
-            <DesempenhoTab id={id} inicioMs={inicioMs} fimMs={fimMs} />
+            <DesempenhoTab id={id} inicioMs={inicioMs} fimMs={fimMs} config={d.config} />
           </Suspense>
         )}
-        {aba === 'ficha' && <FichaTab d={d} />}
       </div>
     </div>
   );
