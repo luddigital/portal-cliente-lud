@@ -78,7 +78,7 @@ function coresDoStatus(chip: StatusChip): { bg: string; fg: string } {
   }
 }
 
-function StatusDoPostCard({
+export function StatusDoPostCard({
   postId,
   status,
 }: {
@@ -238,7 +238,7 @@ function fmtDataCurta(iso: string | null): string {
   return `${d} ${MES[m - 1]}`;
 }
 
-function TodasTarefasCard({ tarefas }: { tarefas: TarefaDoPost[] }) {
+export function TodasTarefasCard({ tarefas }: { tarefas: TarefaDoPost[] }) {
   const total = tarefas.length;
   const concluidas = tarefas.filter((t) => !t.aberta || t.finalizada).length;
 
@@ -322,7 +322,7 @@ function fmtDataProgramacao(iso: string | null): string {
   return `${d}/${m}`;
 }
 
-function ProgramacaoCard({
+export function ProgramacaoCard({
   postId,
   configProgramacao,
   dataPostagem,

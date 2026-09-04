@@ -32,7 +32,7 @@ function NaoConfigurado() {
   );
 }
 
-async function Conteudo() {
+async function Conteudo({ igIdInicial }: { igIdInicial?: string }) {
   let accounts;
   try {
     accounts = await listIgAccounts();
@@ -49,10 +49,27 @@ async function Conteudo() {
   for (const [projetoId, igUserId] of Object.entries(env.instagram.accounts)) {
     projetoPorIg[igUserId] = projetoId;
   }
-  return <AnaliseAdmin accounts={accounts} projetoPorIg={projetoPorIg} />;
+  return (
+    <AnaliseAdmin
+      accounts={accounts}
+      projetoPorIg={projetoPorIg}
+      igIdInicial={igIdInicial}
+    />
+  );
 }
 
-export default async function AnalisePage() {
+export default async function AnalisePage({
+  searchParams,
+}: {
+  searchParams: { igId?: string; projetoId?: string };
+}) {
+  // Deep-link da página de projeto: ?igId= direto, ou ?projetoId= resolvido
+  // pelo mapa de contas.
+  const igIdInicial =
+    searchParams.igId ??
+    (searchParams.projetoId
+      ? env.instagram.accounts[searchParams.projetoId]
+      : undefined);
   return (
     <main className="mx-auto max-w-4xl lg:max-w-7xl px-6 py-10">
       <h1 className="text-[26px] font-semibold tracking-[-0.03em] text-ink">
@@ -62,7 +79,7 @@ export default async function AnalisePage() {
         Métricas de alcance, engajamento e crescimento puxadas direto da conta.
       </p>
       <div className="mt-6">
-        {igConfigured() ? <Conteudo /> : <NaoConfigurado />}
+        {igConfigured() ? <Conteudo igIdInicial={igIdInicial} /> : <NaoConfigurado />}
       </div>
     </main>
   );

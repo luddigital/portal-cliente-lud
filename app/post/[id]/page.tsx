@@ -24,7 +24,12 @@ import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
 import { EtapaPautaCards } from './EtapaPautaCards';
 import { TarefasDoPostPanel } from './TarefasDoPostPanel';
-import { PostSidebarLud } from './PostSidebarLud';
+import {
+  StatusDoPostCard,
+  TodasTarefasCard,
+  ProgramacaoCard,
+} from './PostSidebarLud';
+import { ComentariosLud } from './ComentariosLud';
 import { TarefaForm } from '../../tarefa/[id]/form';
 import { HistoricoBox } from '../../_components/HistoricoBox';
 
@@ -550,120 +555,126 @@ export default async function PostDetalhePage({
     );
   }
 
+  // ==========================================================================
+  // VISÃO LUD. — mesma estrutura da vista cliente (coluna única), com cards
+  // internos empilhados no fluxo: Status + Programar / Tarefas / Comentários.
+  // Nada de grid 2 col ou sidebar sticky — parte do layout do cliente.
+  // ==========================================================================
   return (
     <div className="min-h-screen pb-32">
-      {/* HEADER — unificado + toggle de vista pra Lud. */}
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3">
-          <div className="min-w-0">
-            <Link
-              href={voltarPara}
-              className="text-[11px] text-mauve transition hover:text-ink"
-            >
-              ← Voltar
-            </Link>
-            <div className="mt-0.5 flex items-baseline gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-                {post.projetoNome}
-              </span>
-              <span className="text-[10px] text-t3">·</span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
-                {etapaLabel}
-              </span>
+        <div className="mx-auto flex max-w-3xl lg:max-w-7xl items-center justify-between gap-3 px-6 py-3">
+          <Link
+            href={voltarPara}
+            className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink"
+          >
+            ← Voltar
+          </Link>
+          <div className="flex items-center gap-3">
+            {podeVerInterno && (
+              <div className="flex items-center gap-1 rounded-full bg-bgSoft p-1">
+                <Link
+                  href={urlVista('cliente')}
+                  className="rounded-full px-3 py-1 text-[11px] font-semibold text-t3 transition hover:text-ink"
+                >
+                  Visão cliente
+                </Link>
+                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm">
+                  Visão Lud.
+                </span>
+              </div>
+            )}
+            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+              {post.projetoNome}
             </div>
           </div>
-          {podeVerInterno && (
-            <div className="flex items-center gap-1 rounded-full bg-bgSoft p-1">
-              <Link
-                href={urlVista('cliente')}
-                className="rounded-full px-3 py-1 text-[11px] font-semibold text-t3 transition hover:text-ink"
-              >
-                Visão cliente
-              </Link>
-              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm">
-                Visão Lud.
-              </span>
-            </div>
-          )}
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-6 space-y-5">
-        {/* Título + meta-bar horizontal (data, prazo, formato) */}
-        <div>
-          <h1 className="text-[22px] sm:text-[26px] font-semibold tracking-[-0.03em] text-ink">
-            {post.titulo}
-          </h1>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
-            <FormatoPill formatoTipo={formatoTipoDetectado} qtd={arquivos.length} />
-            <MetaChip label="Data" value={fmtData(post.data)} />
-            {prazoLabel && (
-              <MetaChip
-                label="Prazo"
-                value={prazoLabel}
-                urgent={dias !== null && dias <= 0}
-              />
-            )}
-            {post.formato.length > 0 && (
-              <MetaChipRelacao label="Formato" itens={post.formato} />
-            )}
-            {post.funil.length > 0 && (
-              <MetaChipRelacao label="Funil" itens={post.funil} />
-            )}
-            {post.objetivo.length > 0 && (
-              <MetaChipRelacao label="Objetivo" itens={post.objetivo} />
-            )}
-          </div>
+      <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6">
+        {/* pill etapa + formato — igual cliente */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
+            {etapaLabel}
+          </span>
+          <FormatoPill formatoTipo={formatoTipoDetectado} qtd={arquivos.length} />
         </div>
 
-        {/* GRID PRINCIPAL: preview à esquerda + sidebar Lud. à direita. */}
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
-          <div className="min-w-0 space-y-5">
-            {/* Preview em modo readonly — aprovação/comentários ficam
-                na sidebar Lud. (não faz sentido a equipe usar o painel
-                que é do cliente). */}
-            {arquivos.length > 0 ? (
-              <PostPreview
-                arquivos={arquivos}
-                formatoTipo={formatoTipoDetectado}
-                postId={post.id}
-                tarefaId={null}
-                tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
-                legenda={post.legenda}
-                voltarPara={voltarPara}
-                aprovacaoColaborativa={post.aprovacaoColaborativa}
-              />
-            ) : (
-              (post.ideiaDoPost || post.bodyCompleto || post.legenda) && (
-                <div className="card p-5">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-                    Ideia do post
-                  </div>
-                  <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
-                    {post.ideiaDoPost ?? post.bodyCompleto ?? post.legenda}
-                  </p>
-                </div>
-              )
-            )}
+        {/* título — igual cliente */}
+        <h1 className="text-[22px] sm:text-[28px] font-semibold tracking-[-0.03em] text-ink">
+          {post.titulo}
+        </h1>
 
-            {/* Formulários/ações do cliente (aprovação simples, materiais,
-                voice over) NÃO renderizam na visão Lud. — a equipe interna
-                não faz essas ações. Vira lugar do preview + sidebar. */}
-          </div>
-
-          {/* SIDEBAR LUD. — Status do post, Todas as tarefas, Programação */}
-          <aside className="space-y-4 lg:sticky lg:top-16 lg:self-start">
-            <PostSidebarLud
-              postId={post.id}
-              status={post.status}
-              tarefas={tarefasDoPost}
-              configProgramacao={configProgramacao}
-              dataPostagem={post.data}
+        {/* InfoCards Data / Prazo — igual cliente */}
+        <div className="grid gap-2 text-[13px] sm:grid-cols-2">
+          <InfoCard label="Data de postagem" value={fmtData(post.data)} />
+          {prazoLabel && (
+            <InfoCard
+              label="Prazo de aprovação"
+              value={prazoLabel}
+              urgent={dias !== null && dias <= 0}
             />
-          </aside>
+          )}
         </div>
 
-        {/* histórico de comentários — discreto, no fim da página */}
+        {/* NOVO — Status do post (chips clicáveis pra mudar) */}
+        <StatusDoPostCard postId={post.id} status={post.status} />
+
+        {/* NOVO — Programação (data + horário + botão pra /programacao) */}
+        <ProgramacaoCard
+          postId={post.id}
+          configProgramacao={configProgramacao}
+          dataPostagem={post.data}
+        />
+
+        {/* dl Formato / Funil / Objetivo — igual cliente */}
+        {(post.formato.length > 0 || post.funil.length > 0 || post.objetivo.length > 0) && (
+          <dl className="card divide-y divide-[rgba(21,21,33,0.06)] overflow-hidden">
+            {post.formato.length > 0 && <DetalheRow label="Formato" itens={post.formato} />}
+            {post.funil.length > 0 && <DetalheRow label="Funil" itens={post.funil} />}
+            {post.objetivo.length > 0 && <DetalheRow label="Objetivo" itens={post.objetivo} />}
+          </dl>
+        )}
+
+        {/* pré-visualização + legenda — usa PostPreview em modo readonly
+            (sem painel de aprovação; equipe não aprova pelo cliente) */}
+        {arquivos.length > 0 ? (
+          <div>
+            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+              Pré-visualização
+            </div>
+            <PostPreview
+              arquivos={arquivos}
+              formatoTipo={formatoTipoDetectado}
+              postId={post.id}
+              tarefaId={null}
+              tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+              legenda={post.legenda}
+              voltarPara={voltarPara}
+              aprovacaoColaborativa={post.aprovacaoColaborativa}
+            />
+          </div>
+        ) : (
+          (post.ideiaDoPost || post.bodyCompleto || post.legenda) && (
+            <div className="card p-5">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                Ideia do post
+              </div>
+              <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
+                {post.ideiaDoPost ?? post.bodyCompleto ?? post.legenda}
+              </p>
+            </div>
+          )
+        )}
+
+        {/* NOVO — Todas as tarefas do post */}
+        <TodasTarefasCard tarefas={tarefasDoPost} />
+
+        {/* NOVO — Comentários (2 painéis: Com o cliente + Nota interna) */}
+        <ComentariosLud postId={post.id} tarefaId={tarefaId} />
+
+        {/* histórico de comentários do Notion — discreto, no fim */}
         <Suspense fallback={null}>
           <HistoricoComentarios postId={post.id} />
         </Suspense>

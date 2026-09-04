@@ -11,6 +11,7 @@ import {
 import { getHotmartResumo, type HotmartResumo } from '@/lib/hotmart';
 import { getMetaAdsRelatorio, getMetaAdsCampanhas, type CampanhaAds } from '@/lib/metaAds';
 import { getIgAnalyticsDoProjeto, type IgAnalytics } from '@/lib/instagram';
+import { env } from '@/lib/env';
 import type { RelatorioAds } from '@/lib/csvAds';
 import { CalendarMes } from '@/app/_components/CalendarMes';
 import { resumoEntregas, type ResumoEntregas } from '@/lib/entregas';
@@ -815,9 +816,26 @@ async function DesempenhoTab({
     getIgAnalyticsDoProjeto(id, inicioMs, fimMs),
   ]);
   const temAlgo = !!(hotmart || ads || (campanhas && campanhas.length > 0) || ig);
+  const igId = env.instagram.accounts[id];
   return (
     <div className="space-y-6">
       <ObjetivoMetas config={config} />
+      {igId && (
+        <Link
+          href={`/admin/analise?igId=${encodeURIComponent(igId)}`}
+          className="flex items-center justify-between gap-3 rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white px-5 py-4 transition hover:border-navy/30 hover:bg-bgSoft"
+        >
+          <div className="min-w-0">
+            <div className="text-[13.5px] font-semibold text-ink">
+              Análise completa do Instagram
+            </div>
+            <div className="text-[12px] text-t2">
+              Insights de IA, público e demografia — na página de Análise.
+            </div>
+          </div>
+          <span className="shrink-0 text-[13px] font-semibold text-navy">Abrir →</span>
+        </Link>
+      )}
       {temAlgo && <FiltroPeriodo />}
       {ig && <Instagram a={ig} />}
       {campanhas && campanhas.length > 0 && <CampanhasMeta campanhas={campanhas} />}

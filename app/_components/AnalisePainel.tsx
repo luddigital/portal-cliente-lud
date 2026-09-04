@@ -611,6 +611,8 @@ function ContentRow({
     { c: 'shares', label: 'Compart.', icon: '↗', valor: m.shares },
     { c: 'saved', label: 'Salvos', icon: '🔖', valor: m.saved },
   ];
+  // A métrica escolhida no filtro vem primeiro (sort estável mantém o resto).
+  colunas.sort((a, b) => Number(b.c === criterio) - Number(a.c === criterio));
   return (
     <a
       href={m.permalink || '#'}

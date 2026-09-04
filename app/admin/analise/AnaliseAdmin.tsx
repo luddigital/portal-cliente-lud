@@ -17,11 +17,19 @@ function diasAtrasISO(dias: number): string {
 export function AnaliseAdmin({
   accounts,
   projetoPorIg,
+  igIdInicial,
 }: {
   accounts: IgAccount[];
   projetoPorIg: Record<string, string>;
+  /** Conta pré-selecionada (deep-link a partir da página de projeto). */
+  igIdInicial?: string;
 }) {
-  const [igId, setIgId] = useState(accounts[0]?.igUserId ?? '');
+  // Só respeita o deep-link se a conta existir na lista carregada.
+  const igIdValido =
+    igIdInicial && accounts.some((a) => a.igUserId === igIdInicial)
+      ? igIdInicial
+      : accounts[0]?.igUserId ?? '';
+  const [igId, setIgId] = useState(igIdValido);
   const [since, setSince] = useState(diasAtrasISO(30));
   const [until, setUntil] = useState(hojeISO());
   const [data, setData] = useState<IgAnalytics | null>(null);
