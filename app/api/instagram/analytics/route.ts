@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { getIgAnalytics, igConfigured } from '@/lib/instagram';
+import { getTitulosPorData } from '@/lib/notion';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,10 +27,10 @@ export async function GET(req: Request) {
     : undefined;
 
   let igId = url.searchParams.get('igId') ?? '';
+  const projetoId = url.searchParams.get('projetoId') ?? '';
 
   if (!isAdmin) {
     // Cliente só vê a conta de um projeto que pertence à sessão dele.
-    const projetoId = url.searchParams.get('projetoId') ?? '';
     if (!projetoId || !session.projetoIds.includes(projetoId)) {
       return NextResponse.json({ error: 'acesso restrito' }, { status: 403 });
     }
@@ -55,6 +56,26 @@ export async function GET(req: Request) {
       since: sinceValid,
       until: untilValid,
     });
+
+    // Casa cada post do Instagram com o título do Notion, por data de publicação.
+    if (projetoId) {
+      const fimMs = untilValid
+        ? new Date(`${untilValid}T23:59:59`).getTime()
+        : Date.now();
+      const inicioMs = sinceValid
+        ? new Date(`${sinceValid}T00:00:00`).getTime()
+        : fimMs - (dias ?? 30) * 86400000;
+      try {
+        const titulos = await getTitulosPorData(projetoId, inicioMs, fimMs);
+        for (const c of analytics.conteudos) {
+          const t = titulos[(c.timestamp || '').slice(0, 10)];
+          if (t) c.tituloNotion = t;
+        }
+      } catch {
+        /* título do Notion é opcional — segue sem */
+      }
+    }
+
     return NextResponse.json({ analytics });
   } catch (err: any) {
     return NextResponse.json(

@@ -44,6 +44,8 @@ export type IgMediaItem = {
   /** Seguidores ganhos pelo post (métrica `follows`). 0 se a API não expõe
    *  essa métrica pra conta/versão. */
   seguidores: number;
+  /** Título do post no Notion, casado por data de publicação. Opcional. */
+  tituloNotion?: string;
 };
 
 export type IgPontoSerie = { dia: string; valor: number };

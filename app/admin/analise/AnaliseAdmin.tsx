@@ -41,7 +41,10 @@ export function AnaliseAdmin({
     let ativo = true;
     setCarregando(true);
     setErro('');
-    const qs = `igId=${encodeURIComponent(igId)}&since=${since}&until=${until}`;
+    const pid = projetoPorIg[igId];
+    const qs = `igId=${encodeURIComponent(igId)}&since=${since}&until=${until}${
+      pid ? `&projetoId=${encodeURIComponent(pid)}` : ''
+    }`;
     fetch(`/api/instagram/analytics?${qs}`)
       .then((r) => r.json())
       .then((j) => {

@@ -2071,6 +2071,43 @@ export async function listPostsDoMes(
   );
 }
 
+/** Mapa data (YYYY-MM-DD) -> título do post no Notion, pra casar com os posts
+ *  do Instagram por data de publicação na aba Conteúdo. Varre os meses do range. */
+export async function getTitulosPorData(
+  projetoId: string,
+  inicioMs: number,
+  fimMs: number,
+): Promise<Record<string, string>> {
+  const mapa: Record<string, string> = {};
+  const ini = new Date(inicioMs);
+  const fim = new Date(fimMs);
+  let y = ini.getFullYear();
+  let m = ini.getMonth() + 1;
+  const meses: [number, number][] = [];
+  while (
+    (y < fim.getFullYear() || (y === fim.getFullYear() && m <= fim.getMonth() + 1)) &&
+    meses.length < 24
+  ) {
+    meses.push([y, m]);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  const listas = await Promise.all(
+    meses.map(([yy, mm]) => listPostsDoMes([projetoId], yy, mm).catch(() => [])),
+  );
+  for (const lista of listas) {
+    for (const p of lista) {
+      const dia = (p.data || '').slice(0, 10);
+      // Primeiro post do dia vence (match por data não distingue vários no dia).
+      if (dia && p.titulo && !mapa[dia]) mapa[dia] = p.titulo;
+    }
+  }
+  return mapa;
+}
+
 async function listPostsDoMesUncached(
   projetoIds: string[],
   year: number,

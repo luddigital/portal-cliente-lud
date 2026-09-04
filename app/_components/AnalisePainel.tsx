@@ -508,7 +508,7 @@ function MediaCard({
       {/* card embaixo — branco/soft, sem gradient pesado */}
       <div className="px-5 py-4">
         <p className="line-clamp-2 text-[13px] font-medium leading-snug text-ink">
-          {m.caption || 'Sem legenda'}
+          {m.tituloNotion || m.caption || 'Sem legenda'}
         </p>
         <div className="mt-3 grid grid-cols-3 gap-x-3 gap-y-3 border-t border-[rgba(21,21,33,0.06)] pt-3">
           <StatCell icon="▶" label="Views" valor={m.views} />
@@ -629,7 +629,7 @@ function ContentRow({
       {/* legenda — espaço limitado */}
       <div className="min-w-0 basis-[32%] shrink-0 pr-2">
         <div className="truncate text-[12.5px] font-medium text-ink">
-          {m.caption || 'Sem legenda'}
+          {m.tituloNotion || m.caption || 'Sem legenda'}
         </div>
         <div className="mt-0.5 text-[11px] text-t3">
           {formatoLabel(m.mediaType, m.caption)}
@@ -1118,7 +1118,7 @@ function AbaInsights({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-semibold text-ink">
-                        {m.caption || 'Sem legenda'}
+                        {m.tituloNotion || m.caption || 'Sem legenda'}
                       </div>
                       <div className="mt-0.5 text-[11px] text-t3">
                         {formatoLabel(m.mediaType, m.caption)} · ▶ {fmt(m.views)} ·
