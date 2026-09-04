@@ -67,8 +67,17 @@ export async function GET(req: Request) {
         : fimMs - (dias ?? 30) * 86400000;
       try {
         const titulos = await getTitulosPorData(projetoId, inicioMs, fimMs);
+        const desloca = (iso: string, dias: number) => {
+          const d = new Date(`${iso}T12:00:00`);
+          d.setDate(d.getDate() + dias);
+          return d.toISOString().slice(0, 10);
+        };
         for (const c of analytics.conteudos) {
-          const t = titulos[(c.timestamp || '').slice(0, 10)];
+          const dia = (c.timestamp || '').slice(0, 10);
+          if (!dia) continue;
+          // Casa por data, com tolerância de ±1 dia (fuso horário / agendamento).
+          const t =
+            titulos[dia] || titulos[desloca(dia, -1)] || titulos[desloca(dia, 1)];
           if (t) c.tituloNotion = t;
         }
       } catch {
