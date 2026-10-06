@@ -9,6 +9,7 @@ import {
 import { getGrupoWhatsappDoProjeto } from '@/lib/supabase';
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
 import { montarLembrete } from '@/lib/lembrete-aprovacao';
+import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,7 +65,9 @@ export async function POST(
     : `${env.app.url}/tarefa/${params.tarefaId}`;
 
   const apelido = grupo?.apelido?.trim() || null;
+  const textos = await lerMensagensEditadas();
   const lembrete = montarLembrete({
+    textos,
     apelido: apelido ?? nomeCliente,
     tarefaTitulo: t.tarefaTitulo,
     postTitulo: t.postTitulo || t.tarefaTitulo,

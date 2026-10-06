@@ -49,6 +49,7 @@ const CONFIG: Item[] = [
   { label: 'Equipe', href: '/admin/equipe', icon: 'equipe' },
   { label: 'Banco de materiais', href: '/admin/banco-de-materiais', icon: 'banco' },
   { label: 'Sync Notion', href: '/admin/sync', icon: 'sync' },
+  { label: 'Configurações', href: '/admin/configuracoes', icon: 'ajustes' },
 ];
 
 const ICONES = {
@@ -69,6 +70,7 @@ const ICONES = {
   arte: 'M12 3a9 9 0 1 0 9 9c0-2-2-3-4-3h-2a2 2 0 0 1 0-4 c2 0 3-1 3-2z M7 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2z M15 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
   programacao: 'M12 6v6l4 2 M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z',
   sync: 'M3 12a9 9 0 0 1 15-6.7L21 8 M21 12a9 9 0 0 1-15 6.7L3 16 M17 4v4h4 M7 20v-4H3',
+  ajustes: 'M4 6h9 M17 6h3 M15 4v4 M4 12h3 M11 12h9 M9 10v4 M4 18h11 M19 18h1 M17 16v4',
 };
 
 function NavIcon({ icon }: { icon: keyof typeof ICONES }) {
