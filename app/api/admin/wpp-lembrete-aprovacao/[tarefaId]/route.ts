@@ -17,8 +17,8 @@ export const dynamic = 'force-dynamic';
  * tarefa de aprovação. Resolve: tarefa → projeto → cliente → whatsapp,
  * monta a mensagem com link pro portal e envia pela Z-API.
  *
- * POST { mensagemCustom?: string }
- * Returns: { ok, telefone, clienteNome, prévia (texto que foi mandado) }
+ * POST { mensagemCustom?: string, apenasPrevia?: boolean }
+ * apenasPrevia=true → só monta a mensagem padrão e devolve, sem enviar.
  */
 export async function POST(
   req: Request,
@@ -30,18 +30,9 @@ export async function POST(
     return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   }
 
-  if (!zapiConfigured()) {
-    return NextResponse.json(
-      {
-        error:
-          'Z-API não configurado. Preencha ZAPI_INSTANCE_ID, ZAPI_INSTANCE_TOKEN e ZAPI_CLIENT_TOKEN nas env vars da Vercel.',
-      },
-      { status: 503 },
-    );
-  }
-
   const body = (await req.json().catch(() => ({}))) as {
     mensagemCustom?: string;
+    apenasPrevia?: boolean;
   };
 
   // 1) Tarefa → projeto
@@ -67,35 +58,51 @@ export async function POST(
   const cliente = clienteId ? await getEmpresaDetalhe(clienteId) : null;
   const nomeCliente = cliente?.nome ?? projeto?.nome ?? 'cliente';
 
-  if (!grupo?.id) {
-    return NextResponse.json(
-      {
-        error:
-          `Esse projeto não tem grupo do WhatsApp vinculado. ` +
-          `Vincule em /admin/whatsapp antes de enviar lembretes. ` +
-          `(Projeto: "${projeto?.nome ?? t.projetoId}")`,
-      },
-      { status: 400 },
-    );
-  }
-
   const linkPost = t.postId
     ? `${env.app.url}/post/${t.postId}?tarefa=${params.tarefaId}`
     : `${env.app.url}/tarefa/${params.tarefaId}`;
 
-  const mensagem =
-    body.mensagemCustom?.trim() ||
-    [
-      `Oi ${nomeCliente}! Aqui é da Lud. ✨`,
-      '',
-      `Tem uma aprovação te esperando no portal:`,
-      `*${t.postTitulo || t.tarefaTitulo}*`,
-      '',
-      `Abre aqui pra revisar e aprovar:`,
-      linkPost,
-      '',
-      `Qualquer dúvida, só me chamar por aqui.`,
-    ].join('\n');
+  const mensagemPadrao = [
+    `Oi ${nomeCliente}! Aqui é da Lud. ✨`,
+    '',
+    `Tem uma aprovação te esperando no portal:`,
+    `*${t.postTitulo || t.tarefaTitulo}*`,
+    '',
+    `Abre aqui pra revisar e aprovar:`,
+    linkPost,
+    '',
+    `Qualquer dúvida, só me chamar por aqui.`,
+  ].join('\n');
+
+  const erroSemGrupo =
+    `Esse projeto não tem grupo do WhatsApp vinculado. ` +
+    `Vincule em /admin/whatsapp antes de enviar lembretes. ` +
+    `(Projeto: "${projeto?.nome ?? t.projetoId}")`;
+
+  if (body.apenasPrevia) {
+    return NextResponse.json({
+      mensagem: mensagemPadrao,
+      clienteNome: nomeCliente,
+      grupoNome: grupo?.id ? grupo.nome : null,
+      erroGrupo: grupo?.id ? null : erroSemGrupo,
+    });
+  }
+
+  if (!grupo?.id) {
+    return NextResponse.json({ error: erroSemGrupo }, { status: 400 });
+  }
+
+  if (!zapiConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          'Z-API não configurado. Preencha ZAPI_INSTANCE_ID, ZAPI_INSTANCE_TOKEN e ZAPI_CLIENT_TOKEN nas env vars da Vercel.',
+      },
+      { status: 503 },
+    );
+  }
+
+  const mensagem = body.mensagemCustom?.trim() || mensagemPadrao;
 
   const resultado = await enviarMensagemTexto(grupo.id, mensagem);
   if (!resultado.ok) {

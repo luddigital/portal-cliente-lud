@@ -1,16 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+type Previa = {
+  mensagem: string;
+  clienteNome: string;
+  grupoNome: string | null;
+  erroGrupo: string | null;
+};
 
 /**
- * Botão que dispara um lembrete via WhatsApp (Z-API) pro cliente responsável
- * por uma tarefa de aprovação.
- *
- * Estados visuais:
- *  - idle: ícone 📱 + "Lembrar WhatsApp"
- *  - enviando: spinner + "Enviando…"
- *  - sucesso: ✓ verde + "Enviado" (volta pra idle em 3s)
- *  - erro: ⚠ vermelho + toast com mensagem (volta pra idle em 5s)
+ * Botão de lembrete de aprovação pelo WhatsApp (Z-API). Abre um popup com a
+ * mensagem pronta e editável; só envia quando clicar em "Enviar". Sempre vai
+ * pro grupo do cliente, nunca pro privado.
  */
 export function BotaoLembreteWpp({
   tarefaId,
@@ -19,68 +21,216 @@ export function BotaoLembreteWpp({
   tarefaId: string;
   clienteNome: string;
 }) {
-  const [estado, setEstado] = useState<'idle' | 'enviando' | 'ok' | 'erro'>('idle');
-  const [erro, setErro] = useState<string | null>(null);
-
-  async function enviar() {
-    const ok = window.confirm(
-      `Mandar lembrete pelo WhatsApp pra ${clienteNome}?`,
-    );
-    if (!ok) return;
-
-    setEstado('enviando');
-    setErro(null);
-    try {
-      const res = await fetch(
-        `/api/admin/wpp-lembrete-aprovacao/${tarefaId}`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({}),
-        },
-      );
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
-      setEstado('ok');
-      setTimeout(() => setEstado('idle'), 3000);
-    } catch (e: any) {
-      setErro(e?.message ?? 'erro desconhecido');
-      setEstado('erro');
-      setTimeout(() => {
-        setEstado('idle');
-        setErro(null);
-      }, 5000);
-    }
-  }
+  const [aberto, setAberto] = useState(false);
+  const [enviado, setEnviado] = useState(false);
 
   return (
     <div className="relative shrink-0">
       <button
         type="button"
-        onClick={enviar}
-        disabled={estado === 'enviando'}
-        title={`Enviar lembrete de aprovação pelo WhatsApp pra ${clienteNome}`}
+        onClick={() => setAberto(true)}
+        title={`Enviar lembrete de aprovação no grupo de ${clienteNome}`}
         className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-semibold transition ${
-          estado === 'ok'
+          enviado
             ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
-            : estado === 'erro'
-              ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
-              : 'bg-bgSoft text-t2 hover:bg-ink hover:text-white disabled:opacity-50'
+            : 'bg-bgSoft text-t2 hover:bg-ink hover:text-white'
         }`}
       >
-        {estado === 'enviando'
-          ? '…'
-          : estado === 'ok'
-            ? '✓ enviado'
-            : estado === 'erro'
-              ? '⚠ erro'
-              : '📱 lembrar'}
+        {enviado ? '✓ enviado' : '📱 lembrar'}
       </button>
-      {estado === 'erro' && erro && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-[rgba(21,21,33,0.1)] bg-white p-2.5 text-[11px] text-[var(--prazo-atrasado)] shadow-lg">
-          {erro}
-        </div>
+      {aberto && (
+        <ModalLembrete
+          tarefaId={tarefaId}
+          clienteNome={clienteNome}
+          fechar={() => setAberto(false)}
+          aoEnviar={() => {
+            setEnviado(true);
+            setAberto(false);
+            setTimeout(() => setEnviado(false), 4000);
+          }}
+        />
       )}
+    </div>
+  );
+}
+
+function ModalLembrete({
+  tarefaId,
+  clienteNome,
+  fechar,
+  aoEnviar,
+}: {
+  tarefaId: string;
+  clienteNome: string;
+  fechar: () => void;
+  aoEnviar: () => void;
+}) {
+  const [previa, setPrevia] = useState<Previa | null>(null);
+  const [texto, setTexto] = useState('');
+  const [carregando, setCarregando] = useState(true);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/wpp-lembrete-aprovacao/${tarefaId}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ apenasPrevia: true }),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+        if (cancelado) return;
+        setPrevia(j);
+        setTexto(j.mensagem);
+      } catch (e: any) {
+        if (!cancelado) setErro(e?.message ?? 'erro');
+      } finally {
+        if (!cancelado) setCarregando(false);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [tarefaId]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !enviando) fechar();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fechar, enviando]);
+
+  async function enviar() {
+    if (!texto.trim()) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const res = await fetch(`/api/admin/wpp-lembrete-aprovacao/${tarefaId}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mensagemCustom: texto }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+      aoEnviar();
+    } catch (e: any) {
+      setErro(e?.message ?? 'erro');
+      setEnviando(false);
+    }
+  }
+
+  const semGrupo = Boolean(previa?.erroGrupo);
+  const editado = previa ? texto !== previa.mensagem : false;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4"
+      onClick={() => !enviando && fechar()}
+    >
+      <div
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white text-left shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-[rgba(21,21,33,0.08)] px-5 py-3">
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
+              Lembrete de aprovação
+            </div>
+            <div className="mt-0.5 truncate text-[15px] font-semibold text-ink">
+              {previa?.clienteNome ?? clienteNome}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={fechar}
+            disabled={enviando}
+            aria-label="Fechar"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[18px] text-t3 transition hover:bg-bgSoft hover:text-ink"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          {carregando ? (
+            <div className="h-[220px] animate-pulse rounded-xl bg-bgSoft" />
+          ) : (
+            <>
+              {previa && (
+                <div
+                  className={`rounded-lg px-3 py-2 text-[12px] ${
+                    semGrupo
+                      ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
+                      : 'bg-bgSoft text-t2'
+                  }`}
+                >
+                  {semGrupo ? (
+                    previa.erroGrupo
+                  ) : (
+                    <>
+                      Vai pro grupo{' '}
+                      <span className="font-semibold text-ink">
+                        {previa.grupoNome}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+              {previa && (
+                <>
+                  <textarea
+                    value={texto}
+                    onChange={(e) => setTexto(e.target.value)}
+                    rows={11}
+                    disabled={enviando}
+                    className="w-full resize-y rounded-xl border border-[rgba(21,21,33,0.13)] bg-white p-3 text-[13px] leading-[1.55] text-ink outline-none focus:border-[rgba(21,21,33,0.35)]"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-t3">
+                    <span>*texto* fica em negrito no WhatsApp</span>
+                    {editado && (
+                      <button
+                        type="button"
+                        onClick={() => setTexto(previa.mensagem)}
+                        className="underline hover:text-ink"
+                      >
+                        voltar ao texto padrão
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+          {erro && (
+            <p className="rounded-lg bg-[var(--prazo-atrasado-soft)] px-3 py-2 text-[12px] text-[var(--prazo-atrasado)]">
+              {erro}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[rgba(21,21,33,0.08)] px-5 py-3">
+          <button
+            type="button"
+            onClick={fechar}
+            disabled={enviando}
+            className="rounded-full px-4 py-2 text-[12px] font-semibold text-t2 transition hover:bg-bgSoft hover:text-ink"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={enviar}
+            disabled={carregando || enviando || semGrupo || !texto.trim() || !previa}
+            className="rounded-full bg-ink px-4 py-2 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+          >
+            {enviando ? 'Enviando…' : 'Enviar no grupo'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
