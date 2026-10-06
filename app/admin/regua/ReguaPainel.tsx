@@ -13,6 +13,8 @@ import {
 } from '@/lib/regua-mensagens';
 
 const BORDA = 'border-[rgba(21,21,33,0.09)]';
+// Antes disso o portal não registrava quando o cliente abria o post.
+const RASTREIO_DESDE = '2026-10-06';
 const SUAVE = 'bg-[rgba(55,53,47,0.04)]';
 
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
@@ -82,6 +84,7 @@ export function ReguaPainel({
   const [editados, setEditados] = useState<Record<string, string>>({});
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const [desmarcados, setDesmarcados] = useState<Set<string>>(new Set());
+  const [marcadosManual, setMarcadosManual] = useState<Set<string>>(new Set());
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: number; erros: string[] } | null>(null);
 
@@ -156,8 +159,10 @@ export function ReguaPainel({
   }, [ciclo, momento, regua.envios, textos, baseUrl]);
 
   const chave = (projetoId: string) => `${momento}:${projetoId}`;
+  const semRastreio = momento !== 'quinta' && ciclo.quinta < RASTREIO_DESDE;
+  const estaMarcado = (k: string) => (semRastreio ? marcadosManual.has(k) : !desmarcados.has(k));
   const selecionados = fila.filter(
-    (i) => i.status === 'pronto' && !desmarcados.has(chave(i.cliente.projetoId)),
+    (i) => i.status === 'pronto' && estaMarcado(chave(i.cliente.projetoId)),
   );
 
   function alternar(set: Set<string>, k: string): Set<string> {
@@ -264,6 +269,13 @@ export function ReguaPainel({
             {momento === 'quinta'
               ? `Posts com envio na quinta ${ddmm(ciclo.quinta)}, prazo do cliente ${ddmm(ciclo.prazo)}.`
               : `Posts enviados na quinta ${ddmm(ciclo.quinta)}, prazo do cliente ${ddmm(ciclo.prazo)}.`}
+            {semRastreio && (
+              <div className="mt-1 font-semibold text-ink">
+                Nesse ciclo o portal ainda não registrava quando o cliente abria o post, então a régua
+                não sabe se ele viu. Nada vem marcado: abre cada mensagem, ajusta o texto e marca só
+                o que quiser enviar.
+              </div>
+            )}
             {regua.momentoHoje !== momento && (
               <div className="mt-1 font-semibold text-ink">
                 Hoje não é o dia desse momento. Dá pra enviar mesmo assim, se precisar.
@@ -303,7 +315,7 @@ export function ReguaPainel({
             <ul className={`divide-y divide-[rgba(21,21,33,0.06)] rounded-lg border ${BORDA}`}>
               {fila.map((i) => {
                 const k = chave(i.cliente.projetoId);
-                const marcado = i.status === 'pronto' && !desmarcados.has(k);
+                const marcado = i.status === 'pronto' && estaMarcado(k);
                 const aberto = abertos.has(k);
                 return (
                   <li key={k} className="px-4 py-3">
@@ -312,7 +324,11 @@ export function ReguaPainel({
                         type="checkbox"
                         checked={marcado}
                         disabled={i.status !== 'pronto' || enviando}
-                        onChange={() => setDesmarcados((s) => alternar(s, k))}
+                        onChange={() =>
+                          semRastreio
+                            ? setMarcadosManual((s) => alternar(s, k))
+                            : setDesmarcados((s) => alternar(s, k))
+                        }
                         className="mt-1 h-4 w-4 accent-[#37352F]"
                       />
                       <div className="min-w-0 flex-1">
