@@ -6,40 +6,8 @@ import { useRouter } from 'next/navigation';
 import type { TarefaDoPost } from '@/lib/notion';
 import type { ProgramacaoConfig } from '@/lib/supabase';
 
-/**
- * Sidebar da visão interna Lud. — layout do mockup (3 cards):
- *   1. Status do post   — pill do Status Geral + chips de troca rápida
- *   2. Todas as tarefas — lista com categoria + data + pill status colorida
- *   3. Programação      — mini cards Data/Horário + botão pra /programacao/[id]
- */
-export function PostSidebarLud({
-  postId,
-  status,
-  tarefas,
-  configProgramacao,
-  dataPostagem,
-}: {
-  postId: string;
-  status: string | null;
-  tarefas: TarefaDoPost[];
-  configProgramacao: ProgramacaoConfig;
-  dataPostagem: string | null;
-}) {
-  return (
-    <div className="space-y-4">
-      <StatusDoPostCard postId={postId} status={status} />
-      <TodasTarefasCard tarefas={tarefas} />
-      <ProgramacaoCard
-        postId={postId}
-        configProgramacao={configProgramacao}
-        dataPostagem={dataPostagem}
-      />
-    </div>
-  );
-}
-
 // ============================================================================
-// Card 1 — Status do post
+// Status do post — só os chips de troca rápida (o atual fica preenchido)
 // ============================================================================
 
 const STATUS_OPCOES = [
@@ -78,7 +46,7 @@ function coresDoStatus(chip: StatusChip): { bg: string; fg: string } {
   }
 }
 
-export function StatusDoPostCard({
+export function StatusDoPostChips({
   postId,
   status,
 }: {
@@ -110,55 +78,40 @@ export function StatusDoPostCard({
     }
   }
 
-  const cores = atual ? coresDoStatus(atual) : null;
-
   return (
-    <div className="card p-4">
-      <div className="text-[11px] font-bold uppercase tracking-[0.09em] text-t3">
-        Status do post
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {atual && cores && (
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-bold uppercase tracking-[0.05em]"
-            style={{ background: cores.bg, color: cores.fg }}
-          >
-            <span
-              className="inline-block h-1.5 w-1.5 rounded-full"
-              style={{ background: cores.fg }}
-            />
-            {atual}
-          </span>
-        )}
-        <span className="font-mono text-[10.5px] text-t3">
-          Status Geral (Notion)
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+          Status
         </span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
         {STATUS_OPCOES.map((opt) => {
           const selecionado = opt === atual;
-          const desabilitado = loading !== null;
-          const isLoading = loading === opt;
+          const cores = coresDoStatus(opt);
           return (
             <button
               key={opt}
               type="button"
               onClick={() => trocar(opt)}
-              disabled={desabilitado || selecionado}
+              disabled={loading !== null || selecionado}
               className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed ${
                 selecionado
-                  ? 'border-[var(--cal-aprovacao)] bg-[var(--cal-aprovacao)] text-white'
-                  : 'border-[rgba(21,21,33,0.13)] bg-white text-t2 hover:text-ink hover:border-[rgba(21,21,33,0.25)] disabled:opacity-40'
+                  ? 'text-white'
+                  : 'border-[rgba(21,21,33,0.13)] bg-white text-t2 hover:border-[rgba(21,21,33,0.25)] hover:text-ink disabled:opacity-40'
               }`}
-              title={selecionado ? 'Status atual' : `Trocar pra ${opt}`}
+              style={
+                selecionado
+                  ? { background: cores.fg, borderColor: cores.fg }
+                  : undefined
+              }
+              title={selecionado ? 'Status atual (Notion)' : `Trocar pra ${opt}`}
             >
-              {isLoading ? '…' : opt}
+              {loading === opt ? '…' : opt}
             </button>
           );
         })}
       </div>
       {erro && (
-        <p className="mt-2 rounded-md bg-[var(--prazo-atrasado-soft)] px-2 py-1 text-[11px] text-[var(--prazo-atrasado)]">
+        <p className="rounded-md bg-[var(--prazo-atrasado-soft)] px-2 py-1 text-[11px] text-[var(--prazo-atrasado)]">
           {erro}
         </p>
       )}
@@ -167,7 +120,7 @@ export function StatusDoPostCard({
 }
 
 // ============================================================================
-// Card 2 — Todas as tarefas
+// Tarefas — abertas em destaque, concluídas recolhidas num grid compacto
 // ============================================================================
 
 const CATEGORIA_LABEL: Record<TarefaDoPost['categoria'], string> = {
@@ -239,81 +192,133 @@ function fmtDataCurta(iso: string | null): string {
 }
 
 export function TodasTarefasCard({ tarefas }: { tarefas: TarefaDoPost[] }) {
+  const [verConcluidas, setVerConcluidas] = useState(false);
   const total = tarefas.length;
-  const concluidas = tarefas.filter((t) => !t.aberta || t.finalizada).length;
 
-  // Ordena: mais antigas primeiro; sem prazo pro fim
-  const ordenadas = [...tarefas].sort((a, b) => {
+  const porPrazo = (a: TarefaDoPost, b: TarefaDoPost) => {
     if (!a.prazo && !b.prazo) return 0;
     if (!a.prazo) return 1;
     if (!b.prazo) return -1;
     return a.prazo.localeCompare(b.prazo);
-  });
-
-  if (total === 0) {
-    return (
-      <div className="card p-4">
-        <div className="text-[11px] font-bold uppercase tracking-[0.09em] text-t3">
-          Todas as tarefas
-        </div>
-        <p className="mt-3 text-[12px] text-t3">
-          Nenhuma tarefa relacionada a este post.
-        </p>
-      </div>
-    );
-  }
+  };
+  const abertas = tarefas
+    .filter((t) => statusUIDaTarefa(t) !== 'done')
+    .sort(porPrazo);
+  const concluidas = tarefas
+    .filter((t) => statusUIDaTarefa(t) === 'done')
+    .sort(porPrazo);
+  const pct = total > 0 ? Math.round((concluidas.length / total) * 100) : 0;
 
   return (
     <div className="card p-4">
       <div className="flex items-baseline justify-between gap-2">
         <div className="text-[11px] font-bold uppercase tracking-[0.09em] text-t3">
-          Todas as tarefas
+          Tarefas
         </div>
-        <span className="font-mono text-[10.5px] text-t3">
-          {concluidas}/{total} concluídas
-        </span>
+        {total > 0 && (
+          <span className="font-mono text-[10.5px] text-t3">
+            {concluidas.length}/{total} concluídas
+          </span>
+        )}
       </div>
-      <ul className="mt-1 divide-y divide-[rgba(21,21,33,0.06)]">
-        {ordenadas.map((t) => {
-          const ui = statusUIDaTarefa(t);
-          return (
-            <li
-              key={t.tarefaId}
-              className="flex items-center gap-2.5 py-2.5"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-[9.5px] font-bold uppercase tracking-[0.06em] text-t3">
-                  {CATEGORIA_LABEL[t.categoria]}
-                </div>
-                <div
-                  className={`truncate text-[12.5px] text-t1 ${
-                    ui === 'now' ? 'font-semibold' : 'font-medium'
-                  }`}
-                  title={t.titulo}
-                >
-                  {t.titulo}
-                </div>
-              </div>
-              <span className="whitespace-nowrap font-mono text-[10.5px] text-t3">
-                {fmtDataCurta(t.prazo)}
-              </span>
-              <span
-                className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.03em] ${classeStatusUI(
-                  ui,
-                )}`}
+
+      {total === 0 ? (
+        <p className="mt-3 text-[12px] text-t3">
+          Nenhuma tarefa relacionada a este post.
+        </p>
+      ) : (
+        <>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-bgSoft">
+            <div
+              className="h-full rounded-full bg-[var(--prazo-em-dia)] transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+
+          {abertas.length > 0 ? (
+            <ul className="mt-3 space-y-1.5">
+              {abertas.map((t) => {
+                const ui = statusUIDaTarefa(t);
+                return (
+                  <li
+                    key={t.tarefaId}
+                    className="flex items-center gap-2.5 rounded-xl bg-bgSoft/60 px-3 py-2"
+                  >
+                    <span className="w-[68px] shrink-0 text-[9.5px] font-bold uppercase tracking-[0.06em] text-t3">
+                      {CATEGORIA_LABEL[t.categoria]}
+                    </span>
+                    <span
+                      className={`min-w-0 flex-1 truncate text-[12.5px] text-ink ${
+                        ui === 'now' ? 'font-semibold' : 'font-medium'
+                      }`}
+                      title={t.titulo}
+                    >
+                      {t.titulo}
+                    </span>
+                    {t.pessoaNome && (
+                      <span className="hidden shrink-0 text-[11px] text-t3 sm:inline">
+                        {t.pessoaNome.split(' ')[0]}
+                      </span>
+                    )}
+                    <span className="shrink-0 whitespace-nowrap font-mono text-[10.5px] text-t3">
+                      {fmtDataCurta(t.prazo)}
+                    </span>
+                    <span
+                      className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.03em] ${classeStatusUI(
+                        ui,
+                      )}`}
+                    >
+                      {labelStatusUI(ui)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="mt-3 text-[12px] font-semibold text-[var(--prazo-em-dia)]">
+              Tudo concluído ✨
+            </p>
+          )}
+
+          {concluidas.length > 0 && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setVerConcluidas((v) => !v)}
+                className="text-[11.5px] font-semibold text-t3 transition hover:text-ink"
               >
-                {labelStatusUI(ui)}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+                {verConcluidas ? '▾' : '▸'} {verConcluidas ? 'Esconder' : 'Ver'}{' '}
+                {concluidas.length}{' '}
+                {concluidas.length === 1 ? 'concluída' : 'concluídas'}
+              </button>
+              {verConcluidas && (
+                <ul className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {concluidas.map((t) => (
+                    <li
+                      key={t.tarefaId}
+                      className="flex min-w-0 items-center gap-1.5 text-[12px] text-t2"
+                    >
+                      <span className="shrink-0 text-[var(--prazo-em-dia)]">✓</span>
+                      <span className="min-w-0 flex-1 truncate" title={t.titulo}>
+                        {t.titulo}
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] text-t3">
+                        {fmtDataCurta(t.prazo)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
 // ============================================================================
-// Card 3 — Programação
+// Programação — linha compacta no fim da página
 // ============================================================================
 
 function fmtDataProgramacao(iso: string | null): string {
@@ -336,31 +341,29 @@ export function ProgramacaoCard({
   const horario = configProgramacao.horario || '10:00';
 
   return (
-    <div className="card p-4">
+    <div className="card flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3">
       <div className="text-[11px] font-bold uppercase tracking-[0.09em] text-t3">
         Programação
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <div className="rounded-xl bg-bgSoft/60 px-3 py-2.5">
-          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-t3">
-            Data
-          </div>
-          <div className="mt-0.5 font-mono text-[13px] text-t1">
-            {fmtDataProgramacao(data)}
-          </div>
-        </div>
-        <div className="rounded-xl bg-bgSoft/60 px-3 py-2.5">
-          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-t3">
-            Horário
-          </div>
-          <div className="mt-0.5 font-mono text-[13px] text-t1">{horario}</div>
-        </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+          Data
+        </span>
+        <span className="font-mono text-[13px] text-t1">
+          {fmtDataProgramacao(data)}
+        </span>
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+          Horário
+        </span>
+        <span className="font-mono text-[13px] text-t1">{horario}</span>
       </div>
       <Link
         href={`/programacao/${postId}`}
-        className="mt-3 block rounded-xl border border-[rgba(21,21,33,0.13)] bg-bgSoft/60 px-4 py-2.5 text-center text-[12.5px] font-semibold text-ink transition hover:bg-bgSoft"
+        className="ml-auto rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-4 py-1.5 text-[12px] font-semibold text-ink transition hover:bg-bgSoft"
       >
-        Abrir /programacao →
+        Programar →
       </Link>
     </div>
   );

@@ -26,7 +26,7 @@ import { EtapaPautaCards } from './EtapaPautaCards';
 import { TarefasDoPostPanel } from './TarefasDoPostPanel';
 import { GaleriaMateriais } from './GaleriaMateriais';
 import {
-  StatusDoPostCard,
+  StatusDoPostChips,
   TodasTarefasCard,
   ProgramacaoCard,
 } from './PostSidebarLud';
@@ -604,22 +604,24 @@ export default async function PostDetalhePage({
       </header>
 
       <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6">
-        {/* pill etapa + formato — igual cliente */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* etapa atual + status (chips trocam o Status Geral no Notion) */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
             {etapaLabel}
           </span>
-          <FormatoPill formatoTipo={formatoTipoDetectado} qtd={arquivos.length} />
+          <StatusDoPostChips postId={post.id} status={post.status} />
         </div>
 
-        {/* título — igual cliente */}
         <h1 className="text-[22px] sm:text-[28px] font-semibold tracking-[-0.03em] text-ink">
           {post.titulo}
         </h1>
 
-        {/* InfoCards Data / Prazo — igual cliente */}
-        <div className="grid gap-2 text-[13px] sm:grid-cols-2">
+        <div
+          className={`grid gap-2 text-[13px] ${
+            prazoLabel ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
+          }`}
+        >
           <InfoCard label="Data de postagem" value={fmtData(post.data)} />
           {prazoLabel && (
             <InfoCard
@@ -628,22 +630,14 @@ export default async function PostDetalhePage({
               urgent={dias !== null && dias <= 0}
             />
           )}
+          <InfoCard
+            label="Formato"
+            value={formatoResumo(post.formato, formatoTipoDetectado, arquivos.length)}
+          />
         </div>
 
-        {/* NOVO — Status do post (chips clicáveis pra mudar) */}
-        <StatusDoPostCard postId={post.id} status={post.status} />
-
-        {/* NOVO — Programação (data + horário + botão pra /programacao) */}
-        <ProgramacaoCard
-          postId={post.id}
-          configProgramacao={configProgramacao}
-          dataPostagem={post.data}
-        />
-
-        {/* dl Formato / Funil / Objetivo — igual cliente */}
-        {(post.formato.length > 0 || post.funil.length > 0 || post.objetivo.length > 0) && (
+        {(post.funil.length > 0 || post.objetivo.length > 0) && (
           <dl className="card divide-y divide-[rgba(21,21,33,0.06)] overflow-hidden">
-            {post.formato.length > 0 && <DetalheRow label="Formato" itens={post.formato} />}
             {post.funil.length > 0 && <DetalheRow label="Funil" itens={post.funil} />}
             {post.objetivo.length > 0 && <DetalheRow label="Objetivo" itens={post.objetivo} />}
           </dl>
@@ -689,10 +683,15 @@ export default async function PostDetalhePage({
           )
         )}
 
-        {/* NOVO — Todas as tarefas do post */}
         <TodasTarefasCard tarefas={tarefasDoPost} />
 
-        {/* NOVO — Comentários (2 painéis: Com o cliente + Nota interna) */}
+        <ProgramacaoCard
+          postId={post.id}
+          configProgramacao={configProgramacao}
+          dataPostagem={post.data}
+        />
+
+        {/* Comentários (2 painéis: Com o cliente + Nota interna) */}
         <ComentariosLud postId={post.id} tarefaId={tarefaId} />
 
         {/* histórico de comentários do Notion — discreto, no fim */}
@@ -715,21 +714,21 @@ function InfoCard({
 }) {
   return (
     <div
-      className={`rounded-2xl p-3 flex items-center justify-between ${
+      className={`rounded-2xl p-3 flex items-center justify-between gap-3 ${
         urgent
           ? 'bg-hubRed text-white'
           : 'card'
       }`}
     >
       <span
-        className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${
+        className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.1em] ${
           urgent ? 'text-white/70' : 'text-t3'
         }`}
       >
         {label}
       </span>
       <span
-        className={`font-mono text-[12px] ${
+        className={`min-w-0 text-right font-mono text-[12px] ${
           urgent ? 'text-white font-semibold' : 'text-t1'
         }`}
       >
@@ -844,6 +843,21 @@ const FORMATO_PILL: Record<
   story: { label: 'Stories', bg: 'var(--cal-aprovacao-soft)', color: 'var(--cal-aprovacao)' },
   desconhecido: { label: 'Post', bg: 'var(--cal-rascunho-soft)', color: 'var(--cal-rascunho)' },
 };
+
+function formatoResumo(
+  formatoNotion: RelacaoItem[],
+  formatoTipo: 'post' | 'reels' | 'story' | 'desconhecido',
+  qtd: number,
+): string {
+  const nome =
+    formatoNotion.length > 0
+      ? formatoNotion.map((f) => f.name).join(', ')
+      : FORMATO_PILL[formatoTipo].label;
+  if (qtd === 0) return nome;
+  if (formatoTipo === 'post') return `${nome} · ${qtd} ${qtd === 1 ? 'card' : 'cards'}`;
+  if (formatoTipo === 'story') return `${nome} · ${qtd} ${qtd === 1 ? 'tela' : 'telas'}`;
+  return nome;
+}
 
 function FormatoPill({
   formatoTipo,
