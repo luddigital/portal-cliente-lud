@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { TarefaDaEntrega } from '@/lib/notion';
+import type { Visualizacao } from '@/lib/supabase';
 import { BotaoLembreteWpp } from './BotaoLembreteWpp';
 import { PreviaPostModal } from './PreviaPostModal';
 
@@ -51,12 +52,27 @@ const PRAZO_TONE_COR: Record<
  * da página. Dentro do modal tem botão "abrir completo" se precisar da
  * página inteira.
  */
+function textoVisto(v: Visualizacao): string {
+  const d = new Date(v.ultima);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const dia = new Date(d);
+  dia.setHours(0, 0, 0, 0);
+  const dias = Math.round((hoje.getTime() - dia.getTime()) / 86_400_000);
+  if (dias === 0) return 'visto hoje';
+  if (dias === 1) return 'visto ontem';
+  return `visto ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function TarefaRow({
   tarefa: t,
   mostrarBotaoWpp = false,
+  visto,
 }: {
   tarefa: TarefaDaEntrega;
   mostrarBotaoWpp?: boolean;
+  /** undefined = não mostrar; null = cliente ainda não abriu. */
+  visto?: Visualizacao | null;
 }) {
   const [modalAberto, setModalAberto] = useState(false);
   const prazo = fmtPrazo(t.prazo);
@@ -79,6 +95,18 @@ export function TarefaRow({
           {t.clienteNome ?? t.projetoNome ?? '(sem cliente)'} · {t.titulo}
         </div>
       </div>
+      {visto !== undefined && (
+        <span
+          className={`shrink-0 text-[10.5px] ${visto ? 'font-semibold text-ink' : 'text-t3'}`}
+          title={
+            visto
+              ? `Cliente abriu ${visto.total}x no portal`
+              : 'Cliente ainda não abriu no portal (contagem desde 06/10)'
+          }
+        >
+          {visto ? `👁 ${textoVisto(visto)}` : 'não visto'}
+        </span>
+      )}
       {prazo && corPrazo ? (
         <span
           className="shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold"

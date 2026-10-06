@@ -19,7 +19,7 @@ import {
   type DriveFileResumido,
 } from '@/lib/drive';
 import { env } from '@/lib/env';
-import { lerConfigProgramacao } from '@/lib/supabase';
+import { lerConfigProgramacao, registrarVisualizacao } from '@/lib/supabase';
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
 import { EtapaPautaCards } from './EtapaPautaCards';
@@ -168,6 +168,9 @@ export default async function PostDetalhePage({
 
   // Vista Cliente/Lud. — cliente só vê a dele. Admin/colab default = interno.
   const podeVerInterno = ehAdmin || ehColaborador;
+  if (!podeVerInterno) {
+    await registrarVisualizacao(post.id, tarefaId, session.email);
+  }
   const vista: 'cliente' | 'interno' = !podeVerInterno
     ? 'cliente'
     : searchParams.vista === 'cliente'

@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import { getAprovacoesAgrupadas, type TarefaDaEntrega } from '@/lib/notion';
 import { env } from '@/lib/env';
+import { lerVisualizacoes, type Visualizacao } from '@/lib/supabase';
 import { TarefaRow } from './TarefaRow';
 
 export const dynamic = 'force-dynamic';
@@ -95,6 +96,9 @@ async function Conteudo({ abaAtiva }: { abaAtiva: AbaValida }) {
   });
   const totalCliente = grupos2.reduce((s, g) => s + g.cliente.length, 0);
   const totalInterno = grupos2.reduce((s, g) => s + g.interno.length, 0);
+  const visualizacoes = await lerVisualizacoes(
+    grupos2.flatMap((g) => g.cliente.map((t) => t.postId).filter((id): id is string => !!id)),
+  );
 
   return (
     <>
@@ -169,6 +173,7 @@ async function Conteudo({ abaAtiva }: { abaAtiva: AbaValida }) {
                   .map((g) => ({ categoria: g.categoria, tarefas: g.cliente }))
                   .filter((g) => g.tarefas.length > 0)}
                 mostrarBotaoWpp
+                visualizacoes={visualizacoes}
               />
             )
           ) : totalInterno === 0 ? (
@@ -240,11 +245,13 @@ function SecaoAprovacoes({
   toneCor,
   grupos,
   mostrarBotaoWpp = false,
+  visualizacoes,
 }: {
   descricao: string;
   toneCor: { bg: string; fg: string };
   grupos: { categoria: string; tarefas: TarefaDaEntrega[] }[];
   mostrarBotaoWpp?: boolean;
+  visualizacoes?: Record<string, Visualizacao>;
 }) {
   return (
     <section className="space-y-4">
@@ -269,6 +276,11 @@ function SecaoAprovacoes({
                   key={t.tarefaId}
                   tarefa={t}
                   mostrarBotaoWpp={mostrarBotaoWpp}
+                  visto={
+                    visualizacoes
+                      ? (t.postId && visualizacoes[t.postId]) || null
+                      : undefined
+                  }
                 />
               ))}
             </div>

@@ -578,3 +578,50 @@ export async function salvarRelatorioNotas(
   );
   if (error) throw new Error(`Supabase: ${error.message}`);
 }
+
+/** Registra que o cliente abriu um post no portal. Nunca trava a página. */
+export async function registrarVisualizacao(
+  postId: string,
+  tarefaId: string | null,
+  email: string,
+): Promise<void> {
+  try {
+    const sb = await supabaseAdmin();
+    await sb.from('post_visualizacoes').insert({
+      post_id: postId,
+      tarefa_id: tarefaId,
+      email: email.trim().toLowerCase(),
+    });
+  } catch (e: any) {
+    console.warn('[post_visualizacoes]', e?.message);
+  }
+}
+
+export type Visualizacao = { primeira: string; ultima: string; total: number };
+
+/** Primeira/última visualização do cliente por post. */
+export async function lerVisualizacoes(
+  postIds: string[],
+): Promise<Record<string, Visualizacao>> {
+  const out: Record<string, Visualizacao> = {};
+  if (postIds.length === 0) return out;
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('post_visualizacoes')
+    .select('post_id, visto_em')
+    .in('post_id', postIds);
+  if (error) {
+    console.warn('[post_visualizacoes]', error.message);
+    return out;
+  }
+  for (const r of data ?? []) {
+    const v = out[r.post_id];
+    if (!v) out[r.post_id] = { primeira: r.visto_em, ultima: r.visto_em, total: 1 };
+    else {
+      v.total += 1;
+      if (r.visto_em < v.primeira) v.primeira = r.visto_em;
+      if (r.visto_em > v.ultima) v.ultima = r.visto_em;
+    }
+  }
+  return out;
+}
