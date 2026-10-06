@@ -1440,8 +1440,9 @@ function categoriaDaAprovacao(nome: string): string {
   const limpo = (nome ?? '')
     .trim()
     .replace(/^aprovaç(ão|ões)\s*\|?\s*/i, '')
+    .replace(/\s+/g, ' ')
     .trim();
-  return limpo || 'Geral';
+  return limpo ? limpo.charAt(0).toUpperCase() + limpo.slice(1) : 'Geral';
 }
 
 export type GrupoAprovacao = {
@@ -1471,15 +1472,33 @@ export async function getAprovacoesAgrupadas(): Promise<GrupoAprovacao[]> {
     }),
   );
 
-  // Junta grupos com a mesma categoria (ex: "Criação Pauta" e "Criação de Pauta")
+  // A categoria vem do título da tarefa ("Aprovação | Post" → "Post") quando
+  // ele tem sufixo; a entrega genérica "Aprovações" jogaria tudo em "Geral".
   const porCategoria = new Map<string, GrupoAprovacao>();
+  const vistas = new Set<string>();
   for (const g of grupos) {
-    const existente = porCategoria.get(g.categoria);
-    if (existente) {
-      existente.tarefas.push(...g.tarefas);
-    } else {
-      porCategoria.set(g.categoria, { ...g, tarefas: [...g.tarefas] });
+    for (const t of g.tarefas) {
+      if (vistas.has(t.tarefaId)) continue;
+      vistas.add(t.tarefaId);
+      const doTitulo = ehEntregaDeAprovacao(t.titulo)
+        ? categoriaDaAprovacao(t.titulo)
+        : 'Geral';
+      const categoria = doTitulo !== 'Geral' ? doTitulo : g.categoria;
+      const existente = porCategoria.get(categoria);
+      if (existente) {
+        existente.tarefas.push(t);
+      } else {
+        porCategoria.set(categoria, { ...g, categoria, tarefas: [t] });
+      }
     }
+  }
+  for (const g of porCategoria.values()) {
+    g.tarefas.sort((a, b) => {
+      if (!a.prazo && !b.prazo) return 0;
+      if (!a.prazo) return 1;
+      if (!b.prazo) return -1;
+      return a.prazo.localeCompare(b.prazo);
+    });
   }
 
   return [...porCategoria.values()]
