@@ -25,6 +25,11 @@ function isVideo(mime: string, name: string): boolean {
   return /\.(mp4|mov|webm|m4v)$/i.test(name);
 }
 
+function isAudio(mime: string, name: string): boolean {
+  if (mime.startsWith('audio/')) return true;
+  return /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(name);
+}
+
 function fmtTime(secs: number): string {
   if (!Number.isFinite(secs) || secs < 0) secs = 0;
   const m = Math.floor(secs / 60);
@@ -361,46 +366,54 @@ export function PostPreview({
     setError(null);
     setModo('pedindoAlteracao');
     try {
-      // Se tem arquivos: sobe UM POR VEZ via /api/tarefas/[id]/anexar
-      // (limite 4.5MB do Vercel por request). Só depois disso registra
-      // a alteração — assim a tarefa NÃO fecha se algum arquivo falhar,
-      // e a cliente pode retentar sem perder o comentário.
-      const grandes = anexos.filter((f) => f.size > 4 * 1024 * 1024);
-      if (grandes.length > 0) {
-        throw new Error(
-          `Arquivo${grandes.length > 1 ? 's' : ''} muito grande${
-            grandes.length > 1 ? 's' : ''
-          }: ${grandes
-            .map((f) => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`)
-            .join(', ')}. Cada arquivo precisa ficar abaixo de 4MB — comprima antes de enviar.`,
-        );
-      }
-
+      // Sobe cada anexo DIRETO pro Google Drive via sessão resumable
+      // (evita o limite de 4.5 MB do Vercel — arquivo não passa pelo serverless).
+      // A tarefa NÃO fecha se algum falhar, cliente retenta sem perder comentário.
       let driveLink: string | null = null;
       const anexosEnviados: number[] = [];
       for (let i = 0; i < anexos.length; i++) {
         const arquivo = anexos[i];
-        const upFd = new FormData();
-        upFd.append('arquivos', arquivo);
-        const upRes = await fetch(
-          `/api/tarefas/${tarefaId}/anexar`,
-          { method: 'POST', body: upFd },
+        // 1) Pega URL de sessão resumable
+        const initRes = await fetch(
+          `/api/tarefas/${tarefaId}/upload-init`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              nome: arquivo.name,
+              mimeType: arquivo.type || 'application/octet-stream',
+              tamanho: arquivo.size,
+            }),
+          },
         );
-        const upData = await upRes.json().catch(() => ({}));
+        const initData = await initRes.json().catch(() => ({}));
+        if (!initRes.ok) {
+          setAnexos((prev) =>
+            prev.filter((_, idx) => !anexosEnviados.includes(idx)),
+          );
+          throw new Error(
+            `Falhou preparar upload de ${arquivo.name} (${(arquivo.size / 1024 / 1024).toFixed(1)}MB). ${
+              initData.error ?? ''
+            } Já enviei ${anexosEnviados.length}/${anexos.length}.`,
+          );
+        }
+        // 2) PUT direto no Google Drive
+        const upRes = await fetch(initData.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': arquivo.type || 'application/octet-stream' },
+          body: arquivo,
+        });
+        const upData = { folderId: initData.folderId, driveLink: initData.driveLink };
         if (!upRes.ok) {
-          // Deixa arquivos que JÁ subiram no state — cliente pode remover
-          // manualmente pra retentar só os que faltam. Não fecha tarefa.
           setAnexos((prev) =>
             prev.filter((_, idx) => !anexosEnviados.includes(idx)),
           );
           throw new Error(
             `Falhou enviar ${arquivo.name} (${(arquivo.size / 1024 / 1024).toFixed(
               1,
-            )}MB). ${
-              upData.error ?? ''
-            } Já enviei ${anexosEnviados.length}/${anexos.length} arquivo${
+            )}MB). Upload pro Google retornou ${upRes.status}. Já enviei ${anexosEnviados.length}/${anexos.length} arquivo${
               anexos.length > 1 ? 's' : ''
-            }. Tente de novo com os que faltam ou reduza o tamanho.`,
+            }. Tente de novo com os que faltam.`,
           );
         }
         if (upData.driveLink) driveLink = upData.driveLink as string;
@@ -1039,6 +1052,7 @@ function SlidePreview({
 }) {
   const ehVideo = isVideo(arquivo.mimeType, arquivo.name);
   const ehImagem = isImage(arquivo.mimeType, arquivo.name);
+  const ehAudio = isAudio(arquivo.mimeType, arquivo.name);
   const [imgFalhou, setImgFalhou] = useState(false);
 
   // URL servida pelo nosso proxy (autenticado server-side com a refresh token do Drive).
@@ -1085,6 +1099,27 @@ function SlidePreview({
         loading={prioridade ? 'eager' : 'lazy'}
         onError={() => setImgFalhou(true)}
       />
+    );
+  }
+  if (ehAudio) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-mauve/10 px-6">
+        <div className="flex flex-col items-center gap-2 text-mauve">
+          <span className="text-[56px] leading-none">🎙</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em]">
+            áudio
+          </span>
+          <span className="max-w-full truncate text-[12px] text-t2" title={arquivo.name}>
+            {arquivo.name}
+          </span>
+        </div>
+        <audio
+          src={proxySrc}
+          controls
+          preload="metadata"
+          className="w-full max-w-md"
+        />
+      </div>
     );
   }
   return (

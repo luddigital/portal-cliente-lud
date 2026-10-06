@@ -107,6 +107,27 @@ export type WhatsappSugestao = {
 // Helpers de domínio
 // -----------------------------------------------------------------
 
+/**
+ * Retorna o group ID do WhatsApp (ex: "120363XXXX@g.us") associado a um projeto,
+ * ou null se o projeto não tem grupo cadastrado.
+ */
+export async function getGrupoWhatsappDoProjeto(
+  projetoId: string,
+): Promise<WhatsappGrupo | null> {
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('whatsapp_grupos')
+    .select('*')
+    .eq('projeto_id', projetoId)
+    .eq('ativo', true)
+    .maybeSingle();
+  if (error) {
+    console.warn('[getGrupoWhatsappDoProjeto]', error.message);
+    return null;
+  }
+  return (data as WhatsappGrupo | null) ?? null;
+}
+
 /** Lista grupos que um email tem permissão de LER (ativos + permissão concedida). */
 export async function listarGruposDoUsuario(email: string): Promise<WhatsappGrupo[]> {
   const sb = await supabaseAdmin();

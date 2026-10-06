@@ -8,25 +8,13 @@ import {
   listPostsNoIntervalo,
 } from '@/lib/notion';
 import { classificarProjeto } from '@/lib/projetoServico';
+import { inicioDaSemana, ymd } from '@/lib/semana';
 import { CalendarioAdminView } from './CalendarioAdminView';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const SERVICOS_SOCIAL = new Set(['Instagram', 'TikTok', 'Stories']);
-
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
-}
-
-function inicioDaSemana(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  x.setDate(x.getDate() - x.getDay()); // Domingo
-  return x;
-}
 
 export default async function CalendarioAdminPage({
   searchParams,

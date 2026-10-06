@@ -14,7 +14,11 @@ function PostCard({ p }: { p: PostCalendario }) {
   const label = p.statusGeral ?? p.etapaLabel;
   const cores = corDoStatus(p);
   return (
-    <div className="rounded-md border border-[rgba(21,21,33,0.1)] bg-white px-1.5 py-1 sm:px-2 sm:py-1.5">
+    <Link
+      href={`/post/${p.id}`}
+      title={`${p.projetoNome} — ${p.titulo} · ${label}`}
+      className="block rounded-md border border-[rgba(21,21,33,0.1)] bg-white px-1.5 py-1 sm:px-2 sm:py-1.5 transition hover:border-navy/40 hover:shadow-sm"
+    >
       <div className="truncate text-[9px] font-semibold uppercase tracking-[0.06em] text-t3">
         {p.projetoNome}
       </div>
@@ -27,7 +31,7 @@ function PostCard({ p }: { p: PostCalendario }) {
       >
         {label}
       </span>
-    </div>
+    </Link>
   );
 }
 

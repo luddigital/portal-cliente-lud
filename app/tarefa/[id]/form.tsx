@@ -1,7 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { upload as blobUpload } from '@vercel/blob/client';
 import { GravarVoiceOver } from '@/app/_components/GravarVoiceOver';
 
 // Limite por arquivo: Vercel funcoes serverless tem cap perto de 500MB de
@@ -9,12 +10,378 @@ import { GravarVoiceOver } from '@/app/_components/GravarVoiceOver';
 // maiores que isso devem ir via "link externo" (Drive próprio do cliente).
 const TAMANHO_MAX_MB = 450;
 
-// Concorrência: subir 3 arquivos em paralelo é seguro pro Drive e bem mais
-// rápido que sequencial. Mais que isso a Drive API começa a 503.
-const PARALELOS = 3;
+// Concorrência: 2 uploads paralelos. Mais que isso, com vídeos grandes,
+// disputa banda e aumenta chance de "Failed to fetch" por timeout na rede
+// do cliente (celular, wifi instável). 2 é o sweet spot: rápido sem sobrecarregar.
+const PARALELOS = 2;
+// Retry por chunk. Cobre falha transiente (Wi-Fi cai por segundos, ISP hipa,
+// Google devolve 5xx). Backoff exponencial (2s, 4s, 8s).
+const CHUNK_RETRIES = 3;
+// Retry da SESSÃO INTEIRA — cria uma sessão nova se a atual falhou tudo.
+// Cobre o caso raro de a URL de sessão ter expirado no meio.
+const RETRY = 1;
+// Tamanho do chunk: 8 MB. Precisa ser múltiplo de 256 KB (regra do Google Drive).
+// Pequeno o bastante pra dar retry rápido, grande o bastante pra manter throughput.
+// Um vídeo de 200 MB vira 25 chunks — se rede cair em qualquer um, retenta só ele.
+const CHUNK_SIZE = 8 * 1024 * 1024;
+// Timeout por CHUNK, não por arquivo. 5 min é folgado até em 3G ruim.
+const CHUNK_TIMEOUT_MS = 5 * 60 * 1000;
 
 type StatusArquivo = 'pendente' | 'subindo' | 'ok' | 'erro';
-type FilaItem = { file: File; status: StatusArquivo; erro?: string };
+type FilaItem = {
+  file: File;
+  /** Nome que vai pro Drive. Cliente pode editar antes de enviar.
+   *  Default: file.name. Mantém extensão original. */
+  nome: string;
+  status: StatusArquivo;
+  erro?: string;
+  progresso?: number;
+};
+
+/**
+ * Sobe UM chunk pro Google Drive via PUT com Content-Range.
+ * Retorna o HTTP status: 308 = chunk aceito, continua; 200/201 = upload final ok.
+ */
+function putChunk(
+  uploadUrl: string,
+  chunk: Blob,
+  contentRange: string,
+  mime: string,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl, true);
+    xhr.timeout = CHUNK_TIMEOUT_MS;
+    xhr.setRequestHeader('Content-Type', mime || 'application/octet-stream');
+    xhr.setRequestHeader('Content-Range', contentRange);
+    xhr.onload = () => resolve(xhr.status);
+    xhr.onerror = () => reject(new Error('rede caiu'));
+    xhr.ontimeout = () => reject(new Error('timeout'));
+    xhr.send(chunk);
+  });
+}
+
+/**
+ * Pergunta pro Google Drive quantos bytes já foram confirmados nessa sessão.
+ * Usa PUT com Content-Range: bytes STAR/TOTAL e body vazio (spec do resumable).
+ * Response 308 traz header Range: bytes=0-N indicando o último byte aceito.
+ * Ou 200/201 se, entre chunks, o Google reconheceu que o arquivo completou.
+ */
+function queryStatus(
+  uploadUrl: string,
+  total: number,
+): Promise<{ status: number; byteConfirmado: number | null }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl, true);
+    xhr.timeout = 30 * 1000;
+    xhr.setRequestHeader('Content-Range', `bytes */${total}`);
+    xhr.onload = () => {
+      let byteConfirmado: number | null = null;
+      const range = xhr.getResponseHeader('Range');
+      if (range) {
+        const m = range.match(/bytes=0-(\d+)/);
+        if (m) byteConfirmado = parseInt(m[1], 10);
+      }
+      resolve({ status: xhr.status, byteConfirmado });
+    };
+    xhr.onerror = () => reject(new Error('query rede'));
+    xhr.ontimeout = () => reject(new Error('query timeout'));
+    xhr.send();
+  });
+}
+
+/**
+ * PUT direto pro Google Drive em CHUNKS de 8 MB via resumable upload protocol.
+ *
+ * Por que chunked: um PUT gigante de 200 MB numa rede instável (wifi doméstico,
+ * 4G) sofre. Qualquer soluço de 2 segundos derruba a request inteira e o cliente
+ * perde tudo. Em chunks de 8 MB, cada request dura segundos — se cair, retenta
+ * só o pedaço. Se rede cair no meio, query o Google, descobre onde parou, e
+ * continua daquele byte.
+ *
+ * Docs: https://developers.google.com/drive/api/guides/manage-uploads#resumable
+ */
+function putArquivoNoDrive(
+  uploadUrl: string,
+  file: File,
+  onProgress?: (frac: number) => void,
+): Promise<void> {
+  const mime = file.type || 'application/octet-stream';
+  const total = file.size;
+
+  async function run() {
+    let cursor = 0;
+    while (cursor < total) {
+      const chunkEnd = Math.min(cursor + CHUNK_SIZE, total);
+      const chunk = file.slice(cursor, chunkEnd);
+      const contentRange = `bytes ${cursor}-${chunkEnd - 1}/${total}`;
+
+      let ultimaErro: Error | null = null;
+      let subiu = false;
+
+      for (let tent = 0; tent < CHUNK_RETRIES; tent++) {
+        try {
+          const status = await putChunk(uploadUrl, chunk, contentRange, mime);
+          if (status === 200 || status === 201) {
+            // Última chunk aceita, upload terminou.
+            onProgress?.(1);
+            return;
+          }
+          if (status === 308) {
+            // Chunk aceito, continua próximo.
+            cursor = chunkEnd;
+            onProgress?.(cursor / total);
+            subiu = true;
+            break;
+          }
+          throw new Error(`Google devolveu HTTP ${status}`);
+        } catch (err: any) {
+          ultimaErro = err;
+          if (tent < CHUNK_RETRIES - 1) {
+            // Backoff exponencial: 2s, 4s, 8s.
+            await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, tent)));
+            // Query pro Google: já confirmou parte? Continua de onde parou.
+            try {
+              const q = await queryStatus(uploadUrl, total);
+              if (q.status === 200 || q.status === 201) {
+                onProgress?.(1);
+                return;
+              }
+              if (q.byteConfirmado != null) {
+                cursor = q.byteConfirmado + 1;
+                onProgress?.(cursor / total);
+                // Se avançou dentro do chunk atual, refaz o chunk desse ponto.
+                if (cursor >= chunkEnd) {
+                  subiu = true;
+                  break;
+                }
+              }
+            } catch {
+              // Query falhou, continua retentando o chunk mesmo.
+            }
+          }
+        }
+      }
+
+      if (!subiu) {
+        throw ultimaErro ?? new Error('Falha ao subir chunk após retentativas');
+      }
+    }
+  }
+
+  return run();
+}
+
+/** Classifica o arquivo pelo tipo pra decidir qual preview mostrar. */
+function tipoArquivo(file: File): 'imagem' | 'video' | 'audio' | 'outro' {
+  const mime = (file.type || '').toLowerCase();
+  const nome = file.name.toLowerCase();
+  if (mime.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(nome))
+    return 'imagem';
+  if (mime.startsWith('video/') || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(nome))
+    return 'video';
+  if (mime.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(nome))
+    return 'audio';
+  return 'outro';
+}
+
+/**
+ * Card de 1 arquivo na galeria antes do envio.
+ * Mostra preview visual (imagem/vídeo), nome editável e botão X pra remover.
+ * Enquanto sobe: overlay com %. Depois: status check/erro.
+ */
+function CardArquivo({
+  item,
+  podeEditar,
+  onRemover,
+  onRenomear,
+}: {
+  item: FilaItem;
+  podeEditar: boolean;
+  onRemover: () => void;
+  onRenomear: (novoNomeBase: string) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const ext = item.file.name.includes('.')
+    ? item.file.name.slice(item.file.name.lastIndexOf('.'))
+    : '';
+  const baseAtual = item.nome.endsWith(ext)
+    ? item.nome.slice(0, item.nome.length - ext.length)
+    : item.nome;
+  const [valor, setValor] = useState(baseAtual);
+  const grande = item.file.size > TAMANHO_MAX_MB * 1024 * 1024;
+  const pct = item.progresso ? Math.round(item.progresso * 100) : null;
+  const tipo = tipoArquivo(item.file);
+
+  // Blob URL pra preview local. Revoga no cleanup pra não vazar memória.
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (tipo === 'imagem' || tipo === 'video' || tipo === 'audio') {
+      const url = URL.createObjectURL(item.file);
+      setPreview(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    return undefined;
+  }, [item.file, tipo]);
+
+  function confirmar() {
+    onRenomear(valor);
+    setEditando(false);
+  }
+
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-xl border bg-white transition ${
+        item.status === 'erro' || grande
+          ? 'border-[var(--prazo-atrasado)]/30'
+          : item.status === 'ok'
+            ? 'border-[var(--prazo-em-dia)]/40'
+            : item.status === 'subindo'
+              ? 'border-navy/30'
+              : 'border-[rgba(21,21,33,0.1)] hover:border-navy/40'
+      }`}
+    >
+      {/* Preview visual */}
+      <div className="relative aspect-square w-full overflow-hidden bg-bgSoft">
+        {tipo === 'imagem' && preview && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={preview}
+            alt={item.nome}
+            className="h-full w-full object-cover"
+          />
+        )}
+        {tipo === 'video' && preview && (
+          <video
+            src={preview}
+            preload="metadata"
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+          />
+        )}
+        {tipo === 'audio' && (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-mauve/15 px-3 text-mauve">
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-[28px] leading-none">🎙</span>
+              <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em]">
+                áudio
+              </span>
+            </div>
+            {preview && (
+              <audio
+                src={preview}
+                controls
+                preload="metadata"
+                className="h-8 w-full max-w-full"
+              />
+            )}
+          </div>
+        )}
+        {tipo === 'outro' && (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-t3">
+            <span className="text-[32px] leading-none">📎</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">
+              arquivo
+            </span>
+          </div>
+        )}
+
+        {/* Botão X — só antes do envio */}
+        {podeEditar && (
+          <button
+            type="button"
+            onClick={onRemover}
+            title="Remover da lista"
+            aria-label="Remover arquivo"
+            className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink/80 text-[14px] font-bold text-white opacity-90 transition hover:bg-ink hover:opacity-100"
+          >
+            ×
+          </button>
+        )}
+
+        {/* Overlay de progresso durante upload */}
+        {item.status === 'subindo' && pct != null && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-ink/60 text-white">
+            <div className="font-mono text-[20px] font-semibold">{pct}%</div>
+            <div className="mt-2 h-1 w-3/4 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full bg-white transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Badge de status final */}
+        {item.status === 'ok' && (
+          <div className="absolute left-1.5 top-1.5 inline-flex h-6 items-center justify-center rounded-full bg-[var(--prazo-em-dia)] px-2 text-[10px] font-bold uppercase tracking-[0.08em] text-white">
+            ✓ enviado
+          </div>
+        )}
+        {(item.status === 'erro' || grande) && (
+          <div className="absolute left-1.5 top-1.5 inline-flex h-6 items-center justify-center rounded-full bg-[var(--prazo-atrasado)] px-2 text-[10px] font-bold uppercase tracking-[0.08em] text-white">
+            ⚠ {grande ? 'muito grande' : 'erro'}
+          </div>
+        )}
+      </div>
+
+      {/* Nome + tamanho */}
+      <div className="p-2.5">
+        {editando ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              onBlur={confirmar}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmar();
+                if (e.key === 'Escape') {
+                  setValor(baseAtual);
+                  setEditando(false);
+                }
+              }}
+              autoFocus
+              className="min-w-0 flex-1 rounded border border-navy/40 bg-white px-1.5 py-0.5 font-mono text-[11px] text-ink focus:outline-none"
+            />
+            <span className="shrink-0 font-mono text-[10px] text-t3">
+              {ext}
+            </span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => podeEditar && setEditando(true)}
+            disabled={!podeEditar}
+            title={podeEditar ? 'Clique pra renomear' : item.nome}
+            className={`block w-full truncate text-left font-mono text-[11px] text-ink ${
+              podeEditar ? 'hover:underline' : 'cursor-default'
+            }`}
+          >
+            {item.nome}
+          </button>
+        )}
+        <div className="mt-0.5 flex items-center justify-between text-[10px] text-t3">
+          <span className="font-mono">
+            {(item.file.size / 1024 / 1024).toFixed(1)} MB
+          </span>
+          {podeEditar && !editando && (
+            <span className="text-[9.5px] italic opacity-70">
+              clique no nome pra renomear
+            </span>
+          )}
+        </div>
+        {item.status === 'erro' && item.erro && (
+          <div className="mt-1 text-[10px] leading-tight text-[var(--prazo-atrasado)]">
+            {item.erro}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function TarefaForm({
   tarefaId,
@@ -62,7 +429,7 @@ export function TarefaForm({
       // Mantém gravações de voice over que já estavam na fila — só substitui
       // o que veio do file picker.
       ...prev.filter((it) => it.file.name.startsWith('voice-over-')),
-      ...novos.map((f) => ({ file: f, status: 'pendente' as const })),
+      ...novos.map((f) => ({ file: f, nome: f.name, status: 'pendente' as const })),
     ]);
     setError(null);
     // Abre popup pra qualquer arquivo que exceda o limite — assim o cliente
@@ -75,25 +442,80 @@ export function TarefaForm({
     setFila((prev) => [
       // Remove gravação anterior (se a pessoa regravou) e adiciona a nova
       ...prev.filter((it) => !it.file.name.startsWith('voice-over-')),
-      { file, status: 'pendente' as const },
+      { file, nome: file.name, status: 'pendente' as const },
     ]);
     setError(null);
+  }
+
+  function removerDaFila(item: FilaItem) {
+    setFila((prev) => prev.filter((it) => it !== item));
+  }
+
+  function renomearItem(item: FilaItem, novoNomeBase: string) {
+    // Preserva a extensão original — cliente só edita a parte do nome.
+    const ext = item.file.name.includes('.')
+      ? item.file.name.slice(item.file.name.lastIndexOf('.'))
+      : '';
+    const base = novoNomeBase.trim().replace(/\.[^./]*$/, ''); // tira ext se o cliente digitou
+    const nome = (base || 'arquivo') + ext;
+    setFila((prev) =>
+      prev.map((it) => (it === item ? { ...it, nome } : it)),
+    );
   }
 
   const arquivosGrandes = fila.filter((it) => it.file.size > TAMANHO_MAX_MB * 1024 * 1024);
   const tamanhoTotalMB = fila.reduce((s, it) => s + it.file.size, 0) / (1024 * 1024);
 
   async function subirArquivo(item: FilaItem): Promise<void> {
-    const fd = new FormData();
-    fd.append('arquivos', item.file);
-    const res = await fetch(`/api/tarefas/${tarefaId}/submit`, {
-      method: 'POST',
-      body: fd,
+    // Estratégia: sobe pro Vercel Blob (edge, geograficamente perto do
+    // cliente, muito mais estável que googleapis.com em redes oscilantes),
+    // depois o servidor (com conexão de datacenter) transfere pro Drive.
+    //
+    // O @vercel/blob/client faz multipart chunked internamente e cuida de
+    // retry a nível de pedaço. Rede caindo por segundos não derruba tudo.
+    const blob = await blobUpload(item.nome, item.file, {
+      access: 'public',
+      contentType: item.file.type || 'application/octet-stream',
+      handleUploadUrl: `/api/tarefas/${tarefaId}/blob-token`,
+      multipart: true, // ativa chunks paralelos com retry embutido
+      // addRandomSuffix é configurado no server (/blob-token) — a flag
+      // só vale em onBeforeGenerateToken, não aqui no client.
+      onUploadProgress: ({ percentage }) => {
+        const frac = percentage / 100;
+        setFila((prev) =>
+          prev.map((it) =>
+            it === item ? { ...it, progresso: frac } : it,
+          ),
+        );
+      },
     });
-    if (!res.ok) {
-      let msg = `Erro ${res.status}`;
+
+    // Blob upload terminou. Logs no console pra debug.
+    // eslint-disable-next-line no-console
+    console.log('[upload] blob criado:', {
+      arquivo: item.file.name,
+      url: blob.url,
+      pathname: blob.pathname,
+    });
+
+    // Agora o servidor puxa do Blob e sobe pro Drive definitivo.
+    const transferRes = await fetch(
+      `/api/tarefas/${tarefaId}/blob-para-drive`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          blobUrl: blob.url,
+          nome: item.nome, // nome editado pelo cliente, vai pro Drive assim
+          mimeType: item.file.type || 'application/octet-stream',
+          tamanho: item.file.size,
+        }),
+      },
+    );
+    if (!transferRes.ok) {
+      let msg = `Erro ${transferRes.status} ao mover pro Drive`;
       try {
-        const d = await res.json();
+        const d = await transferRes.json();
         msg = d.error ?? msg;
       } catch {}
       throw new Error(msg);
@@ -137,12 +559,19 @@ export function TarefaForm({
     setProgresso({ feitos: 0, total: fila.length });
 
     try {
-      // Sobe arquivos em chunks paralelos (3 por vez). Cada upload é 1
-      // request — Vercel processa sem estourar limite.
+      // Sobe arquivos em lotes paralelos. Cada upload vai DIRETO pro Drive
+      // via resumable session — não passa pelo Vercel.
+      //
+      // Só processa itens 'pendente' ou 'erro' (permite re-clicar Enviar
+      // pra retentar só os que faltam, mantendo os já 'ok').
+      const paraSubir = fila.filter(
+        (it) => it.status === 'pendente' || it.status === 'erro',
+      );
       let cursor = 0;
-      let feitos = 0;
-      while (cursor < fila.length) {
-        const lote = fila.slice(cursor, cursor + PARALELOS);
+      let feitos = fila.filter((it) => it.status === 'ok').length;
+      setProgresso({ feitos, total: fila.length });
+      while (cursor < paraSubir.length) {
+        const lote = paraSubir.slice(cursor, cursor + PARALELOS);
         cursor += PARALELOS;
         // Marca como subindo
         setFila((prev) =>
@@ -175,6 +604,23 @@ export function TarefaForm({
               'Falha geral no upload',
           );
         }
+      }
+
+      // Depois de rodar tudo, checa quantos falharam mesmo com retry.
+      // Se sobrou algum com erro, avisa o cliente do que precisa fazer
+      // (retentar apenas os que faltam, ou mandar por link externo).
+      const falhados = fila.filter((it) => it.status === 'erro');
+      if (falhados.length > 0) {
+        setError(
+          `${falhados.length} de ${fila.length} não subiram (${falhados
+            .slice(0, 3)
+            .map((f) => f.file.name)
+            .join(', ')}${falhados.length > 3 ? '…' : ''}). ` +
+            `Remova os que subiram, clique "Enviar" de novo pra os que faltam, ` +
+            `ou cole um link do Drive/WeTransfer em "Link externo" abaixo.`,
+        );
+        setLoading(false);
+        return; // não finaliza a tarefa enquanto tem falha
       }
 
       // Última chamada — finaliza (fecha tarefa OU só sobe, dependendo de naoFinalizarTarefa)
@@ -306,46 +752,33 @@ export function TarefaForm({
         </div>
 
         {fila.length > 0 && (
-          <ul className="mt-3 space-y-1 text-[12px]">
-            {fila.map((it, i) => {
-              const grande = it.file.size > TAMANHO_MAX_MB * 1024 * 1024;
-              return (
-                <li
+          <div className="mt-4 space-y-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-[11.5px] text-t2">
+                <b className="text-ink">{fila.length}</b>{' '}
+                {fila.length === 1 ? 'arquivo pronto' : 'arquivos prontos'} pra enviar
+                <span className="ml-1 text-t3">
+                  · {(fila.reduce((s, it) => s + it.file.size, 0) / 1024 / 1024).toFixed(1)} MB
+                </span>
+              </div>
+              {!loading && (
+                <span className="text-[10.5px] italic text-t3">
+                  Revise antes de enviar: clique no nome pra renomear, X pra remover.
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {fila.map((it, i) => (
+                <CardArquivo
                   key={i}
-                  className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 font-mono ${
-                    it.status === 'erro' || grande
-                      ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
-                      : it.status === 'ok'
-                        ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
-                        : it.status === 'subindo'
-                          ? 'bg-bgSoft text-t2'
-                          : 'text-t2'
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="shrink-0">
-                      {it.status === 'ok'
-                        ? '✓'
-                        : it.status === 'erro'
-                          ? '⚠'
-                          : it.status === 'subindo'
-                            ? '↑'
-                            : grande
-                              ? '✕'
-                              : '·'}
-                    </span>
-                    <span className="truncate">{it.file.name}</span>
-                  </span>
-                  <span className="shrink-0 text-[11px]">
-                    {(it.file.size / 1024 / 1024).toFixed(1)} MB
-                    {grande && (
-                      <span className="ml-1 not-italic">passa do limite</span>
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+                  item={it}
+                  podeEditar={!loading && it.status !== 'ok' && it.status !== 'subindo'}
+                  onRemover={() => removerDaFila(it)}
+                  onRenomear={(novo) => renomearItem(it, novo)}
+                />
+              ))}
+            </div>
+          </div>
         )}
 
         {progresso && loading && (

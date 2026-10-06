@@ -48,7 +48,36 @@ function dataCurta(iso: string): string {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-/** Fatos determinísticos extraídos dos dados — a matéria-prima dos insights. */
+/** Formata um post pro payload (versão enxuta pra IA consumir). */
+function fatoPost(m: IgMediaItem) {
+  return {
+    legenda: (m.caption || 'Sem legenda').slice(0, 90),
+    formato: formatoDoPost(m),
+    data: dataCurta(m.timestamp),
+    views: m.views,
+    alcance: m.reach,
+    interacoes: m.interactions,
+    curtidas: m.likes,
+    comentarios: m.comments,
+    salvos: m.saved,
+    compartilhamentos: m.shares,
+  };
+}
+
+/** Delta percentual (2 casas). Retorna null se base for 0 (evita "infinito%"). */
+function deltaPct(atual: number, anterior: number): number | null {
+  if (!anterior || anterior === 0) return null;
+  return Number((((atual - anterior) / anterior) * 100).toFixed(1));
+}
+
+/** Fatos determinísticos extraídos dos dados — a matéria-prima dos insights.
+ *
+ *  Filosofia: passar MÚLTIPLOS ÂNGULOS (não só top-por-views). A IA precisa
+ *  ver os top por alcance, por salvamento, por compartilhamento etc. — porque
+ *  um post "que funcionou" pode ser diferente em cada dimensão. Também passa
+ *  o CONTRASTE do período (o que subiu vs o que caiu) e a fatia % do volume
+ *  que cada formato representa — pra IA poder dizer "35% do volume rendeu
+ *  menos que 1 Reel sozinho" em vez de só "carrossel teve média baixa". */
 export function detectarEventos(a: IgAnalytics) {
   // --- Pico de seguidores ---
   const serie = a.serieSeguidores;
@@ -74,40 +103,127 @@ export function detectarEventos(a: IgAnalytics) {
     postDoPico = candidatos[0] ?? null;
   }
 
-  // --- Top posts por views ---
-  const topPosts = [...a.conteudos]
-    .sort((x, y) => y.views - x.views || y.interactions - x.interactions)
-    .slice(0, 3)
-    .map((m) => ({
-      legenda: (m.caption || 'Sem legenda').slice(0, 90),
-      formato: formatoDoPost(m),
-      data: dataCurta(m.timestamp),
-      views: m.views,
-      alcance: m.reach,
-      interacoes: m.interactions,
-      curtidas: m.likes,
-      comentarios: m.comments,
-      salvos: m.saved,
-    }));
+  // --- Contraste vs período anterior (o quê subiu, o quê caiu) ---
+  const contraste = {
+    alcance: {
+      atual: a.atual.reach,
+      anterior: a.anterior.reach,
+      variacaoPct: deltaPct(a.atual.reach, a.anterior.reach),
+    },
+    views: {
+      atual: a.atual.views,
+      anterior: a.anterior.views,
+      variacaoPct: deltaPct(a.atual.views, a.anterior.views),
+    },
+    interacoes: {
+      atual: a.atual.interactions,
+      anterior: a.anterior.interactions,
+      variacaoPct: deltaPct(a.atual.interactions, a.anterior.interactions),
+    },
+    contasEngajadas: {
+      atual: a.atual.engagedAccounts,
+      anterior: a.anterior.engagedAccounts,
+      variacaoPct: deltaPct(a.atual.engagedAccounts, a.anterior.engagedAccounts),
+    },
+    visitasPerfil: {
+      atual: a.atual.profileViews,
+      anterior: a.anterior.profileViews,
+      variacaoPct: deltaPct(a.atual.profileViews, a.anterior.profileViews),
+    },
+    seguidoresNovos: {
+      atual: a.atual.novosSeguidores,
+      anterior: a.anterior.novosSeguidores,
+      variacaoPct: deltaPct(a.atual.novosSeguidores, a.anterior.novosSeguidores),
+    },
+  };
 
-  // --- Desempenho médio por formato ---
-  const porFormato = new Map<string, { qtd: number; views: number; inter: number; reach: number }>();
-  for (const m of a.conteudos) {
+  // --- Top posts por VÁRIAS métricas ---
+  // A ideia: um post pode "funcionar" de jeitos diferentes. O top por alcance
+  // não é o mesmo que o top por salvamento (que sinaliza conteúdo educativo)
+  // ou por compartilhamento (indicação boca a boca). Passar os 3 pra IA.
+  const posts = a.conteudos;
+  const topPor = {
+    views: [...posts].sort((x, y) => y.views - x.views).slice(0, 3).map(fatoPost),
+    alcance: [...posts].sort((x, y) => y.reach - x.reach).slice(0, 3).map(fatoPost),
+    salvos: [...posts].sort((x, y) => y.saved - x.saved).slice(0, 3).map(fatoPost),
+    compartilhamentos: [...posts]
+      .sort((x, y) => y.shares - x.shares)
+      .slice(0, 3)
+      .map(fatoPost),
+    comentarios: [...posts]
+      .sort((x, y) => y.comments - x.comments)
+      .slice(0, 3)
+      .map(fatoPost),
+    interacoes: [...posts]
+      .sort((x, y) => y.interactions - x.interactions)
+      .slice(0, 3)
+      .map(fatoPost),
+  };
+
+  // --- Desempenho por formato (agregados + FATIA % DO VOLUME) ---
+  // Pra IA poder dizer "35% do volume rendeu X" em vez de só "média baixa".
+  const totalPosts = posts.length;
+  const totalViews = posts.reduce((s, m) => s + m.views, 0);
+  const totalAlcance = posts.reduce((s, m) => s + m.reach, 0);
+  const totalInter = posts.reduce((s, m) => s + m.interactions, 0);
+
+  const porFormato = new Map<
+    string,
+    { qtd: number; views: number; inter: number; reach: number; saved: number; shares: number }
+  >();
+  for (const m of posts) {
     const f = formatoDoPost(m);
-    const cur = porFormato.get(f) ?? { qtd: 0, views: 0, inter: 0, reach: 0 };
+    const cur = porFormato.get(f) ?? { qtd: 0, views: 0, inter: 0, reach: 0, saved: 0, shares: 0 };
     cur.qtd += 1;
     cur.views += m.views;
     cur.inter += m.interactions;
     cur.reach += m.reach;
+    cur.saved += m.saved;
+    cur.shares += m.shares;
     porFormato.set(f, cur);
   }
-  const formatos = [...porFormato.entries()].map(([formato, v]) => ({
-    formato,
-    qtd: v.qtd,
-    mediaViews: Math.round(v.views / v.qtd),
-    mediaInteracoes: Math.round(v.inter / v.qtd),
-    mediaAlcance: Math.round(v.reach / v.qtd),
-  }));
+  const pct = (n: number, tot: number) =>
+    tot > 0 ? Number(((n / tot) * 100).toFixed(1)) : 0;
+  const formatos = [...porFormato.entries()]
+    .map(([formato, v]) => ({
+      formato,
+      qtd: v.qtd,
+      pctDosPosts: pct(v.qtd, totalPosts),
+      pctDoAlcance: pct(v.reach, totalAlcance),
+      pctDasViews: pct(v.views, totalViews),
+      pctDasInteracoes: pct(v.inter, totalInter),
+      mediaViews: v.qtd ? Math.round(v.views / v.qtd) : 0,
+      mediaInteracoes: v.qtd ? Math.round(v.inter / v.qtd) : 0,
+      mediaAlcance: v.qtd ? Math.round(v.reach / v.qtd) : 0,
+      mediaSalvos: v.qtd ? Math.round(v.saved / v.qtd) : 0,
+      mediaCompartilhamentos: v.qtd ? Math.round(v.shares / v.qtd) : 0,
+      alcanceTotal: v.reach,
+      viewsTotal: v.views,
+    }))
+    .sort((a, b) => b.mediaAlcance - a.mediaAlcance);
+
+  // --- Piores 3 posts (pra ancorar "o que evitar" em post específico) ---
+  const piores = [...posts]
+    .filter((m) => m.reach > 0 || m.views > 0) // ignora vazio
+    .sort((x, y) => x.reach + x.views - (y.reach + y.views))
+    .slice(0, 3)
+    .map(fatoPost);
+
+  // --- Alcance seguidores vs não-seguidores em % ---
+  const alcanceSplit = a.publico
+    ? {
+        seguidores: a.publico.seguidores,
+        naoSeguidores: a.publico.naoSeguidores,
+        pctSeguidores: pct(
+          a.publico.seguidores,
+          a.publico.seguidores + a.publico.naoSeguidores,
+        ),
+        pctNaoSeguidores: pct(
+          a.publico.naoSeguidores,
+          a.publico.seguidores + a.publico.naoSeguidores,
+        ),
+      }
+    : null;
 
   return {
     periodo: a.period,
@@ -126,17 +242,21 @@ export function detectarEventos(a: IgAnalytics) {
           interacoes: postDoPico.interactions,
         }
       : null,
-    topPosts,
+    contraste,
+    topPor,
+    piores,
     formatos,
+    totalPostsPeriodo: totalPosts,
     kpis: {
       views: a.atual.views,
       alcance: a.atual.reach,
       interacoes: a.atual.interactions,
+      contasEngajadas: a.atual.engagedAccounts,
       taxaEngajamento: `${(a.taxaEngajamento * 100).toFixed(1)}%`,
       visitasPerfil: a.atual.profileViews,
     },
     viewsPorTipo: a.viewsPorTipo.map((i) => ({ tipo: i.chave, views: i.valor })),
-    publico: a.publico,
+    alcanceSplit,
     demografia: a.demografia
       ? {
           genero: a.demografia.genero.slice(0, 3),
@@ -154,18 +274,31 @@ export function detectarEventos(a: IgAnalytics) {
 
 export type Audiencia = 'interno' | 'cliente';
 
-const REGRAS_COPY = `REGRAS DE ESCRITA (guia de copy da Lud.):
-- Frases curtas e específicas. Sempre com número ou nome real do post.
-- NUNCA use travessão (—). Use dois pontos, vírgula ou nova frase.
-- PROIBIDO frase genérica: nada de "muda completamente", "crescimento consistente", "deixa de X e vira Y", "quando você entende", "é aí que", "ou seja", "e é por isso que", nem tom de guru ("eu sempre digo").
-- Nada de inventar. Use SÓ os números que estão nos fatos.
-- Tom de conversa, direto, sem enrolação.`;
+const REGRAS_COPY = `REGRAS DE ESCRITA (obrigatórias):
+
+1. TODO INSIGHT PRECISA DE NÚMERO REAL DO PERÍODO. Nada de "engajamento foi bom" sem citar o número que prova. Se você não tem o número no fato, não escreve o insight.
+
+2. NUNCA use travessão (—). Use dois pontos, ponto final ou vírgula.
+
+3. PROIBIDO usar estas frases e conectores vazios:
+   - "ou seja", "é por isso que", "isso mostra que", "muda completamente"
+   - "quando você entende", "é aí que"
+   - "crescimento consistente", "resultado sólido", "performance boa"
+   - "deixa de X e vira Y"
+   - qualquer coisa com tom de guru ("eu sempre digo", "a verdade é que")
+
+4. PROIBIDO relatório corporativo. Nada de "houve um crescimento significativo".
+   Escreve como quem olha os números e fala a real com quem tá do lado.
+
+5. Frases curtas. Nome de post, formato e número específicos.
+
+6. Nada de inventar. Use SÓ os números que estão nos fatos.`;
 
 function systemPrompt(audiencia: Audiencia): string {
   const tom =
     audiencia === 'cliente'
-      ? 'AUDIÊNCIA: o CLIENTE lê no portal dele. Tom acolhedor e claro, mostrando o valor. Fale como parceira ("a gente", "vamos"). Sem jargão interno nem ordens secas.'
-      : 'AUDIÊNCIA: a EQUIPE da Lud. (admin). Tom tático e direto, pode ser mais cru ("priorizar", "reduzir a cadência"), bem apoiado em número.';
+      ? 'AUDIÊNCIA: o CLIENTE lê no portal dele. Tom acolhedor mas direto. Sem enrolação, sem tom corporativo. Fale como parceira ("a gente", "vamos"), mas sem suavizar o que não funcionou.'
+      : 'AUDIÊNCIA: a EQUIPE da Lud. Tom tático, cru, apoiado em número. Pode ser explícito ("reduzir cadência", "cortar formato").';
 
   return `Você é estrategista de social media da Lud. Digital.
 Recebe FATOS REAIS de um período de Instagram e escreve uma ANÁLISE DO PERÍODO estruturada.
@@ -174,13 +307,48 @@ ${tom}
 
 ${REGRAS_COPY}
 
-Escreva um texto curto pra cada campo:
-- "resumo": frase de abertura. Puxe o fato mais forte e HONESTO do período: de preferência VIEWS e ALCANCE (que cobrem o período todo) + o padrão de conteúdo que liderou. NUNCA lidere por número de seguidores se "seguidoresGanhoParcial" for true. Proibido frase genérica.
-- "funcionou": o formato/padrão de conteúdo que mais performou, com nome de post e número real.
-- "evitar": o que rendeu menos e vale repetir menos, com o porquê curto.
-- "publico": quem a conta atrai (use a demografia: gênero, idade, país). Sem demografia, fale do split seguidores/não-seguidores. Sem nada, devolva "".
-- "seguidores": leitura do crescimento. Se "seguidoresGanhoParcial" for true, deixe claro que o ganho é só dos últimos dias (a API não guarda o histórico). Se um post coincide com o pico, diga "provavelmente puxou", nunca como certeza.
-- "sugestoes": 3 a 5 ações concretas pro PRÓXIMO período. Se houver META, priorize o que ajuda a bater. Se o cliente TEM tráfego pago e um post bombou, sugira impulsionar esse criativo.
+REGRAS DE CONTEÚDO POR CAMPO — leia com atenção, essas instruções são o QUE torna a análise útil:
+
+—— "resumo" (abertura) ——
+Abra com o CONTRASTE REAL do mês, não com uma métrica isolada.
+Formato: "X subiu Y% mas Z caiu W%. O motivo aparece nos números: <fato dos dados>."
+Use o objeto "contraste" pra achar o contraste (ex: alcance subiu mas interações caíram).
+Explique o motivo com um número dos fatos (ex: % de alcance que veio de não-seguidores).
+NUNCA lidere por número de seguidores se "seguidoresGanhoParcial" for true.
+
+—— "funcionou" (o que funcionou) ——
+NÃO ranqueie só por 1 métrica (nunca só views).
+Traga 3 ÂNGULOS DIFERENTES do que funcionou, cada um com um post específico e o número que prova, e SOBRETUDO com o MOTIVO DE CADA UM IMPORTAR:
+  - Um post por ALCANCE alto (impacto de descoberta)
+  - Um post por SALVAMENTO alto (sinal de conteúdo educativo/de guarda)
+  - Um post por COMPARTILHAMENTO ou COMENTÁRIO alto (indicação boca a boca ou conversa)
+Use o objeto "topPor" pra achar os candidatos. Se os 3 forem o mesmo post, use 2 ângulos + explique que foi o mesmo (raro).
+Termina reforçando: "três motivos diferentes de performar, não o mesmo padrão repetido" — só quando de fato forem posts diferentes.
+
+—— "evitar" (o que não funcionou) ——
+OBRIGATÓRIO em todo relatório. Tão concreto quanto "funcionou".
+Aponte FORMATO ou POST específico com:
+  - Número (média de alcance/views/interações)
+  - FATIA DO VOLUME que ele representa (use o campo pctDosPosts do formato)
+  - IMPACTO (ex: "35% do volume rendeu menos alcance que 1 Reel sozinho")
+Feche com a ação: "cortar/reduzir esse formato é a ação de maior impacto pro próximo mês."
+Use o objeto "formatos" (ordenado por mediaAlcance decrescente — os últimos são os que puxaram pra baixo) e "piores" (posts individuais que renderam menos).
+
+—— "publico" (quem estamos atraindo) ——
+Use demografia (gênero, idade, país majoritário). Se tem "alcanceSplit", combine com o % de seguidores vs não-seguidores.
+Formato: "Público é X% <gênero>, concentrado em <faixa>, majoritariamente <país>. Alcance veio Y% de <seguidores/não>."
+Sem dado, devolva "".
+
+—— "seguidores" (leitura do crescimento) ——
+Se "seguidoresGanhoParcial" for true, DEIXE CLARO que o ganho só cobre os últimos ~30 dias (a API não guarda mais que isso).
+Se um post coincide com o pico ("postDoPico"), diga "provavelmente puxou o pico" — nunca como certeza.
+Formato: "Ganho de X seguidores (Y dias com dado). O pico foi Z no dia D, provavelmente puxado por <post>."
+
+—— "sugestoes" (Pro próximo período) ——
+3 a 5 ações CONCRETAS ancoradas nos fatos deste período.
+Cada uma cita um formato/tema/post + o número que motiva a ação.
+Se houver META no contexto, priorize o que ajuda a bater.
+Se o cliente TEM tráfego pago e um post bombou, sugira impulsionar aquele criativo específico.
 
 Se um campo não tiver dado suficiente, devolva "" (ou [] em sugestoes). Não invente.
 

@@ -667,10 +667,20 @@ function ContentRow({
 
 // === ABA VISÃO GERAL ===
 function AbaGeral({ a }: { a: IgAnalytics }) {
+  // Marca no gráfico os dias que tiveram post publicado (título + tipo).
+  const marcadores = a.conteudos.map((m) => ({
+    dia: (m.timestamp || '').slice(0, 10),
+    titulo: m.tituloNotion || m.caption || 'Post publicado',
+    tipo: m.mediaType,
+  }));
   return (
     <div className="space-y-6">
       {a.serieViews.length > 0 && (
-        <GraficoLinha dados={a.serieViews} label="Views por dia" />
+        <GraficoLinha
+          dados={a.serieViews}
+          label="Views por dia"
+          marcadores={marcadores}
+        />
       )}
 
       <div className="space-y-4">
@@ -693,12 +703,17 @@ function AbaGeral({ a }: { a: IgAnalytics }) {
           </div>
         )}
         {a.serieAlcance.length > 0 && (
-          <GraficoLinha dados={a.serieAlcance} label="Alcance (por dia)" />
+          <GraficoLinha
+            dados={a.serieAlcance}
+            label="Alcance (por dia)"
+            marcadores={marcadores}
+          />
         )}
         {a.serieEngajamento.length > 0 && (
           <GraficoLinha
             dados={a.serieEngajamento}
             label="Contas engajadas (por dia)"
+            marcadores={marcadores}
           />
         )}
       </div>
@@ -729,7 +744,12 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
       .filter(
         (m) => tipo === 'Todos' || formatoLabel(m.mediaType, m.caption) === tipo,
       )
-      .filter((m) => !q || (m.caption || '').toLowerCase().includes(q))
+      .filter(
+        (m) =>
+          !q ||
+          (m.caption || '').toLowerCase().includes(q) ||
+          (m.tituloNotion || '').toLowerCase().includes(q),
+      )
       .sort((x, y) => y[criterio] - x[criterio]);
     return ordem === 'asc' ? arr.reverse() : arr;
   }, [a.conteudos, busca, tipo, criterio, ordem]);
@@ -738,6 +758,20 @@ function AbaConteudo({ a }: { a: IgAnalytics }) {
 
   return (
     <div className="space-y-4">
+      {a.debugTitulos && (
+        <details className="rounded-lg border border-dashed border-[rgba(21,21,33,0.2)] bg-bgSoft px-3 py-2 text-[11px] text-t3">
+          <summary className="cursor-pointer font-semibold">
+            🔧 Diagnóstico dos títulos do Notion ({a.debugTitulos.postsCasados}/
+            {a.debugTitulos.totalPosts} casados)
+          </summary>
+          <div className="mt-2 space-y-1 font-mono leading-relaxed">
+            <div>projetoId: {a.debugTitulos.projetoId}</div>
+            <div>títulos do Notion no período: {a.debugTitulos.titulosNoPeriodo}</div>
+            <div>datas Notion: {a.debugTitulos.amostraDatasNotion.join(', ') || '—'}</div>
+            <div>datas Instagram: {a.debugTitulos.amostraDatasIg.join(', ') || '—'}</div>
+          </div>
+        </details>
+      )}
       {/* busca */}
       <div className="flex items-center gap-2.5 rounded-2xl border border-[rgba(21,21,33,0.1)] bg-white px-4 py-3">
         <span className="text-[15px] text-t3" aria-hidden>

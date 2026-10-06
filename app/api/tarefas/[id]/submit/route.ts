@@ -9,6 +9,7 @@ import {
   invalidarCachesAposMudanca,
 } from '@/lib/notion';
 import { ensurePostFolder, uploadFile } from '@/lib/drive';
+import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -33,7 +34,10 @@ async function handle(req: Request, tarefaId: string) {
   const data = await getTarefaComPost(tarefaId);
   if (!data) return NextResponse.json({ error: 'tarefa não encontrada' }, { status: 404 });
   const t = data.tarefa;
-  if (!t.projetoId || !session.projetoIds.includes(t.projetoId)) {
+  // Admin bypassa: preview/teste de cliente sem estar no projetoIds da sessão.
+  // Mesma regra dos outros endpoints da tarefa (anexar, upload-init, blob-token).
+  const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+  if (!ehAdmin && (!t.projetoId || !session.projetoIds.includes(t.projetoId))) {
     return NextResponse.json({ error: 'sem permissão pra essa tarefa' }, { status: 403 });
   }
 

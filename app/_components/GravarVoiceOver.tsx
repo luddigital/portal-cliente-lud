@@ -59,15 +59,32 @@ export function GravarVoiceOver({
 
   async function iniciar() {
     setErro(null);
+    // Pré-check: MediaRecorder suportado?
+    if (typeof MediaRecorder === 'undefined') {
+      setErro(
+        'Seu navegador não suporta gravação de áudio. Tenta no Chrome/Safari atualizado, ou grave no celular e envie o arquivo manualmente abaixo.',
+      );
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setErro(
+        'Seu navegador não permite acessar o microfone. Verifique se está em HTTPS e tente de novo.',
+      );
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
-      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/mp4')
-          ? 'audio/mp4'
-          : '';
+      // Ordem de preferência: mp4 primeiro (Safari só aceita isso; Chrome também aceita),
+      // depois webm. Isso maximiza compatibilidade com <audio> em todos os browsers.
+      const candidatos = [
+        'audio/mp4;codecs=mp4a.40.2',
+        'audio/mp4',
+        'audio/webm;codecs=opus',
+        'audio/webm',
+      ];
+      const mime = candidatos.find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
       const rec = mime
         ? new MediaRecorder(stream, { mimeType: mime })
         : new MediaRecorder(stream);
@@ -75,10 +92,28 @@ export function GravarVoiceOver({
       rec.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
+      rec.onerror = (e: any) => {
+        setErro(
+          `Erro na gravação: ${e?.error?.message ?? e?.message ?? 'desconhecido'}`,
+        );
+        setGravando(false);
+      };
       rec.onstop = () => {
-        const tipo = rec.mimeType || 'audio/webm';
+        const tipo = rec.mimeType || mime || 'audio/webm';
         const ext = tipo.includes('mp4') ? 'm4a' : 'webm';
         const blob = new Blob(chunksRef.current, { type: tipo });
+
+        // Validação crítica: se o blob saiu vazio ou minúsculo, o arquivo
+        // não presta e o cliente ia enviar lixo. Avisa pra regravar.
+        if (blob.size < 1024) {
+          setErro(
+            'A gravação saiu vazia. Verifique se o microfone está captando (ícone de permissão no browser) e tente de novo.',
+          );
+          streamRef.current?.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+          return;
+        }
+
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
         const dataStr = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
@@ -90,7 +125,9 @@ export function GravarVoiceOver({
         streamRef.current?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       };
-      rec.start();
+      // start(1000) força ondataavailable a cada 1s — essencial no Safari,
+      // que senão só dispara no stop() e pode perder chunks.
+      rec.start(1000);
       setGravando(true);
       setTempo(0);
       const inicio = Date.now();
@@ -100,8 +137,10 @@ export function GravarVoiceOver({
     } catch (e: any) {
       setErro(
         e?.name === 'NotAllowedError'
-          ? 'Precisamos da permissão de microfone do navegador pra gravar.'
-          : (e?.message ?? 'Não consegui acessar o microfone.'),
+          ? 'Permissão de microfone negada. Clique no cadeado da barra de URL, autorize o microfone e tente de novo.'
+          : e?.name === 'NotFoundError'
+            ? 'Não achei nenhum microfone conectado. Verifica se o microfone do laptop/celular está disponível.'
+            : (e?.message ?? 'Não consegui acessar o microfone.'),
       );
     }
   }
@@ -110,6 +149,16 @@ export function GravarVoiceOver({
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
+    }
+    // Flush dos dados pendentes antes de parar — garante que o último
+    // chunk de áudio seja incluído. Importante no Safari que lazily
+    // bufferiza.
+    try {
+      if (mediaRef.current?.state === 'recording') {
+        mediaRef.current.requestData();
+      }
+    } catch {
+      /* alguns browsers antigos não têm requestData — ignora */
     }
     mediaRef.current?.stop();
     mediaRef.current = null;
@@ -173,19 +222,26 @@ export function GravarVoiceOver({
             </button>
           )}
           {previewUrl && !gravando && (
-            <>
-              <audio src={previewUrl} controls className="h-9 max-w-[200px]" />
-              <button
-                type="button"
-                onClick={regravar}
-                className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-3 py-1.5 text-[12px] font-medium text-ink transition hover:bg-bgSoft"
-              >
-                ↻ Regravar
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={regravar}
+              className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-3 py-1.5 text-[12px] font-medium text-ink transition hover:bg-bgSoft"
+            >
+              ↻ Regravar
+            </button>
           )}
         </div>
       </div>
+
+      {/* Preview em linha dedicada — não cortado */}
+      {previewUrl && !gravando && (
+        <div className="border-b border-[rgba(21,21,33,0.06)] bg-mauve/5 px-5 py-3">
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-mauve">
+            Prévia da sua gravação
+          </div>
+          <audio src={previewUrl} controls className="h-10 w-full" />
+        </div>
+      )}
 
       {/* teleprompter — só quando há roteiro */}
       {!modoLivre && (

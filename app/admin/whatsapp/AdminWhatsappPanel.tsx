@@ -4,17 +4,38 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { WhatsappGrupo, WhatsappPermissao } from '@/lib/supabase';
 
+type ProjetoOpcao = { id: string; label: string };
+
 type Props = {
   grupos: WhatsappGrupo[];
   permissoes: WhatsappPermissao[];
+  projetos: ProjetoOpcao[];
 };
 
-export function AdminWhatsappPanel({ grupos, permissoes }: Props) {
+export function AdminWhatsappPanel({ grupos, permissoes, projetos }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [grupoExpandido, setGrupoExpandido] = useState<string | null>(null);
+
+  async function vincularProjeto(grupo: WhatsappGrupo, projetoId: string | null) {
+    setErro(null);
+    try {
+      const res = await fetch('/api/whatsapp/grupo-projeto', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grupoId: grupo.id, projetoId }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? 'erro');
+      }
+      startTransition(() => router.refresh());
+    } catch (e: any) {
+      setErro(e?.message ?? 'erro vinculando projeto');
+    }
+  }
 
   async function sincronizar() {
     setErro(null);
@@ -57,13 +78,21 @@ export function AdminWhatsappPanel({ grupos, permissoes }: Props) {
             Importa todos os grupos do seu WhatsApp. Novos entram desativados — você ativa um por um.
           </div>
         </div>
-        <button
-          onClick={sincronizar}
-          disabled={pending}
-          className="rounded-lg bg-navy px-4 py-2 text-[12px] font-medium text-white transition hover:bg-ink disabled:opacity-50"
-        >
-          {pending ? 'Sincronizando…' : 'Sincronizar agora'}
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="/admin/whatsapp/testar"
+            className="rounded-lg border border-[rgba(21,21,33,0.13)] bg-white px-3 py-2 text-[12px] font-medium text-ink transition hover:bg-bgSoft"
+          >
+            🧪 Testar envio
+          </a>
+          <button
+            onClick={sincronizar}
+            disabled={pending}
+            className="rounded-lg bg-navy px-4 py-2 text-[12px] font-medium text-white transition hover:bg-ink disabled:opacity-50"
+          >
+            {pending ? 'Sincronizando…' : 'Sincronizar agora'}
+          </button>
+        </div>
       </div>
 
       {erro && (
@@ -105,10 +134,29 @@ export function AdminWhatsappPanel({ grupos, permissoes }: Props) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-medium text-ink">{g.nome}</div>
-                    <div className="text-[10px] text-t3">
-                      {permsDoGrupo.length} pessoa(s) com acesso · {g.id}
-                    </div>
+                    <div className="truncate text-[10px] text-t3">{g.id}</div>
                   </div>
+
+                  {/* Dropdown de projeto — vincula o grupo a um projeto do Notion.
+                      Essa é a vinculação que o botão "📱 lembrar" usa pra saber
+                      onde mandar a mensagem de aprovação. */}
+                  <select
+                    value={g.projeto_id ?? ''}
+                    onChange={(e) =>
+                      vincularProjeto(g, e.target.value || null)
+                    }
+                    disabled={pending}
+                    className="max-w-[220px] rounded-md border border-[rgba(21,21,33,0.13)] bg-white px-2 py-1.5 text-[11px] text-ink"
+                    title="Vincula o grupo a um projeto do Notion"
+                  >
+                    <option value="">— sem projeto —</option>
+                    {projetos.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+
                   <label className="flex items-center gap-2 text-[11px] text-t2">
                     <input
                       type="checkbox"
@@ -116,13 +164,14 @@ export function AdminWhatsappPanel({ grupos, permissoes }: Props) {
                       onChange={() => toggleAtivo(g)}
                       className="h-4 w-4 accent-navy"
                     />
-                    {g.ativo ? 'Visível' : 'Oculto'}
+                    {g.ativo ? 'Ativo' : 'Oculto'}
                   </label>
                   <button
                     onClick={() => setGrupoExpandido(expandido ? null : g.id)}
-                    className="rounded-lg border border-[rgba(21,21,33,0.12)] px-3 py-1 text-[11px] text-t2 hover:bg-bgSoft"
+                    title="Avançado: dar acesso de ver/responder esse grupo via portal pra pessoas específicas"
+                    className="rounded-lg border border-[rgba(21,21,33,0.12)] px-2 py-1 text-[10px] text-t3 hover:bg-bgSoft"
                   >
-                    {expandido ? 'Fechar' : 'Pessoas'}
+                    {expandido ? 'Fechar' : '⚙'}
                   </button>
                 </div>
 
@@ -224,6 +273,14 @@ function PermissoesGrupo({
 
   return (
     <div className="border-t border-[rgba(21,21,33,0.08)] bg-bgSoft px-4 py-3">
+      <div className="mb-3 rounded border border-[rgba(21,21,33,0.08)] bg-white px-3 py-2 text-[10.5px] leading-[1.5] text-t3">
+        <b className="text-t2">Avançado — opcional.</b> Esse painel é da feature
+        de &quot;espelhar grupo no portal&quot; (um usuário logado no portal
+        consegue ler/responder mensagens do grupo). <b className="text-t2">Não
+        precisa preencher pra o botão de lembrete funcionar</b> — a vinculação
+        ao projeto (dropdown lá em cima) já basta.
+      </div>
+
       {erro && (
         <div className="mb-2 rounded border border-hubRed/30 bg-hubRed/5 px-3 py-1 text-[11px] text-hubRed">
           {erro}

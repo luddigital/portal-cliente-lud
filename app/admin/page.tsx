@@ -16,7 +16,6 @@ import {
   type PostCalendario,
 } from '@/lib/notion';
 import { env } from '@/lib/env';
-import { AdminAvisarPanel } from './AdminAvisarPanel';
 import { EntregaCard } from './EntregaCard';
 import { CalendarSemana, type DiaSemana } from './_components/CalendarSemana';
 import { AtualizacoesCompacto } from './_components/AtualizacoesCompacto';
@@ -79,11 +78,33 @@ export default async function AdminPage({
               admin
             </div>
           </div>
-          <form action="/api/auth/logout" method="post">
-            <button className="text-[12px] text-mauve transition hover:text-ink">
-              Sair
-            </button>
-          </form>
+          <div className="flex items-center gap-3">
+            <a
+              href="/api/admin/atualizar"
+              title="Limpa cache e puxa dados frescos do Notion"
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-navy px-3 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 12a9 9 0 1 1-3-6.7" />
+                <path d="M21 3v6h-6" />
+              </svg>
+              Atualizar agora
+            </a>
+            <form action="/api/auth/logout" method="post">
+              <button className="text-[12px] text-mauve transition hover:text-ink">
+                Sair
+              </button>
+            </form>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-4xl lg:max-w-7xl px-6 py-10 space-y-10">
@@ -183,17 +204,6 @@ export default async function AdminPage({
           </Suspense>
         </section>
 
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
-              Avisar clientes
-            </h2>
-            <p className="mt-1 text-[13px] text-t2">
-              Dispara email + push pra cada cliente com tarefa pendente.
-            </p>
-          </div>
-          <AdminAvisarPanel />
-        </section>
       </main>
     </div>
   );

@@ -24,6 +24,7 @@ import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
 import { EtapaPautaCards } from './EtapaPautaCards';
 import { TarefasDoPostPanel } from './TarefasDoPostPanel';
+import { GaleriaMateriais } from './GaleriaMateriais';
 import {
   StatusDoPostCard,
   TodasTarefasCard,
@@ -330,29 +331,40 @@ export default async function PostDetalhePage({
             )}
 
             {arquivos.length > 0 ? (
-              <div>
-                <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-                  Pré-visualização
-                </div>
-                <PostPreview
+              modo === 'material' ? (
+                // Fase de matéria-prima: mostra em GALERIA (não carrossel),
+                // porque esses arquivos são o que o cliente enviou pra equipe
+                // usar, não a arte pronta pra aprovação.
+                <GaleriaMateriais
                   arquivos={arquivos}
-                  formatoTipo={formatoTipoDetectado}
-                  postId={post.id}
-                  tarefaId={modo === 'aprovacao' ? tarefaId : null}
-                  tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
-                  legenda={post.legenda}
-                  voltarPara={voltarPara}
-                  aprovacaoColaborativa={post.aprovacaoColaborativa}
+                  titulo="Materiais que você já enviou"
+                  legenda="A equipe da Lud. vai usar esses arquivos pra produzir o post. Continue enviando mais abaixo se precisar."
                 />
-              </div>
+              ) : (
+                <div>
+                  <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                    Pré-visualização
+                  </div>
+                  <PostPreview
+                    arquivos={arquivos}
+                    formatoTipo={formatoTipoDetectado}
+                    postId={post.id}
+                    tarefaId={modo === 'aprovacao' ? tarefaId : null}
+                    tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+                    legenda={post.legenda}
+                    voltarPara={voltarPara}
+                    aprovacaoColaborativa={post.aprovacaoColaborativa}
+                  />
+                </div>
+              )
             ) : (
-              (post.ideiaDoPost || post.bodyCompleto || post.legenda) && (
+              post.ideiaDoPost && (
                 <div className="card p-5">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
                     Ideia do post
                   </div>
                   <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
-                    {post.ideiaDoPost ?? post.bodyCompleto ?? post.legenda}
+                    {post.ideiaDoPost}
                   </p>
                 </div>
               )
@@ -638,31 +650,40 @@ export default async function PostDetalhePage({
         )}
 
         {/* pré-visualização + legenda — usa PostPreview em modo readonly
-            (sem painel de aprovação; equipe não aprova pelo cliente) */}
+            (sem painel de aprovação; equipe não aprova pelo cliente).
+            Em fase de MATERIAIS (matéria-prima do cliente), mostra galeria. */}
         {arquivos.length > 0 ? (
-          <div>
-            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-              Pré-visualização
-            </div>
-            <PostPreview
+          modo === 'material' ? (
+            <GaleriaMateriais
               arquivos={arquivos}
-              formatoTipo={formatoTipoDetectado}
-              postId={post.id}
-              tarefaId={null}
-              tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
-              legenda={post.legenda}
-              voltarPara={voltarPara}
-              aprovacaoColaborativa={post.aprovacaoColaborativa}
+              titulo="Materiais enviados pelo cliente"
+              legenda="Matéria-prima pra usar na produção do post. Ainda não é a arte final."
             />
-          </div>
+          ) : (
+            <div>
+              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                Pré-visualização
+              </div>
+              <PostPreview
+                arquivos={arquivos}
+                formatoTipo={formatoTipoDetectado}
+                postId={post.id}
+                tarefaId={null}
+                tarefaTitulo={tarefaTitulo ?? 'Aprovação'}
+                legenda={post.legenda}
+                voltarPara={voltarPara}
+                aprovacaoColaborativa={post.aprovacaoColaborativa}
+              />
+            </div>
+          )
         ) : (
-          (post.ideiaDoPost || post.bodyCompleto || post.legenda) && (
+          post.ideiaDoPost && (
             <div className="card p-5">
               <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
                 Ideia do post
               </div>
               <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
-                {post.ideiaDoPost ?? post.bodyCompleto ?? post.legenda}
+                {post.ideiaDoPost}
               </p>
             </div>
           )

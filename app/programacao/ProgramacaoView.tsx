@@ -10,7 +10,7 @@ const MESES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 const MES_ABREV = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-const DIAS_SEMANA = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+const DIAS_SEMANA = ['SEG','TER','QUA','QUI','SEX','SÁB','DOM'];
 
 type Bucket = 'pronto' | 'programado' | 'publicado' | 'ajuste' | 'outro';
 

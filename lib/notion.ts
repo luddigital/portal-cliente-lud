@@ -2079,31 +2079,47 @@ export async function getTitulosPorData(
   fimMs: number,
 ): Promise<Record<string, string>> {
   const mapa: Record<string, string> = {};
-  const ini = new Date(inicioMs);
-  const fim = new Date(fimMs);
-  let y = ini.getFullYear();
-  let m = ini.getMonth() + 1;
-  const meses: [number, number][] = [];
-  while (
-    (y < fim.getFullYear() || (y === fim.getFullYear() && m <= fim.getMonth() + 1)) &&
-    meses.length < 24
-  ) {
-    meses.push([y, m]);
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-  }
-  const listas = await Promise.all(
-    meses.map(([yy, mm]) => listPostsDoMes([projetoId], yy, mm).catch(() => [])),
-  );
-  for (const lista of listas) {
-    for (const p of lista) {
-      const dia = (p.data || '').slice(0, 10);
-      // Primeiro post do dia vence (match por data não distingue vários no dia).
-      if (dia && p.titulo && !mapa[dia]) mapa[dia] = p.titulo;
-    }
+  if (!projetoId) return mapa;
+  // Query direta na base de Postagens, casando por Data Postagem no range e
+  // aceitando o id tanto na relação "Projeto" quanto na "Empresa" — o
+  // IG_ACCOUNTS pode ter sido mapeado com qualquer um dos dois.
+  const inicioISO = new Date(inicioMs).toISOString().slice(0, 10);
+  const fimISO = new Date(fimMs).toISOString().slice(0, 10);
+  let cursor: string | undefined;
+  try {
+    do {
+      const res = await notion.databases.query({
+        database_id: env.notion.postagensDbId,
+        start_cursor: cursor,
+        page_size: 100,
+        filter: {
+          and: [
+            { property: env.notion.postProps.data, date: { on_or_after: inicioISO } },
+            { property: env.notion.postProps.data, date: { on_or_before: fimISO } },
+            {
+              or: [
+                { property: env.notion.postProps.projeto, relation: { contains: projetoId } },
+                { property: 'Empresa', relation: { contains: projetoId } },
+              ],
+            },
+          ],
+        },
+        sorts: [{ property: env.notion.postProps.data, direction: 'ascending' }],
+      });
+      for (const page of res.results as any[]) {
+        const status = getProp(page, env.notion.postProps.status)?.status?.name ?? null;
+        if (status === 'Cancelado' || status === 'Excluída') continue;
+        const dia = (getProp(page, env.notion.postProps.data)?.date?.start ?? '').slice(0, 10);
+        if (!dia) continue;
+        const titleProp = Object.values(page.properties).find((p: any) => p.type === 'title') as any;
+        const titulo = txt(titleProp?.title);
+        // Primeiro post do dia vence (match por data não distingue vários no dia).
+        if (titulo && !mapa[dia]) mapa[dia] = titulo;
+      }
+      cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
+    } while (cursor);
+  } catch {
+    /* título é opcional — devolve o que conseguiu */
   }
   return mapa;
 }

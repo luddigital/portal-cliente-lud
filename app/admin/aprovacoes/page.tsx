@@ -4,15 +4,25 @@ import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import { getAprovacoesAgrupadas, type TarefaDaEntrega } from '@/lib/notion';
 import { env } from '@/lib/env';
+import { TarefaRow } from './TarefaRow';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AprovacoesAdminPage() {
+type AbaValida = 'cliente' | 'interno';
+
+export default async function AprovacoesAdminPage({
+  searchParams,
+}: {
+  searchParams: { aba?: string };
+}) {
   const session = await getSession();
   if (!session) redirect('/login');
   if (!env.auth.adminEmails.includes(session.email.trim().toLowerCase())) {
     redirect('/');
   }
+
+  const abaAtiva: AbaValida =
+    searchParams.aba === 'interno' ? 'interno' : 'cliente';
 
   return (
     <div className="min-h-screen">
@@ -38,16 +48,53 @@ export default async function AprovacoesAdminPage() {
             </div>
           }
         >
-          <Conteudo />
+          <Conteudo abaAtiva={abaAtiva} />
         </Suspense>
       </main>
     </div>
   );
 }
 
-async function Conteudo() {
+/** Heurística: tarefas de aprovação cujo título referencia conteúdo que o
+ *  CLIENTE revisa (pauta/post/stories/materiais/prévios). Outras aprovações
+ *  são INTERNAS da equipe (briefing, copy, arte). */
+function ehAprovacaoDoCliente(titulo: string): boolean {
+  const t = titulo.toLowerCase();
+  const palavrasCliente = [
+    'pauta',
+    'post',
+    'stories',
+    'story',
+    'material',
+    'conte', // "conteúdo" / "conteudo"
+    'prévi', // "prévia" / "prévio"
+    'previo',
+    'previa',
+  ];
+  return palavrasCliente.some((p) => t.includes(p));
+}
+
+async function Conteudo({ abaAtiva }: { abaAtiva: AbaValida }) {
   const grupos = await getAprovacoesAgrupadas();
   const total = grupos.reduce((s, g) => s + g.tarefas.length, 0);
+
+  // Separa cliente vs interno dentro de cada grupo.
+  type GrupoSeparado = {
+    categoria: string;
+    cliente: TarefaDaEntrega[];
+    interno: TarefaDaEntrega[];
+  };
+  const grupos2: GrupoSeparado[] = grupos.map((g) => {
+    const cliente: TarefaDaEntrega[] = [];
+    const interno: TarefaDaEntrega[] = [];
+    for (const t of g.tarefas) {
+      if (ehAprovacaoDoCliente(t.titulo)) cliente.push(t);
+      else interno.push(t);
+    }
+    return { categoria: g.categoria, cliente, interno };
+  });
+  const totalCliente = grupos2.reduce((s, g) => s + g.cliente.length, 0);
+  const totalInterno = grupos2.reduce((s, g) => s + g.interno.length, 0);
 
   return (
     <>
@@ -59,38 +106,11 @@ async function Conteudo() {
           Aprovações
         </h1>
         <p className="mt-2 text-[14px] text-t2">
-          Tudo que está aguardando aprovação, reunido aqui e separado por
-          categoria.
+          Separadas por quem precisa agir. Alterna entre as abas abaixo.
         </p>
       </div>
 
-      <div className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-5 flex items-center justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-            Aguardando aprovação
-          </div>
-          <div className="mt-1 text-[13px] text-t2">
-            {grupos.length} categoria{grupos.length === 1 ? '' : 's'} com tarefas
-            em aberto.
-          </div>
-        </div>
-        <div
-          className="rounded-xl px-5 py-3 text-center min-w-[100px]"
-          style={{
-            background: 'var(--prazo-hoje-soft)',
-            color: 'var(--prazo-hoje)',
-          }}
-        >
-          <div className="text-[28px] font-semibold leading-none tracking-[-0.03em]">
-            {total}
-          </div>
-          <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em]">
-            em aberto
-          </div>
-        </div>
-      </div>
-
-      {grupos.length === 0 ? (
+      {total === 0 ? (
         <div
           className="rounded-2xl p-8 text-center"
           style={{ background: 'var(--prazo-em-dia-soft)' }}
@@ -107,59 +127,155 @@ async function Conteudo() {
           </p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {grupos.map((g) => (
-            <section key={g.categoria} className="space-y-2.5">
-              <div className="flex items-center gap-2">
-                <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-ink">
-                  {g.categoria}
-                </h2>
-                <span
-                  className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-                  style={{
-                    background: 'var(--prazo-hoje-soft)',
-                    color: 'var(--prazo-hoje)',
-                  }}
-                >
-                  {g.tarefas.length}
-                </span>
+        <>
+          {/* ABAS */}
+          <div className="flex border-b border-[rgba(21,21,33,0.08)]">
+            <AbaBotao
+              href="/admin/aprovacoes?aba=cliente"
+              ativa={abaAtiva === 'cliente'}
+              label="Esperando o cliente"
+              total={totalCliente}
+              toneCor={{
+                bg: 'var(--prazo-hoje-soft)',
+                fg: 'var(--prazo-hoje)',
+              }}
+            />
+            <AbaBotao
+              href="/admin/aprovacoes?aba=interno"
+              ativa={abaAtiva === 'interno'}
+              label="Esperando a equipe Lud."
+              total={totalInterno}
+              toneCor={{
+                bg: 'var(--cal-aprovacao-soft)',
+                fg: 'var(--cal-aprovacao)',
+              }}
+            />
+          </div>
+
+          {/* CONTEÚDO DA ABA */}
+          {abaAtiva === 'cliente' ? (
+            totalCliente === 0 ? (
+              <div className="rounded-2xl bg-bgSoft/50 p-8 text-center text-[13px] text-t3">
+                Nenhuma aprovação de cliente pendente ✨
               </div>
-              <div className="card divide-y divide-[rgba(21,21,33,0.06)] overflow-hidden p-0">
-                {g.tarefas.map((t) => (
-                  <TarefaRow key={t.tarefaId} tarefa={t} />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+            ) : (
+              <SecaoAprovacoes
+                descricao="Tarefas que o cliente precisa revisar. Clica no botão pra mandar lembrete pelo WhatsApp."
+                toneCor={{
+                  bg: 'var(--prazo-hoje-soft)',
+                  fg: 'var(--prazo-hoje)',
+                }}
+                grupos={grupos2
+                  .map((g) => ({ categoria: g.categoria, tarefas: g.cliente }))
+                  .filter((g) => g.tarefas.length > 0)}
+                mostrarBotaoWpp
+              />
+            )
+          ) : totalInterno === 0 ? (
+            <div className="rounded-2xl bg-bgSoft/50 p-8 text-center text-[13px] text-t3">
+              Nenhuma aprovação interna pendente ✨
+            </div>
+          ) : (
+            <SecaoAprovacoes
+              descricao="Aprovações internas (briefing, copy, arte etc)."
+              toneCor={{
+                bg: 'var(--cal-aprovacao-soft)',
+                fg: 'var(--cal-aprovacao)',
+              }}
+              grupos={grupos2
+                .map((g) => ({ categoria: g.categoria, tarefas: g.interno }))
+                .filter((g) => g.tarefas.length > 0)}
+            />
+          )}
+        </>
       )}
     </>
   );
 }
 
-function TarefaRow({ tarefa: t }: { tarefa: TarefaDaEntrega }) {
-  const href = t.postId
-    ? `/post/${t.postId}?tarefa=${t.tarefaId}`
-    : `/tarefa/${t.tarefaId}`;
+function AbaBotao({
+  href,
+  ativa,
+  label,
+  total,
+  toneCor,
+}: {
+  href: string;
+  ativa: boolean;
+  label: string;
+  total: number;
+  toneCor: { bg: string; fg: string };
+}) {
   return (
     <Link
       href={href}
-      className="flex items-center justify-between gap-3 px-4 py-2.5 transition hover:bg-bgSoft/60"
+      className={`relative flex items-center gap-2 px-5 py-3 text-[13px] transition ${
+        ativa
+          ? 'text-ink font-semibold'
+          : 'text-t3 hover:text-ink'
+      }`}
     >
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] text-ink">
-          {t.postTitulo || t.titulo}
-        </div>
-        <div className="mt-0.5 truncate text-[10px] uppercase tracking-[0.06em] text-t3">
-          {t.clienteNome ?? t.projetoNome ?? '(sem cliente)'} · {t.titulo}
-        </div>
-      </div>
-      {t.status && (
-        <span className="shrink-0 rounded bg-bgSoft px-2 py-0.5 text-[10px] font-semibold text-t2">
-          {t.status}
-        </span>
+      <span>{label}</span>
+      <span
+        className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+        style={{
+          background: ativa ? toneCor.bg : 'rgba(21,21,33,0.06)',
+          color: ativa ? toneCor.fg : 'var(--t3)',
+        }}
+      >
+        {total}
+      </span>
+      {ativa && (
+        <span
+          className="absolute inset-x-0 bottom-[-1px] h-[2px]"
+          style={{ background: toneCor.fg }}
+        />
       )}
-      <span className="shrink-0 text-[16px] text-t3">›</span>
     </Link>
   );
 }
+
+function SecaoAprovacoes({
+  descricao,
+  toneCor,
+  grupos,
+  mostrarBotaoWpp = false,
+}: {
+  descricao: string;
+  toneCor: { bg: string; fg: string };
+  grupos: { categoria: string; tarefas: TarefaDaEntrega[] }[];
+  mostrarBotaoWpp?: boolean;
+}) {
+  return (
+    <section className="space-y-4">
+      <p className="text-[12px] text-t2">{descricao}</p>
+      <div className="space-y-5">
+        {grupos.map((g) => (
+          <div key={g.categoria} className="space-y-2.5">
+            <div className="flex items-center gap-2">
+              <h3 className="text-[14px] font-semibold tracking-[-0.01em] text-ink">
+                {g.categoria}
+              </h3>
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                style={{ background: toneCor.bg, color: toneCor.fg }}
+              >
+                {g.tarefas.length}
+              </span>
+            </div>
+            <div className="card divide-y divide-[rgba(21,21,33,0.06)] overflow-hidden p-0">
+              {g.tarefas.map((t) => (
+                <TarefaRow
+                  key={t.tarefaId}
+                  tarefa={t}
+                  mostrarBotaoWpp={mostrarBotaoWpp}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+

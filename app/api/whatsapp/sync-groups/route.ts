@@ -1,6 +1,6 @@
 /**
- * Sincroniza a lista de grupos do WhatsApp com o banco.
- * Operação admin: chama a Evolution, faz upsert dos grupos.
+ * Sincroniza a lista de grupos do WhatsApp (via Z-API) com o banco.
+ * Operação admin: faz upsert dos grupos vindos do Z-API.
  *
  * Por segurança: novos grupos entram como `ativo = false`. A Luiza ativa
  * manualmente os que devem aparecer no Portal (evita "vazar" grupo pessoal
@@ -9,11 +9,12 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { listarGruposWhatsApp } from '@/lib/whatsapp';
+import { listarGruposZapi } from '@/lib/zapi';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 export async function POST() {
   const session = await getSession();
@@ -26,10 +27,13 @@ export async function POST() {
 
   let grupos;
   try {
-    grupos = await listarGruposWhatsApp();
+    grupos = await listarGruposZapi();
   } catch (e: any) {
-    console.error('[sync-groups] Evolution falhou:', e?.message);
-    return NextResponse.json({ error: 'evolution_falhou' }, { status: 502 });
+    console.error('[sync-groups] Z-API falhou:', e?.message);
+    return NextResponse.json(
+      { error: `zapi_falhou: ${e?.message ?? 'erro desconhecido'}` },
+      { status: 502 },
+    );
   }
 
   const sb = await supabaseAdmin();
@@ -47,7 +51,7 @@ export async function POST() {
       await sb
         .from('whatsapp_grupos')
         .update({
-          nome: g.subject ?? '(sem nome)',
+          nome: g.name ?? '(sem nome)',
           foto_url: g.pictureUrl ?? null,
           atualizado_em: new Date().toISOString(),
         })
@@ -56,7 +60,7 @@ export async function POST() {
     } else {
       await sb.from('whatsapp_grupos').insert({
         id: g.id,
-        nome: g.subject ?? '(sem nome)',
+        nome: g.name ?? '(sem nome)',
         foto_url: g.pictureUrl ?? null,
         ativo: false, // padrão seguro
       });

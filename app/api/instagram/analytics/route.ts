@@ -72,13 +72,35 @@ export async function GET(req: Request) {
           d.setDate(d.getDate() + dias);
           return d.toISOString().slice(0, 10);
         };
+        let casados = 0;
         for (const c of analytics.conteudos) {
           const dia = (c.timestamp || '').slice(0, 10);
           if (!dia) continue;
-          // Casa por data, com tolerância de ±1 dia (fuso horário / agendamento).
+          // Casa por data, com tolerância de ±2 dias (fuso horário / agendamento).
           const t =
-            titulos[dia] || titulos[desloca(dia, -1)] || titulos[desloca(dia, 1)];
-          if (t) c.tituloNotion = t;
+            titulos[dia] ||
+            titulos[desloca(dia, -1)] ||
+            titulos[desloca(dia, 1)] ||
+            titulos[desloca(dia, -2)] ||
+            titulos[desloca(dia, 2)];
+          if (t) {
+            c.tituloNotion = t;
+            casados += 1;
+          }
+        }
+        // Diagnóstico só pro admin — ajuda a entender por que um casamento falhou.
+        if (isAdmin) {
+          analytics.debugTitulos = {
+            projetoId,
+            titulosNoPeriodo: Object.keys(titulos).length,
+            postsCasados: casados,
+            totalPosts: analytics.conteudos.length,
+            amostraDatasNotion: Object.keys(titulos).sort().slice(0, 6),
+            amostraDatasIg: analytics.conteudos
+              .map((c) => (c.timestamp || '').slice(0, 10))
+              .filter(Boolean)
+              .slice(0, 6),
+          };
         }
       } catch {
         /* título do Notion é opcional — segue sem */

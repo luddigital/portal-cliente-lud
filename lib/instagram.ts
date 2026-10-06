@@ -90,6 +90,15 @@ export type IgAnalytics = {
   serieSeguidores: IgPontoSerie[];
   /** Contas que se engajaram (clique, like, save, comment, etc) por dia. */
   serieEngajamento: IgPontoSerie[];
+  /** Diagnóstico do casamento de títulos do Notion (só preenchido pro admin). */
+  debugTitulos?: {
+    projetoId: string;
+    titulosNoPeriodo: number;
+    postsCasados: number;
+    totalPosts: number;
+    amostraDatasNotion: string[];
+    amostraDatasIg: string[];
+  };
 };
 
 /** True quando o token da Graph API está configurado no ambiente. */

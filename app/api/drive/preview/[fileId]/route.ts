@@ -32,17 +32,47 @@ type MetaCache = { mimeType: string; size: number | null; ts: number };
 const META_TTL_MS = 60 * 60_000;
 const metaCache = new Map<string, MetaCache>();
 
+/** Fallback de mimeType pela extensão quando o Drive devolve
+ *  application/octet-stream (comum pra arquivos subidos via API). */
+function mimeFallbackPelaExtensao(name: string): string | null {
+  const nome = name.toLowerCase();
+  if (/\.mp3$/.test(nome)) return 'audio/mpeg';
+  if (/\.m4a$/.test(nome)) return 'audio/mp4';
+  if (/\.wav$/.test(nome)) return 'audio/wav';
+  if (/\.ogg$/.test(nome)) return 'audio/ogg';
+  if (/\.aac$/.test(nome)) return 'audio/aac';
+  if (/\.flac$/.test(nome)) return 'audio/flac';
+  if (/\.webm$/.test(nome)) return 'audio/webm';
+  if (/\.mp4$/.test(nome)) return 'video/mp4';
+  if (/\.mov$/.test(nome)) return 'video/quicktime';
+  if (/\.m4v$/.test(nome)) return 'video/x-m4v';
+  if (/\.jpe?g$/.test(nome)) return 'image/jpeg';
+  if (/\.png$/.test(nome)) return 'image/png';
+  if (/\.webp$/.test(nome)) return 'image/webp';
+  if (/\.gif$/.test(nome)) return 'image/gif';
+  if (/\.heic$/.test(nome)) return 'image/heic';
+  return null;
+}
+
 async function getMetadataCached(fileId: string): Promise<MetaCache> {
   const hit = metaCache.get(fileId);
   if (hit && Date.now() - hit.ts < META_TTL_MS) return hit;
   const drive = getDrive();
   const res = await drive.files.get({
     fileId,
-    fields: 'mimeType,size',
+    fields: 'mimeType,size,name',
     supportsAllDrives: true,
   });
+  let mimeType = res.data.mimeType ?? 'application/octet-stream';
+  // Se o Drive guardou como octet-stream genérico, infere pela extensão
+  // do nome — assim <audio>, <video>, <img> conseguem renderizar sem precisar
+  // de um "Save as" manual.
+  if (mimeType === 'application/octet-stream' && res.data.name) {
+    const inferido = mimeFallbackPelaExtensao(res.data.name);
+    if (inferido) mimeType = inferido;
+  }
   const meta: MetaCache = {
-    mimeType: res.data.mimeType ?? 'application/octet-stream',
+    mimeType,
     size: res.data.size ? Number(res.data.size) : null,
     ts: Date.now(),
   };

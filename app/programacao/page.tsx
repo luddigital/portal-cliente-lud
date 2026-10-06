@@ -107,9 +107,10 @@ export default async function ProgramacaoPage({
     ? new Date(anchorStr + 'T00:00:00')
     : hoje;
 
-  // Range da semana (Dom → Sáb).
+  // Range da semana (Seg → Dom). Semana no portal SEMPRE começa na segunda.
   const weekStart = new Date(anchor);
-  weekStart.setDate(anchor.getDate() - anchor.getDay());
+  const diffSeg = (anchor.getDay() + 6) % 7; // 0 = segunda, 6 = domingo
+  weekStart.setDate(anchor.getDate() - diffSeg);
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
 

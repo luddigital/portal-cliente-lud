@@ -27,17 +27,38 @@ function fmtNum(n: number): string {
   return n.toLocaleString('pt-BR');
 }
 
+export type MarcadorPost = { dia: string; titulo: string; tipo: string };
+
+function emojiTipo(t: string): string {
+  const u = (t || '').toUpperCase();
+  if (u.includes('REEL') || u.includes('VIDEO')) return '🎬';
+  if (u.includes('CAROUSEL') || u.includes('ALBUM')) return '🎠';
+  if (u.includes('IMAGE') || u.includes('PHOTO')) return '🖼️';
+  return '📄';
+}
+
 export function GraficoLinha({
   dados,
   label,
+  marcadores,
 }: {
   dados: IgPontoSerie[];
   label: string;
+  /** Posts publicados no período, pra marcar o dia no gráfico. */
+  marcadores?: MarcadorPost[];
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   if (dados.length === 0) return null;
+
+  // Agrupa os posts por dia (AAAA-MM-DD) pra casar com os pontos da série.
+  const postsPorDia: Record<string, MarcadorPost[]> = {};
+  for (const m of marcadores ?? []) {
+    if (!m.dia) continue;
+    (postsPorDia[m.dia] ??= []).push(m);
+  }
+  const temMarcadores = Object.keys(postsPorDia).length > 0;
 
   const valores = dados.map((p) => p.valor);
   const max = Math.max(1, ...valores);
@@ -90,9 +111,20 @@ export function GraficoLinha({
 
   return (
     <div className="card relative p-4">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-[13px] font-semibold text-ink">{label}</h3>
-        <span className="text-[11px] text-t3">média {fmtNum(media)} / dia</span>
+        <span className="flex items-center gap-2 text-[11px] text-t3">
+          {temMarcadores && (
+            <span className="flex items-center gap-1">
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ background: '#E8663D' }}
+              />
+              dia com post
+            </span>
+          )}
+          <span>média {fmtNum(media)} / dia</span>
+        </span>
       </div>
       <div className="relative mt-3">
         <svg
@@ -122,9 +154,23 @@ export function GraficoLinha({
           ))}
           <path d={area} fill="url(#gradAlcance)" />
           <path d={linha} fill="none" stroke="#313D65" strokeWidth="2" />
-          {pontos.map((pt, i) => (
-            <circle key={i} cx={pt.x} cy={pt.y} r="2" fill="#313D65" />
-          ))}
+          {pontos.map((pt, i) => {
+            const temPost = !!postsPorDia[pt.p.dia];
+            if (temPost) {
+              return (
+                <circle
+                  key={i}
+                  cx={pt.x}
+                  cy={pt.y}
+                  r="4"
+                  fill="#E8663D"
+                  stroke="#fff"
+                  strokeWidth="1.5"
+                />
+              );
+            }
+            return <circle key={i} cx={pt.x} cy={pt.y} r="2" fill="#313D65" />;
+          })}
 
           {/* linha vertical do hover */}
           {hoverPonto && (
@@ -171,16 +217,34 @@ export function GraficoLinha({
         {/* tooltip (em pixels reais, posicionado relativo ao SVG) */}
         {hoverPonto && hoverIdx != null && (
           <div
-            className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] text-white shadow-lg"
+            className="pointer-events-none absolute z-10 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] text-white shadow-lg"
             style={{
               left: `${(hoverPonto.x / W) * 100}%`,
               top: `${(hoverPonto.y / H) * 100}%`,
               transform: 'translate(-50%, calc(-100% - 10px))',
-              whiteSpace: 'nowrap',
+              maxWidth: 240,
             }}
           >
-            <div className="font-semibold">{fmtDataLonga(dados[hoverIdx].dia)}</div>
-            <div className="text-white/80">{fmtNum(dados[hoverIdx].valor)}</div>
+            <div className="whitespace-nowrap font-semibold">
+              {fmtDataLonga(dados[hoverIdx].dia)}
+            </div>
+            <div className="whitespace-nowrap text-white/80">
+              {fmtNum(dados[hoverIdx].valor)}
+            </div>
+            {(postsPorDia[dados[hoverIdx].dia] ?? []).length > 0 && (
+              <div className="mt-1 border-t border-white/20 pt-1">
+                {(postsPorDia[dados[hoverIdx].dia] ?? []).map((m, i) => (
+                  <div key={i} className="flex gap-1 leading-snug">
+                    <span>{emojiTipo(m.tipo)}</span>
+                    <span className="text-white/90">
+                      {m.titulo.length > 70
+                        ? `${m.titulo.slice(0, 70)}…`
+                        : m.titulo}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

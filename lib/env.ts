@@ -112,6 +112,14 @@ export const env = {
     resendKey: optSoft('RESEND_API_KEY'),
     from: opt('MAIL_FROM', 'Lud. <oi@lud.digital>'),
   },
+  zapi: {
+    // Z-API — gateway WhatsApp. Config: https://developer.z-api.io
+    instanceId: optSoft('ZAPI_INSTANCE_ID'),
+    instanceToken: optSoft('ZAPI_INSTANCE_TOKEN'),
+    // Client-Token é o header obrigatório pra autenticar na API (padrão nas
+    // novas instâncias Z-API). Opcional em instâncias antigas.
+    clientToken: optSoft('ZAPI_CLIENT_TOKEN'),
+  },
   app: {
     url: opt('NEXT_PUBLIC_APP_URL', 'http://localhost:3000'),
   },
