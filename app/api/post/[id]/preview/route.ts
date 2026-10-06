@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { getPostComDetalhes } from '@/lib/notion';
+import { getPostComDetalhes, listarTarefasDoPost } from '@/lib/notion';
 import { extractDriveFileId, extractDriveFolderId, listFolderFiles } from '@/lib/drive';
 
 export const runtime = 'nodejs';
@@ -72,10 +72,23 @@ export async function GET(
     }
   }
 
+  // Tarefas internas só pra admin.
+  const tarefas = ehAdmin
+    ? (await listarTarefasDoPost(post.id).catch(() => [])).map((t) => ({
+        tarefaId: t.tarefaId,
+        titulo: t.titulo,
+        status: t.status,
+        prazo: t.prazo,
+        aberta: t.aberta && !t.finalizada,
+        pessoa: t.pessoaNome,
+      }))
+    : [];
+
   return NextResponse.json({
     titulo: post.titulo,
     legenda: post.legenda ?? '',
     formatoTipo: post.formatoTipo,
     arquivos,
+    tarefas,
   });
 }

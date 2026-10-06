@@ -8,12 +8,87 @@ type Arquivo = {
   mimeType: string;
   webViewLink: string;
 };
+type Tarefa = {
+  tarefaId: string;
+  titulo: string;
+  status: string | null;
+  prazo: string | null;
+  aberta: boolean;
+  pessoa: string | null;
+};
 type Preview = {
   titulo: string;
   legenda: string;
   formatoTipo: string;
   arquivos: Arquivo[];
+  tarefas: Tarefa[];
 };
+
+const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+function prazoCurto(iso: string | null): { texto: string; atrasada: boolean } {
+  if (!iso) return { texto: 'sem prazo', atrasada: false };
+  const [y, m, d] = iso.split('T')[0].split('-').map(Number);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const dias = Math.round((new Date(y, m - 1, d).getTime() - hoje.getTime()) / 86_400_000);
+  if (dias === 0) return { texto: 'hoje', atrasada: false };
+  if (dias === 1) return { texto: 'amanhã', atrasada: false };
+  if (dias < 0) return { texto: `${d} ${MES[m - 1]}`, atrasada: true };
+  return { texto: `${d} ${MES[m - 1]}`, atrasada: false };
+}
+
+function TarefasResumo({ tarefas }: { tarefas: Tarefa[] }) {
+  if (tarefas.length === 0) return null;
+  const abertas = tarefas
+    .filter((t) => t.aberta)
+    .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'));
+  const concluidas = tarefas.length - abertas.length;
+  const pct = Math.round((concluidas / tarefas.length) * 100);
+  const visiveis = abertas.slice(0, 6);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">Tarefas</div>
+        <span className="font-mono text-[10.5px] text-t3">
+          {concluidas}/{tarefas.length}
+        </span>
+      </div>
+      <div className="h-1 overflow-hidden rounded-full bg-bgSoft">
+        <div className="h-full rounded-full bg-ink" style={{ width: `${pct}%` }} />
+      </div>
+      {visiveis.length > 0 ? (
+        <ul className="space-y-0.5">
+          {visiveis.map((t) => {
+            const p = prazoCurto(t.prazo);
+            return (
+              <li key={t.tarefaId} className="flex items-baseline gap-2 text-[12px]">
+                <span className="text-t3">○</span>
+                <span className="min-w-0 flex-1 truncate text-ink" title={t.titulo}>
+                  {t.titulo}
+                </span>
+                {t.pessoa && <span className="shrink-0 text-[11px] text-t3">{t.pessoa.split(' ')[0]}</span>}
+                <span className={`shrink-0 font-mono text-[10.5px] ${p.atrasada ? 'font-semibold text-ink' : 'text-t3'}`}>
+                  {p.atrasada ? `atrasada · ${p.texto}` : p.texto}
+                </span>
+              </li>
+            );
+          })}
+          {abertas.length > visiveis.length && (
+            <li className="text-[11px] text-t3">+{abertas.length - visiveis.length} em aberto</li>
+          )}
+        </ul>
+      ) : (
+        <p className="text-[12px] text-t2">Tudo concluído ✓</p>
+      )}
+      {concluidas > 0 && visiveis.length > 0 && (
+        <p className="text-[11px] text-t3">
+          ✓ {concluidas} {concluidas === 1 ? 'concluída' : 'concluídas'}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function tipoArquivo(mime: string, nome: string): 'imagem' | 'video' | 'audio' | 'outro' {
   const m = mime.toLowerCase();
@@ -254,7 +329,8 @@ export function PreviaPostModal({
                 )}
               </div>
 
-              {/* Legenda */}
+              {/* Legenda + tarefas */}
+              <div className="space-y-5">
               <div className="space-y-2">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
                   Legenda
@@ -268,6 +344,8 @@ export function PreviaPostModal({
                     Sem legenda definida.
                   </div>
                 )}
+              </div>
+              <TarefasResumo tarefas={preview.tarefas ?? []} />
               </div>
             </div>
           )}
