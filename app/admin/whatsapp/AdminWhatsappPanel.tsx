@@ -37,6 +37,25 @@ export function AdminWhatsappPanel({ grupos, permissoes, projetos }: Props) {
     }
   }
 
+  async function salvarApelido(grupo: WhatsappGrupo, apelido: string) {
+    if (apelido.trim() === (grupo.apelido ?? '')) return;
+    setErro(null);
+    try {
+      const res = await fetch('/api/whatsapp/grupo-projeto', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grupoId: grupo.id, apelido }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? 'erro');
+      }
+      startTransition(() => router.refresh());
+    } catch (e: any) {
+      setErro(e?.message ?? 'erro salvando apelido');
+    }
+  }
+
   async function sincronizar() {
     setErro(null);
     setMsg(null);
@@ -136,6 +155,19 @@ export function AdminWhatsappPanel({ grupos, permissoes, projetos }: Props) {
                     <div className="truncate text-[13px] font-medium text-ink">{g.nome}</div>
                     <div className="truncate text-[10px] text-t3">{g.id}</div>
                   </div>
+
+                  <input
+                    key={g.apelido ?? ''}
+                    defaultValue={g.apelido ?? ''}
+                    placeholder="Apelido (ex: Re)"
+                    onBlur={(e) => salvarApelido(g, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    }}
+                    disabled={pending}
+                    title="Como chamar o cliente no lembrete: Oi [apelido]!"
+                    className="w-[130px] rounded-md border border-[rgba(21,21,33,0.13)] bg-white px-2 py-1.5 text-[11px] text-ink placeholder:text-t3"
+                  />
 
                   {/* Dropdown de projeto — vincula o grupo a um projeto do Notion.
                       Essa é a vinculação que o botão "📱 lembrar" usa pra saber

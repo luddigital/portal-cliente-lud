@@ -61,6 +61,7 @@ export type WhatsappGrupo = {
   foto_url: string | null;
   ativo: boolean;
   projeto_id: string | null;
+  apelido: string | null;
   criado_em: string;
   atualizado_em: string;
 };

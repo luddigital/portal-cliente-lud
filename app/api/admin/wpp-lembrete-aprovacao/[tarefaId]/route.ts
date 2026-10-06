@@ -8,6 +8,7 @@ import {
 } from '@/lib/notion';
 import { getGrupoWhatsappDoProjeto } from '@/lib/supabase';
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
+import { montarLembrete } from '@/lib/lembrete-aprovacao';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,17 +63,16 @@ export async function POST(
     ? `${env.app.url}/post/${t.postId}?tarefa=${params.tarefaId}`
     : `${env.app.url}/tarefa/${params.tarefaId}`;
 
-  const mensagemPadrao = [
-    `Oi ${nomeCliente}! Aqui é da Lud. ✨`,
-    '',
-    `Tem uma aprovação te esperando no portal:`,
-    `*${t.postTitulo || t.tarefaTitulo}*`,
-    '',
-    `Abre aqui pra revisar e aprovar:`,
-    linkPost,
-    '',
-    `Qualquer dúvida, só me chamar por aqui.`,
-  ].join('\n');
+  const apelido = grupo?.apelido?.trim() || null;
+  const lembrete = montarLembrete({
+    apelido: apelido ?? nomeCliente,
+    tarefaTitulo: t.tarefaTitulo,
+    postTitulo: t.postTitulo || t.tarefaTitulo,
+    prazo: t.tarefaPrazo,
+    postData: t.postData,
+    link: linkPost,
+  });
+  const mensagemPadrao = lembrete.mensagem;
 
   const erroSemGrupo =
     `Esse projeto não tem grupo do WhatsApp vinculado. ` +
@@ -83,6 +83,8 @@ export async function POST(
     return NextResponse.json({
       mensagem: mensagemPadrao,
       clienteNome: nomeCliente,
+      apelido,
+      situacao: lembrete.situacao,
       grupoNome: grupo?.id ? grupo.nome : null,
       erroGrupo: grupo?.id ? null : erroSemGrupo,
     });

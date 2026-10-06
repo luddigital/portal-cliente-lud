@@ -5,9 +5,21 @@ import { useEffect, useState } from 'react';
 type Previa = {
   mensagem: string;
   clienteNome: string;
+  apelido: string | null;
+  situacao: { codigo: string; rotulo: string };
   grupoNome: string | null;
   erroGrupo: string | null;
 };
+
+function corDaSituacao(codigo: string): { bg: string; fg: string } {
+  if (codigo === 'vencido' || codigo === 'data_passou') {
+    return { bg: 'var(--prazo-atrasado-soft)', fg: 'var(--prazo-atrasado)' };
+  }
+  if (codigo === 'vence_hoje' || codigo === 'vence_amanha') {
+    return { bg: 'var(--prazo-hoje-soft)', fg: 'var(--prazo-hoje)' };
+  }
+  return { bg: 'rgba(21,21,33,0.05)', fg: 'var(--t2)' };
+}
 
 /**
  * Botão de lembrete de aprovação pelo WhatsApp (Z-API). Abre um popup com a
@@ -181,11 +193,32 @@ function ModalLembrete({
                 </div>
               )}
               {previa && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                    style={{
+                      background: corDaSituacao(previa.situacao.codigo).bg,
+                      color: corDaSituacao(previa.situacao.codigo).fg,
+                    }}
+                  >
+                    {previa.situacao.rotulo}
+                  </span>
+                  {!previa.apelido && (
+                    <span className="text-[11px] text-t3">
+                      Sem apelido salvo pra esse grupo.{' '}
+                      <a href="/admin/whatsapp" className="underline hover:text-ink">
+                        Cadastrar
+                      </a>
+                    </span>
+                  )}
+                </div>
+              )}
+              {previa && (
                 <>
                   <textarea
                     value={texto}
                     onChange={(e) => setTexto(e.target.value)}
-                    rows={11}
+                    rows={14}
                     disabled={enviando}
                     className="w-full resize-y rounded-xl border border-[rgba(21,21,33,0.13)] bg-white p-3 text-[13px] leading-[1.55] text-ink outline-none focus:border-[rgba(21,21,33,0.35)]"
                   />
