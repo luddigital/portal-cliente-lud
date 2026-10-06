@@ -4783,3 +4783,84 @@ export async function listProducaoDoColaborador(
 ): Promise<ResumoProducao> {
   return _listProducaoDoColaboradorCached(pessoaUserId);
 }
+
+export type TarefaRegua = {
+  tarefaId: string;
+  titulo: string;
+  status: string | null;
+  /** Data Entrega no fuso de São Paulo (YYYY-MM-DD). */
+  prazo: string | null;
+  postId: string | null;
+  postTitulo: string | null;
+  projetoId: string | null;
+};
+
+function dataEmSaoPaulo(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  if (iso.length <= 10) return iso;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(
+    new Date(iso),
+  );
+}
+
+/** Tarefas da cadeia semanal do post (Arte → Aprovação | Arte → Enviar Post
+ *  Aprovação → Aprovação | Post) com Data Entrega no intervalo. */
+export async function listarTarefasDaRegua(inicio: string, fim: string): Promise<TarefaRegua[]> {
+  const brutas: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: env.notion.tarefasDbId,
+      start_cursor: cursor,
+      page_size: 100,
+      filter: {
+        and: [
+          { property: 'Data Entrega', date: { on_or_after: inicio } },
+          { property: 'Data Entrega', date: { on_or_before: `${fim}T23:59:59-03:00` } },
+          {
+            or: ['Arte', 'Enviar Post', 'Aprovação | Post'].map((t) => ({
+              property: 'Tarefa',
+              title: { contains: t },
+            })),
+          },
+        ],
+      },
+    });
+    brutas.push(...(res.results as any[]));
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+
+  const postIds = [
+    ...new Set(
+      brutas
+        .map((t) => (getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id as string | undefined)
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  const titulos = new Map<string, string>();
+  await Promise.all(
+    postIds.map(async (id) => {
+      try {
+        const p = await cachedPageRetrieve(id);
+        const tp = Object.values(p.properties).find((x: any) => x.type === 'title') as any;
+        titulos.set(id, txt(tp?.title) || 'Post sem título');
+      } catch {
+        /* post sem acesso: fica sem título */
+      }
+    }),
+  );
+
+  return brutas.map((t) => {
+    const tt = Object.values(t.properties).find((x: any) => x.type === 'title') as any;
+    const postId = ((getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id as string) ?? null;
+    return {
+      tarefaId: t.id,
+      titulo: (txt(tt?.title) || '').trim(),
+      status: getProp(t, env.notion.taskProps.status)?.status?.name ?? null,
+      prazo: dataEmSaoPaulo(getProp(t, 'Data Entrega')?.date?.start),
+      postId,
+      postTitulo: postId ? titulos.get(postId) ?? null : null,
+      projetoId: ((getProp(t, 'Projeto')?.relation ?? [])[0]?.id as string) ?? null,
+    };
+  });
+}

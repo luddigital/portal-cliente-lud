@@ -19,7 +19,11 @@ import {
   type DriveFileResumido,
 } from '@/lib/drive';
 import { env } from '@/lib/env';
-import { lerConfigProgramacao, registrarVisualizacao } from '@/lib/supabase';
+import {
+  lerConfigProgramacao,
+  lerHistoricoComunicacao,
+  registrarVisualizacao,
+} from '@/lib/supabase';
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
 import { EtapaPautaCards } from './EtapaPautaCards';
@@ -29,6 +33,7 @@ import {
   StatusDoPostChips,
   TodasTarefasCard,
   ProgramacaoCard,
+  ComunicacaoCard,
 } from './PostSidebarLud';
 import { ComentariosLud } from './ComentariosLud';
 import { TarefaForm } from '../../tarefa/[id]/form';
@@ -201,7 +206,8 @@ export default async function PostDetalhePage({
   // Dados extras da sidebar Lud. — só faz sentido buscar quando a vista
   // vai ser interna. Server components dão erro se retornar Promise sem await,
   // então busca sempre pra simplificar (barato porque já vem cacheado).
-  const [tarefasDoPost, configProgramacao] = await Promise.all([
+  const historicoVazio = { visualizacoes: [], envios: [] };
+  const [tarefasDoPost, configProgramacao, historico] = await Promise.all([
     listarTarefasDoPost(post.id).catch(() => []),
     lerConfigProgramacao(post.id).catch(() => ({
       data: '',
@@ -212,6 +218,9 @@ export default async function PostDetalhePage({
       atualizadoEm: null,
       atualizadoPor: null,
     })),
+    vista === 'interno'
+      ? lerHistoricoComunicacao(post.id).catch(() => historicoVazio)
+      : Promise.resolve(historicoVazio),
   ]);
 
   // Resolve arquivos do Drive: se for pasta, lista o conteúdo; se for arquivo, monta um item.
@@ -687,6 +696,8 @@ export default async function PostDetalhePage({
         )}
 
         <TodasTarefasCard tarefas={tarefasDoPost} />
+
+        <ComunicacaoCard historico={historico} />
 
         <ProgramacaoCard
           postId={post.id}

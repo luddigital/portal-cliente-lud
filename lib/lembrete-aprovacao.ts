@@ -80,29 +80,31 @@ export const VARIAVEIS: { nome: string; descricao: string }[] = [
 ];
 
 export const PADRAO: Record<string, string> = {
-  'lembrete.saudacao': 'Oi {apelido}! Aqui é da Lud. ✨',
-  'lembrete.fechamento': 'Qualquer dúvida, só me chamar por aqui.',
+  'lembrete.saudacao': 'Oie, {apelido}! Tudo bem? 😊',
+  'lembrete.fechamento': 'Qualquer dúvida, pode me chamar! 💜',
 
   'lembrete.etapa.pauta.abertura': 'Tem pauta te esperando pra aprovação no portal:',
   'lembrete.etapa.pauta.acao': 'Dá uma olhada e aprova (ou pede ajuste) por aqui:',
   'lembrete.etapa.pauta.regra':
-    'Depois da pauta aprovada a estrutura do post não muda mais, então essa é a hora de ajustar o que quiser.',
+    'Lembrando que esse é O momento para alterar ou ajustar tudo o que desejar nas pautas e formatos antes de seguirmos com a produção dos posts.',
   'lembrete.etapa.pauta.verbo': 'aprovar',
 
   'lembrete.etapa.previos.abertura': 'Precisamos dos materiais prévios desse post:',
   'lembrete.etapa.previos.acao': 'Envia por aqui:',
-  'lembrete.etapa.previos.regra': 'Se tiver dicas, fotos ou vídeos que já tenha em mãos, pode mandar junto.',
+  'lembrete.etapa.previos.regra':
+    'Se o prazo passar sem envio, seguiremos o processo com informações internas, mas não será possível alterar a pauta depois, apenas alterar a copy ou cancelar o post.',
   'lembrete.etapa.previos.verbo': 'enviar',
 
   'lembrete.etapa.producao.abertura': 'Precisamos dos materiais pra produção desse post:',
   'lembrete.etapa.producao.acao': 'Envia por aqui:',
   'lembrete.etapa.producao.regra':
-    'É com esse material que o post entra em produção, então a data de envio é definitiva.',
+    '❗Passou o prazo e não conseguiu nos enviar? O post vai ser cancelado ou substituído por um photodump 😢\n❗Aconteceu algum imprevisto e não vai conseguir produzir a tempo? Nos avise!',
   'lembrete.etapa.producao.verbo': 'enviar',
 
   'lembrete.etapa.post.abertura': 'Tem post te esperando pra aprovação no portal:',
   'lembrete.etapa.post.acao': 'Abre aqui pra revisar e aprovar:',
-  'lembrete.etapa.post.regra': 'Se tiver ajustes, manda tudo de uma vez só. Assim o post não atrasa 😉',
+  'lembrete.etapa.post.regra':
+    'O post poderá ser alterado 3x apenas, então não esquece de enviar todas as solicitações que deseja em apenas uma solicitação 😉',
   'lembrete.etapa.post.verbo': 'aprovar',
 
   'lembrete.prazo.no_prazo': 'O prazo é até *{prazo_dia}*.',
@@ -143,14 +145,14 @@ function diasEntre(deISO: string, ateISO: string): number {
   return Math.round((Date.UTC(...ymd(ateISO)) - Date.UTC(...ymd(deISO))) / 86_400_000);
 }
 
-function ddmm(iso: string): string {
+export function ddmm(iso: string): string {
   const [, m, d] = iso.slice(0, 10).split('-');
   return `${d}/${m}`;
 }
 
 const DIA_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
-function diaComData(iso: string): string {
+export function diaComData(iso: string): string {
   const dia = new Date(Date.UTC(...ymd(iso))).getUTCDay();
   return `${DIA_SEMANA[dia]} (${ddmm(iso)})`;
 }

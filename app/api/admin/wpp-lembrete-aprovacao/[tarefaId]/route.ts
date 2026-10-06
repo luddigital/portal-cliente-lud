@@ -6,7 +6,7 @@ import {
   getEmpresaDetalhe,
   listAllProjetos,
 } from '@/lib/notion';
-import { getGrupoWhatsappDoProjeto } from '@/lib/supabase';
+import { getGrupoWhatsappDoProjeto, registrarEnvioAvulso } from '@/lib/supabase';
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
 import { montarLembrete } from '@/lib/lembrete-aprovacao';
 import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
@@ -116,6 +116,16 @@ export async function POST(
       { status: 502 },
     );
   }
+
+  await registrarEnvioAvulso({
+    projetoId: t.projetoId,
+    postId: t.postId,
+    situacao: lembrete.situacao.codigo,
+    texto: mensagem,
+    grupoId: grupo.id,
+    messageId: resultado.messageId ?? null,
+    email: session.email,
+  });
 
   return NextResponse.json({
     ok: true,

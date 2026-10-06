@@ -368,3 +368,118 @@ export function ProgramacaoCard({
     </div>
   );
 }
+
+// ============================================================================
+// Comunicação com o cliente — lembretes enviados + visualizações no portal
+// ============================================================================
+
+const MOMENTO_LABEL: Record<string, string> = {
+  quinta: 'Envio da semana',
+  sexta: 'Lembrete de sexta',
+  segunda_manha: 'Último dia (manhã)',
+  segunda_tarde: 'Último dia (tarde)',
+  terca: 'Prazo vencido',
+  avulso: 'Lembrete avulso',
+};
+
+const VARIANTE_LABEL: Record<string, string> = {
+  viu: 'cliente tinha visto',
+  nao_viu: 'cliente não tinha visto',
+  no_prazo: 'no prazo',
+  vence_amanha: 'vence amanhã',
+  vence_hoje: 'vence hoje',
+  vencido: 'prazo vencido',
+  data_passou: 'data do post passou',
+};
+
+function fmtDataHora(iso: string): string {
+  return new Date(iso).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export function ComunicacaoCard({
+  historico,
+}: {
+  historico: {
+    visualizacoes: { email: string; vistoEm: string }[];
+    envios: { momento: string; variante: string | null; enviadoEm: string; enviadoPor: string | null }[];
+  };
+}) {
+  const [verTudo, setVerTudo] = useState(false);
+  const { visualizacoes, envios } = historico;
+  const eventos = [
+    ...envios.map((e) => ({
+      quando: e.enviadoEm,
+      icone: '📱',
+      texto: [MOMENTO_LABEL[e.momento] ?? e.momento, e.variante ? VARIANTE_LABEL[e.variante] : null]
+        .filter(Boolean)
+        .join(' · '),
+      quem: e.enviadoPor ? `por ${e.enviadoPor.split('@')[0]}` : null,
+    })),
+    ...visualizacoes.map((v) => ({
+      quando: v.vistoEm,
+      icone: '👁',
+      texto: 'Cliente abriu o post',
+      quem: v.email,
+    })),
+  ].sort((a, b) => b.quando.localeCompare(a.quando));
+  const visiveis = verTudo ? eventos : eventos.slice(0, 6);
+  const ultimaVista = visualizacoes[0]?.vistoEm;
+  const ultimoEnvio = envios[0]?.enviadoEm;
+
+  return (
+    <div className="card p-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.09em] text-t3">
+        Comunicação com o cliente
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-xl bg-bgSoft/60 px-3 py-2.5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-t3">Lembretes enviados</div>
+          <div className="mt-0.5 text-[18px] font-semibold text-ink">{envios.length}</div>
+          <div className="text-[11px] text-t3">
+            {ultimoEnvio ? `último ${fmtDataHora(ultimoEnvio)}` : 'nenhum ainda'}
+          </div>
+        </div>
+        <div className="rounded-xl bg-bgSoft/60 px-3 py-2.5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-t3">Cliente abriu</div>
+          <div className="mt-0.5 text-[18px] font-semibold text-ink">
+            {visualizacoes.length} {visualizacoes.length === 1 ? 'vez' : 'vezes'}
+          </div>
+          <div className="text-[11px] text-t3">
+            {ultimaVista ? `última ${fmtDataHora(ultimaVista)}` : 'ainda não abriu'}
+          </div>
+        </div>
+      </div>
+
+      {eventos.length > 0 && (
+        <ul className="mt-3 space-y-1">
+          {visiveis.map((e, i) => (
+            <li key={`${e.quando}-${i}`} className="flex items-baseline gap-2 text-[12px]">
+              <span className="w-[86px] shrink-0 font-mono text-[10.5px] text-t3">{fmtDataHora(e.quando)}</span>
+              <span className="shrink-0">{e.icone}</span>
+              <span className="min-w-0 flex-1 truncate text-t1">{e.texto}</span>
+              {e.quem && <span className="hidden shrink-0 text-[11px] text-t3 sm:inline">{e.quem}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {eventos.length > 6 && (
+        <button
+          type="button"
+          onClick={() => setVerTudo((v) => !v)}
+          className="mt-2 text-[11.5px] font-semibold text-t3 transition hover:text-ink"
+        >
+          {verTudo ? 'Ver menos' : `Ver tudo (${eventos.length})`}
+        </button>
+      )}
+      <p className="mt-2 text-[10.5px] text-t3">
+        Visualizações contam desde 06/10. Acessos da equipe não entram.
+      </p>
+    </div>
+  );
+}

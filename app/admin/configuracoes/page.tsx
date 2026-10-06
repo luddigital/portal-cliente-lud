@@ -7,7 +7,7 @@ const SUBPAGINAS = [
     href: '/admin/configuracoes/mensagens',
     titulo: 'Mensagens padrão',
     descricao:
-      'Textos dos lembretes que o portal manda no WhatsApp, com as condições de quando cada parte aparece.',
+      'Textos do WhatsApp (régua da semana e lembrete avulso), com as condições de quando cada um é usado.',
   },
 ];
 

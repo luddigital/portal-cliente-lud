@@ -1,5 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { PADRAO } from '@/lib/lembrete-aprovacao';
+import { PADRAO_REGUA } from '@/lib/regua-mensagens';
+
+const TODOS: Record<string, string> = { ...PADRAO, ...PADRAO_REGUA };
 
 /** Textos editados no admin (só as chaves que fogem do padrão). */
 export async function lerMensagensEditadas(): Promise<Record<string, string>> {
@@ -11,7 +14,7 @@ export async function lerMensagensEditadas(): Promise<Record<string, string>> {
   }
   const out: Record<string, string> = {};
   for (const r of data ?? []) {
-    if (r.chave in PADRAO) out[r.chave] = r.texto;
+    if (r.chave in TODOS) out[r.chave] = r.texto;
   }
   return out;
 }
@@ -25,8 +28,8 @@ export async function salvarMensagens(
   const upserts: { chave: string; texto: string; atualizado_em: string; atualizado_por: string }[] = [];
   const remover: string[] = [];
   for (const [chave, texto] of Object.entries(textos)) {
-    if (!(chave in PADRAO)) continue;
-    if (texto === null || texto === PADRAO[chave]) remover.push(chave);
+    if (!(chave in TODOS)) continue;
+    if (texto === null || texto === TODOS[chave]) remover.push(chave);
     else
       upserts.push({
         chave,

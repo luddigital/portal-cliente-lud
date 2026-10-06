@@ -625,3 +625,62 @@ export async function lerVisualizacoes(
   }
   return out;
 }
+
+/** Lembrete avulso (botão 📱 lembrar) entra no mesmo histórico da régua. */
+export async function registrarEnvioAvulso(e: {
+  projetoId: string;
+  postId: string | null;
+  situacao: string;
+  texto: string;
+  grupoId: string;
+  messageId: string | null;
+  email: string;
+}): Promise<void> {
+  try {
+    const sb = await supabaseAdmin();
+    await sb.from('regua_envios').insert({
+      projeto_id: e.projetoId,
+      ciclo: null,
+      momento: 'avulso',
+      variante: e.situacao,
+      texto: e.texto,
+      post_ids: e.postId ? [e.postId] : [],
+      grupo_id: e.grupoId,
+      message_id: e.messageId,
+      enviado_por: e.email.trim().toLowerCase(),
+    });
+  } catch (err: any) {
+    console.warn('[regua_envios avulso]', err?.message);
+  }
+}
+
+export type HistoricoComunicacao = {
+  visualizacoes: { email: string; vistoEm: string }[];
+  envios: { momento: string; variante: string | null; enviadoEm: string; enviadoPor: string | null }[];
+};
+
+/** Lembretes enviados e visualizações do cliente de um post. */
+export async function lerHistoricoComunicacao(postId: string): Promise<HistoricoComunicacao> {
+  const sb = await supabaseAdmin();
+  const [{ data: views }, { data: envios }] = await Promise.all([
+    sb
+      .from('post_visualizacoes')
+      .select('email, visto_em')
+      .eq('post_id', postId)
+      .order('visto_em', { ascending: false }),
+    sb
+      .from('regua_envios')
+      .select('momento, variante, enviado_em, enviado_por')
+      .contains('post_ids', [postId])
+      .order('enviado_em', { ascending: false }),
+  ]);
+  return {
+    visualizacoes: (views ?? []).map((v: any) => ({ email: v.email, vistoEm: v.visto_em })),
+    envios: (envios ?? []).map((e: any) => ({
+      momento: e.momento,
+      variante: e.variante,
+      enviadoEm: e.enviado_em,
+      enviadoPor: e.enviado_por,
+    })),
+  };
+}

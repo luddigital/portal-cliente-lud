@@ -13,8 +13,19 @@ import {
   type EtapaLembrete,
   type SituacaoLembrete,
 } from '@/lib/lembrete-aprovacao';
+import {
+  MOMENTOS_REGUA,
+  PADRAO_REGUA,
+  VARIANTES_REGUA,
+  VARIAVEIS_REGUA,
+  chaveRegua,
+  montarMensagemRegua,
+  type MomentoRegua,
+  type VarianteRegua,
+} from '@/lib/regua-mensagens';
 
 const BORDA = 'border-[rgba(21,21,33,0.09)]';
+const TODOS: Record<string, string> = { ...PADRAO, ...PADRAO_REGUA };
 
 const ESTRUTURA = [
   { nome: 'Saudação', origem: 'Início e fim' },
@@ -62,7 +73,10 @@ function TextoWhatsapp({ texto }: { texto: string }) {
 
 export function EditorMensagens({ editadas }: { editadas: Record<string, string> }) {
   const router = useRouter();
-  const inicial = useMemo(() => ({ ...PADRAO, ...editadas }), [editadas]);
+  const inicial = useMemo(() => ({ ...TODOS, ...editadas }), [editadas]);
+  const [aba, setAba] = useState<'regua' | 'lembrete'>('regua');
+  const [momentoR, setMomentoR] = useState<MomentoRegua>('sexta');
+  const [varianteR, setVarianteR] = useState<VarianteRegua>('viu');
   const [textos, setTextos] = useState<Record<string, string>>(inicial);
   const [salvos, setSalvos] = useState<Record<string, string>>(inicial);
   const [etapa, setEtapa] = useState<EtapaLembrete>('post');
@@ -72,7 +86,7 @@ export function EditorMensagens({ editadas }: { editadas: Record<string, string>
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const focoRef = useRef<{ chave: string; el: HTMLTextAreaElement | HTMLInputElement } | null>(null);
 
-  const alteradas = Object.keys(PADRAO).filter((k) => textos[k] !== salvos[k]);
+  const alteradas = Object.keys(TODOS).filter((k) => textos[k] !== salvos[k]);
 
   useEffect(() => {
     if (alteradas.length === 0) return;
@@ -120,7 +134,7 @@ export function EditorMensagens({ editadas }: { editadas: Record<string, string>
     setSalvando(true);
     setAviso(null);
     const payload: Record<string, string | null> = {};
-    for (const k of alteradas) payload[k] = textos[k] === PADRAO[k] ? null : textos[k];
+    for (const k of alteradas) payload[k] = textos[k] === TODOS[k] ? null : textos[k];
     try {
       const res = await fetch('/api/admin/mensagens-padrao', {
         method: 'PUT',
@@ -155,7 +169,7 @@ export function EditorMensagens({ editadas }: { editadas: Record<string, string>
     aoFocar?: () => void;
   }) {
     const valor = textos[chave] ?? '';
-    const difereDoPadrao = valor !== PADRAO[chave];
+    const difereDoPadrao = valor !== TODOS[chave];
     const naoSalvo = valor !== salvos[chave];
     const comum = {
       value: valor,
@@ -180,7 +194,7 @@ export function EditorMensagens({ editadas }: { editadas: Record<string, string>
           {difereDoPadrao && (
             <button
               type="button"
-              onClick={() => mudar(chave, PADRAO[chave])}
+              onClick={() => mudar(chave, TODOS[chave])}
               className="text-[11px] text-t3 underline hover:text-ink"
             >
               restaurar padrão
@@ -203,8 +217,8 @@ export function EditorMensagens({ editadas }: { editadas: Record<string, string>
         <div>
           <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Mensagens padrão</h1>
           <p className="text-[13px] text-t3">
-            Lembrete de aprovação enviado pelo botão &quot;📱 lembrar&quot; em Aprovações. Vai
-            sempre pro grupo do cliente, e dá pra editar no popup antes de enviar.
+            Textos que o portal manda nos grupos dos clientes. Sempre no grupo, nunca no privado, e
+            dá pra editar cada mensagem antes de enviar.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -228,6 +242,167 @@ export function EditorMensagens({ editadas }: { editadas: Record<string, string>
         </div>
       </header>
 
+      <div className="flex flex-wrap gap-1 border-b border-[rgba(21,21,33,0.08)]">
+        {(
+          [
+            ['regua', 'Régua da semana', 'Usada na página Régua da semana'],
+            ['lembrete', 'Lembrete avulso', 'Botão 📱 lembrar em Aprovações'],
+          ] as const
+        ).map(([id, nome, sub]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setAba(id)}
+            className={`-mb-px border-b-2 px-4 py-2.5 text-left transition ${
+              aba === id ? 'border-ink' : 'border-transparent hover:border-[rgba(21,21,33,0.2)]'
+            }`}
+          >
+            <div className={`text-[13px] ${aba === id ? 'font-semibold text-ink' : 'text-t2'}`}>{nome}</div>
+            <div className="text-[11px] text-t3">{sub}</div>
+          </button>
+        ))}
+      </div>
+
+      {aba === 'regua' && (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="space-y-6">
+            <section className={`rounded-xl border ${BORDA} bg-white p-5`}>
+              <h2 className="text-[14px] font-semibold text-ink">Como a régua funciona</h2>
+              <p className="mt-1 text-[12.5px] leading-[1.55] text-t2">
+                Cada semana gira em torno da quinta do envio. O lote só sai pro cliente com todos os
+                posts da semana com a Aprovação | Arte concluída. Depois, quem não aprovou recebe
+                lembretes na sexta, na segunda (manhã e tarde) e na terça, quando o prazo venceu. A
+                mensagem muda se o cliente já abriu os posts no portal (viu) ou não.
+              </p>
+              <div className="mt-4 border-t border-[rgba(21,21,33,0.06)] pt-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.07em] text-t2">
+                  Variáveis
+                </div>
+                <p className="mt-0.5 text-[11px] text-t3">
+                  Clica num campo e depois na variável pra inserir. *texto* fica em negrito no WhatsApp.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {VARIAVEIS_REGUA.map((v) => (
+                    <button
+                      key={v.nome}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => inserirVariavel(v.nome)}
+                      title={v.descricao}
+                      className={`rounded-md border ${BORDA} bg-[rgba(55,53,47,0.03)] px-2 py-1 font-mono text-[11px] text-ink transition hover:bg-[rgba(55,53,47,0.08)]`}
+                    >
+                      {v.nome}
+                      <span className="ml-1.5 font-sans text-t3">{v.descricao}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {MOMENTOS_REGUA.map((m) => (
+              <section key={m.id} className={`rounded-xl border ${BORDA} bg-white p-5`}>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-[14px] font-semibold text-ink">
+                    {m.dia} · {m.nome}
+                  </h2>
+                  {momentoR === m.id && <span className="text-[11px] text-t3">na prévia</span>}
+                </div>
+                <div className="mt-2 rounded-lg bg-[rgba(55,53,47,0.04)] px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">Quando</div>
+                  <div className="mt-0.5 text-[12.5px] text-ink">{m.quando}</div>
+                </div>
+                <div className="mt-4 space-y-4">
+                  {m.variantes.map((v) => (
+                    <div key={v}>
+                      {m.variantes.length > 1 && (
+                        <div className="mb-1.5 text-[12px] text-t2">
+                          <span className="font-semibold text-ink">{VARIANTES_REGUA[v].nome}:</span>{' '}
+                          {VARIANTES_REGUA[v].condicao}
+                        </div>
+                      )}
+                      {Campo({
+                        chave: chaveRegua(m.id, v),
+                        label: 'Texto',
+                        linhas: 7,
+                        aoFocar: () => {
+                          setMomentoR(m.id);
+                          setVarianteR(v);
+                        },
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          <aside className="lg:sticky lg:top-6 lg:self-start">
+            <div className={`rounded-xl border ${BORDA} bg-white p-5`}>
+              <h2 className="text-[14px] font-semibold text-ink">Prévia</h2>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <label className="text-[11px] text-t3">
+                  Momento
+                  <select
+                    value={momentoR}
+                    onChange={(e) => {
+                      const novo = e.target.value as MomentoRegua;
+                      setMomentoR(novo);
+                      setVarianteR(novo === 'quinta' ? 'unica' : varianteR === 'unica' ? 'viu' : varianteR);
+                    }}
+                    className={`mt-1 w-full rounded-md border ${BORDA} bg-white px-2 py-1.5 text-[12px] text-ink`}
+                  >
+                    {MOMENTOS_REGUA.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.dia} · {m.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-[11px] text-t3">
+                  Situação
+                  <select
+                    value={varianteR}
+                    onChange={(e) => setVarianteR(e.target.value as VarianteRegua)}
+                    disabled={momentoR === 'quinta'}
+                    className={`mt-1 w-full rounded-md border ${BORDA} bg-white px-2 py-1.5 text-[12px] text-ink disabled:opacity-50`}
+                  >
+                    {(MOMENTOS_REGUA.find((m) => m.id === momentoR)?.variantes ?? []).map((v) => (
+                      <option key={v} value={v}>
+                        {VARIANTES_REGUA[v].nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="col-span-2 text-[11px] text-t3">
+                  Apelido de exemplo
+                  <input
+                    value={apelido}
+                    onChange={(e) => setApelido(e.target.value)}
+                    className={`mt-1 w-full rounded-md border ${BORDA} bg-white px-2 py-1.5 text-[12px] text-ink`}
+                  />
+                </label>
+              </div>
+              <div className="mt-3 whitespace-pre-wrap break-words rounded-xl rounded-tl-sm border border-[rgba(21,21,33,0.08)] bg-[rgba(55,53,47,0.05)] px-3.5 py-3 text-[13px] leading-[1.5] text-ink">
+                <TextoWhatsapp
+                  texto={montarMensagemRegua({
+                    momento: momentoR,
+                    variante: momentoR === 'quinta' ? 'unica' : varianteR,
+                    apelido: apelido || 'cliente',
+                    posts: [
+                      { titulo: 'Título do primeiro post', link: 'https://portal-cliente-lud.vercel.app/post/…' },
+                      { titulo: 'Título do segundo post', link: 'https://portal-cliente-lud.vercel.app/post/…' },
+                    ],
+                    prazo: somarDias(hoje, ((1 - new Date(`${hoje}T12:00:00Z`).getUTCDay() + 7) % 7) || 7),
+                    textos,
+                  })}
+                />
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {aba === 'lembrete' && (
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-6">
           {/* Estrutura + variáveis */}
@@ -421,6 +596,7 @@ export function EditorMensagens({ editadas }: { editadas: Record<string, string>
           </div>
         </aside>
       </div>
+      )}
     </div>
   );
 }
