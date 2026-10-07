@@ -1,9 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ddmm, textoProxima, type ResumoEtapa } from '@/lib/etapas-projeto';
 import { ModalMensagem, type GrupoWpp, type ItemPendenciaUi } from './PendenciasCliente';
+import { PreviaPostModal } from '../../aprovacoes/PreviaPostModal';
 
 function diasAte(hoje: string, iso: string): number {
   const d = (s: string) => {
@@ -59,6 +59,7 @@ export function EntregasPorEtapa({
 }) {
   const [modal, setModal] = useState<{ titulo: string; itens: ItemPendenciaUi[] } | null>(null);
   const [enviadoPara, setEnviadoPara] = useState<string | null>(null);
+  const [previa, setPrevia] = useState<{ postId: string; tarefaId: string } | null>(null);
 
   useEffect(() => {
     if (!enviadoPara) return;
@@ -156,9 +157,10 @@ export function EntregasPorEtapa({
                 const v = vistoPorTarefa.get(p.tarefa.id)?.visto;
                 return (
                   <li key={p.postId}>
-                    <Link
-                      href={`/post/${p.postId}?tarefa=${p.tarefa.id}`}
-                      className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-bgSoft/60"
+                    <button
+                      type="button"
+                      onClick={() => setPrevia({ postId: p.postId, tarefaId: p.tarefa.id })}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-bgSoft/60"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] text-ink">{p.postTitulo}</div>
@@ -174,7 +176,7 @@ export function EntregasPorEtapa({
                         </span>
                       )}
                       <PrazoChip prazo={p.tarefa.prazo} hoje={hojeIso} />
-                    </Link>
+                    </button>
                   </li>
                 );
               })}
@@ -182,6 +184,14 @@ export function EntregasPorEtapa({
           </div>
         );
       })}
+
+      {previa && (
+        <PreviaPostModal
+          postId={previa.postId}
+          tarefaId={previa.tarefaId}
+          fechar={() => setPrevia(null)}
+        />
+      )}
 
       {modal && (
         <ModalMensagem

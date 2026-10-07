@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { PostCalendario } from '@/lib/notion';
+import { PreviaPostModal } from '@/app/admin/aprovacoes/PreviaPostModal';
 
 type CalDay = {
   iso: string;
@@ -73,12 +74,16 @@ export function CalendarMes({
   year,
   month,
   posts,
+  comPrevia = false,
 }: {
   year: number;
   month: number;
   posts: PostCalendario[];
+  /** Área interna: clicar no post abre o popup de prévia em vez da página. */
+  comPrevia?: boolean;
 }) {
   const days = useMemo(() => buildGrid(year, month, posts), [year, month, posts]);
+  const [previaId, setPreviaId] = useState<string | null>(null);
 
   return (
     <div className="hub-cal">
@@ -100,13 +105,8 @@ export function CalendarMes({
             <div className="hub-cal-day-num">{d.num}</div>
             {d.posts.slice(0, 4).map((p) => {
               const labelStatus = p.statusGeral ?? p.etapaLabel;
-              return (
-                <Link
-                  key={p.id}
-                  href={`/post/${p.id}`}
-                  className="block space-y-1 sm:space-y-1.5 rounded-md border border-[rgba(21,21,33,0.12)] bg-white px-1.5 py-1 sm:px-2 sm:py-1.5 text-[10px] sm:text-[11px] leading-tight transition hover:border-navy/40 hover:shadow-sm"
-                  title={`${p.projetoNome} — ${p.titulo} · ${labelStatus}`}
-                >
+              const conteudo = (
+                <>
                   <div className="flex items-start gap-1 sm:gap-1.5 text-ink">
                     <PostIcon icon={p.icon} fallback={fallbackEmoji(p)} />
                     <span className="line-clamp-2 font-medium">{p.titulo}</span>
@@ -120,6 +120,18 @@ export function CalendarMes({
                   >
                     {labelStatus}
                   </span>
+                </>
+              );
+              const cls =
+                'block w-full text-left space-y-1 sm:space-y-1.5 rounded-md border border-[rgba(21,21,33,0.12)] bg-white px-1.5 py-1 sm:px-2 sm:py-1.5 text-[10px] sm:text-[11px] leading-tight transition hover:border-navy/40 hover:shadow-sm';
+              const titulo = `${p.projetoNome} — ${p.titulo} · ${labelStatus}`;
+              return comPrevia ? (
+                <button key={p.id} type="button" onClick={() => setPreviaId(p.id)} className={cls} title={titulo}>
+                  {conteudo}
+                </button>
+              ) : (
+                <Link key={p.id} href={`/post/${p.id}`} className={cls} title={titulo}>
+                  {conteudo}
                 </Link>
               );
             })}
@@ -129,6 +141,7 @@ export function CalendarMes({
           </div>
         ))}
       </div>
+      {previaId && <PreviaPostModal postId={previaId} fechar={() => setPreviaId(null)} />}
     </div>
   );
 }

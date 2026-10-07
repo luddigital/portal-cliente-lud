@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { PreviaPostModal } from '../aprovacoes/PreviaPostModal';
 import { useRouter } from 'next/navigation';
 import type { Regua } from '@/lib/regua';
 import type { ClienteRegua, EstadoArte, EstadoCliente, PostRegua } from '@/lib/regua-ciclo';
@@ -490,10 +491,15 @@ function ListaClientes({
   estadoPost: (p: PostRegua) => string;
   ok: (p: PostRegua) => boolean;
 }) {
+  const [previa, setPrevia] = useState<{ postId: string; tarefaId: string | null } | null>(null);
   if (clientes.length === 0) {
     return <p className="mt-4 text-[12.5px] text-t3">Nenhum post nesse ciclo.</p>;
   }
   return (
+    <>
+    {previa && (
+      <PreviaPostModal postId={previa.postId} tarefaId={previa.tarefaId} fechar={() => setPrevia(null)} />
+    )}
     <ul className="mt-4 space-y-4">
       {clientes.map((c) => (
         <li key={c.projetoId}>
@@ -505,13 +511,14 @@ function ListaClientes({
             {c.posts.map((p) => (
               <li key={p.postId} className="flex items-baseline gap-2 text-[12px]">
                 <span className={`shrink-0 ${ok(p) ? 'text-ink' : 'text-t3'}`}>{ok(p) ? '✓' : '○'}</span>
-                <a
-                  href={`/post/${p.postId}`}
-                  className="min-w-0 flex-1 truncate text-t1 hover:underline"
+                <button
+                  type="button"
+                  onClick={() => setPrevia({ postId: p.postId, tarefaId: p.aprovacaoTarefaId })}
+                  className="min-w-0 flex-1 truncate text-left text-t1 hover:underline"
                   title={p.titulo}
                 >
                   {p.titulo}
-                </a>
+                </button>
                 <span className={`shrink-0 text-[11px] ${ok(p) ? 'text-t3' : 'font-semibold text-ink'}`}>
                   {estadoPost(p)}
                 </span>
@@ -521,5 +528,6 @@ function ListaClientes({
         </li>
       ))}
     </ul>
+    </>
   );
 }

@@ -105,10 +105,18 @@ export function PreviaPostModal({
   fechar,
 }: {
   postId: string;
-  tarefaId: string;
+  tarefaId?: string | null;
   fechar: () => void;
 }) {
   const [preview, setPreview] = useState<Preview | null>(null);
+  // Página completa volta pra onde o popup foi aberto (projeto, aprovações…).
+  const hrefCompleto = (() => {
+    const q = new URLSearchParams();
+    if (tarefaId) q.set('tarefa', tarefaId);
+    if (typeof window !== 'undefined') q.set('voltar', window.location.pathname + window.location.search);
+    const qs = q.toString();
+    return `/post/${postId}${qs ? `?${qs}` : ''}`;
+  })();
   const [erro, setErro] = useState<string | null>(null);
   const [ativo, setAtivo] = useState(0);
 
@@ -172,10 +180,18 @@ export function PreviaPostModal({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <a
-              href={`/post/${postId}?tarefa=${tarefaId}`}
-              className="rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-3 py-1.5 text-[11px] font-semibold text-ink transition hover:bg-bgSoft"
+              href={hrefCompleto}
+              title="Abrir página completa"
+              aria-label="Abrir página completa"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-2.5 text-[11px] font-semibold text-ink transition hover:bg-bgSoft"
             >
-              Abrir página completa ↗
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M15 3h6v6" />
+                <path d="M9 21H3v-6" />
+                <path d="M21 3l-7 7" />
+                <path d="M3 21l7-7" />
+              </svg>
+              <span className="hidden sm:inline">Abrir completo</span>
             </a>
             <button
               type="button"

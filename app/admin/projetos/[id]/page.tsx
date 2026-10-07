@@ -666,7 +666,7 @@ function CalendarioTab({
   return (
     <div>
       <SeletorMesCalendario id={id} year={year} month={month} />
-      <CalendarMes year={year} month={month} posts={posts} />
+      <CalendarMes year={year} month={month} posts={posts} comPrevia />
       <div className="mt-3.5 flex flex-wrap gap-x-4 gap-y-2 text-[11.5px] text-t2">
         {legenda.map(([cor, label]) => (
           <span key={cor} className="inline-flex items-center gap-1.5">

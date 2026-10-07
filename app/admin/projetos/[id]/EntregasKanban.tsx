@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { PreviaPostModal } from '../../aprovacoes/PreviaPostModal';
 import type { PostCalendario } from '@/lib/notion';
 import {
   COLUNAS_ENTREGA,
@@ -70,6 +70,7 @@ export function EntregasKanban({
   const [visiveis, setVisiveis] = useState<EtapaEntrega[]>(TODAS_COLUNAS);
   const [menuColunas, setMenuColunas] = useState(false);
   const [prefsCarregadas, setPrefsCarregadas] = useState(false);
+  const [previaId, setPreviaId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -307,10 +308,11 @@ export function EntregasKanban({
                   </div>
                   <div className="flex flex-col gap-1.5">
                     {lista.map(({ post }) => (
-                      <Link
+                      <button
+                        type="button"
                         key={post.id}
-                        href={`/post/${post.id}`}
-                        className="flex items-center justify-between gap-2 text-[11.5px] text-t2 transition hover:text-ink"
+                        onClick={() => setPreviaId(post.id)}
+                        className="flex items-center justify-between gap-2 text-left text-[11.5px] text-t2 transition hover:text-ink"
                       >
                         <span className="min-w-0 flex-1 truncate font-medium text-t1">
                           {post.titulo}
@@ -318,7 +320,7 @@ export function EntregasKanban({
                         <span className="shrink-0 font-mono text-[10.5px] text-t3">
                           {fmtDia(post.data)}
                         </span>
-                      </Link>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -328,10 +330,11 @@ export function EntregasKanban({
                   const pl = pill(post, saude);
                   const perigo = saude.estado === 'atrasado';
                   return (
-                    <Link
+                    <button
+                      type="button"
                       key={post.id}
-                      href={`/post/${post.id}`}
-                      className={`entrega-card ${faixa} block transition hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)]`}
+                      onClick={() => setPreviaId(post.id)}
+                      className={`entrega-card ${faixa} block w-full text-left transition hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)]`}
                     >
                       <div className="entrega-head">
                         <span className="entrega-icon">{emojiTipo(post)}</span>
@@ -352,7 +355,7 @@ export function EntregasKanban({
                           {pl.label}
                         </span>
                       </div>
-                    </Link>
+                    </button>
                   );
                 })
               )}
@@ -360,6 +363,8 @@ export function EntregasKanban({
           );
         })}
       </div>
+
+      {previaId && <PreviaPostModal postId={previaId} fechar={() => setPreviaId(null)} />}
     </div>
   );
 }

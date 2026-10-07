@@ -145,7 +145,7 @@ export default async function PostDetalhePage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { tarefa?: string; from?: string; vista?: string };
+  searchParams: { tarefa?: string; from?: string; vista?: string; voltar?: string };
 }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -200,7 +200,13 @@ export default async function PostDetalhePage({
   const isStory = post.formatoTipo === 'story';
   const etapaLabel = tarefaTitulo ?? (isStory ? 'Direcionamento de Stories' : 'Aprovação');
   const modo = modoDoPost(tarefaTitulo);
-  const voltarPara = searchParams.from ? `/etapa/${searchParams.from}` : '/';
+  // `voltar` vem do popup (página do projeto, aprovações…); só caminho interno.
+  const voltarInterno =
+    typeof searchParams.voltar === 'string' && /^\/(?![\/\\])/.test(searchParams.voltar)
+      ? searchParams.voltar
+      : null;
+  const voltarPara =
+    voltarInterno ?? (searchParams.from ? `/etapa/${searchParams.from}` : ehAdmin ? '/admin' : '/');
 
   // Vista Cliente/Lud. — cliente só vê a dele. Admin/colab default = interno.
   const podeVerInterno = ehAdmin || ehColaborador;
@@ -218,6 +224,7 @@ export default async function PostDetalhePage({
     const params = new URLSearchParams();
     if (searchParams.tarefa) params.set('tarefa', searchParams.tarefa);
     if (searchParams.from) params.set('from', searchParams.from);
+    if (voltarInterno) params.set('voltar', voltarInterno);
     params.set('vista', v);
     return `?${params.toString()}`;
   }
