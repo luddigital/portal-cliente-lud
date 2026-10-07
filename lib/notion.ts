@@ -770,8 +770,55 @@ export type ProjetoDetalhe = {
   clienteNome: string | null;
   gestor: string | null;
   config: ProjetoConfig;
-  tarefas: { id: string; titulo: string; pessoa: string | null }[];
+  tarefas: TarefaDoProjeto[];
 };
+
+export type TarefaDoProjeto = {
+  id: string;
+  titulo: string;
+  pessoa: string | null;
+  status: string | null;
+  /** Data Entrega (ou Data Inicial) no fuso de São Paulo, YYYY-MM-DD. */
+  prazo: string | null;
+  postId: string | null;
+  postTitulo: string | null;
+  postData: string | null;
+};
+
+/** Título e data dos posts recentes do projeto, numa consulta só. */
+async function titulosDosPostsDoProjeto(
+  projetoId: string,
+): Promise<Map<string, { titulo: string; data: string | null }>> {
+  const out = new Map<string, { titulo: string; data: string | null }>();
+  const desde = new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
+  let cursor: string | undefined;
+  try {
+    do {
+      const r = await notion.databases.query({
+        database_id: env.notion.postagensDbId,
+        page_size: 100,
+        start_cursor: cursor,
+        filter: {
+          and: [
+            { property: env.notion.postProps.projeto, relation: { contains: projetoId } },
+            { property: env.notion.postProps.data, date: { on_or_after: desde } },
+          ],
+        },
+      });
+      for (const p of r.results as any[]) {
+        const tp = Object.values(p.properties).find((x: any) => x.type === 'title') as any;
+        out.set(p.id, {
+          titulo: txt(tp?.title) || 'Post sem título',
+          data: getProp(p, env.notion.postProps.data)?.date?.start ?? null,
+        });
+      }
+      cursor = r.has_more ? r.next_cursor ?? undefined : undefined;
+    } while (cursor && out.size < 500);
+  } catch (err: any) {
+    console.warn('[projeto] títulos dos posts:', err?.message);
+  }
+  return out;
+}
 
 /** Detalhe de um projeto + config + tarefas pendentes. */
 async function _getProjetoDetalheUncached(
@@ -792,6 +839,14 @@ async function _getProjetoDetalheUncached(
           filter: {
             and: [
               { property: 'Projeto', relation: { contains: projetoId } },
+              // Projetos antigos acumulam centenas de tarefas abertas esquecidas
+              // (2025, título "Post"); só interessa o que vence de 90 dias pra cá.
+              {
+                property: 'Data Entrega',
+                date: {
+                  on_or_after: new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10),
+                },
+              },
               ...STATUS_TAREFA_FECHADOS.map((s) => ({
                 property: env.notion.taskProps.status,
                 status: { does_not_equal: s },
@@ -839,15 +894,25 @@ async function _getProjetoDetalheUncached(
       } catch {}
     }
 
+    const posts = await titulosDosPostsDoProjeto(projetoId);
     const tarefas: ProjetoDetalhe['tarefas'] = [];
     for (const t of todasTarefas) {
       const ttp = Object.values(t.properties).find(
         (p: any) => p.type === 'title',
       ) as any;
+      const postId = (getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id ?? null;
+      const post = postId ? posts.get(postId) : undefined;
       tarefas.push({
         id: t.id,
         titulo: txt(ttp?.title) || 'Tarefa',
         pessoa: getProp(t, 'Pessoa')?.people?.[0]?.name ?? null,
+        status: getProp(t, env.notion.taskProps.status)?.status?.name ?? null,
+        prazo: dataEmSaoPaulo(
+          getProp(t, 'Data Entrega')?.date?.start ?? getProp(t, 'Data Inicial')?.date?.start,
+        ),
+        postId,
+        postTitulo: post?.titulo ?? null,
+        postData: post?.data ?? null,
       });
     }
 
@@ -859,7 +924,7 @@ async function _getProjetoDetalheUncached(
 
 const _getProjetoDetalheCached = unstable_cache(
   _getProjetoDetalheUncached,
-  ['get-projeto-detalhe-v2-paginado'],
+  ['get-projeto-detalhe-v3-etapas'],
   { revalidate: 120, tags: [TAG_TAREFAS, TAG_CLIENTES] }, // 2 min
 );
 

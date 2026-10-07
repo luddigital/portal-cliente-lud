@@ -1,0 +1,150 @@
+/**
+ * Etapas do processo de social media, a partir do título das tarefas abertas
+ * do projeto no Notion. Usado nos cards do topo da página do projeto e na aba
+ * Entregas (agrupada por etapa). Arquivo puro: sem acesso a banco.
+ */
+import type { TarefaDoProjeto } from './notion';
+
+export type EtapaProjeto =
+  | 'pauta'
+  | 'previos'
+  | 'stories'
+  | 'briefing'
+  | 'materiais'
+  | 'arte'
+  | 'aprovacao'
+  | 'programacao';
+
+export const ETAPAS_PROJETO: { id: EtapaProjeto; nome: string; curto: string }[] = [
+  { id: 'pauta', nome: 'Criação de Pauta', curto: 'Pauta' },
+  { id: 'previos', nome: 'Conteúdos Prévios', curto: 'Prévios' },
+  { id: 'briefing', nome: 'Briefing & Copy', curto: 'Briefing & Copy' },
+  { id: 'materiais', nome: 'Materiais para Produção', curto: 'Materiais' },
+  { id: 'arte', nome: 'Arte', curto: 'Arte' },
+  { id: 'aprovacao', nome: 'Aprovação do Post', curto: 'Aprovação' },
+  { id: 'programacao', nome: 'Programação', curto: 'Programação' },
+  { id: 'stories', nome: 'Direcionamento de Stories', curto: 'Stories' },
+];
+
+/** Etapa da tarefa pelo título; null = tarefa fora do fluxo de posts (reuniões, calendário…). */
+export function etapaDaTarefa(titulo: string): EtapaProjeto | null {
+  const t = titulo.toLowerCase();
+  if (/reuni|fechamento|m[ée]tricas/.test(t)) return null;
+  if (/direcionamento|stories|story/.test(t)) return 'stories';
+  if (/pauta|produzir post/.test(t)) return 'pauta';
+  if (/pr[ée]vi|conte[úu]do/.test(t)) return 'previos';
+  if (/briefing|copy|roteiro/.test(t)) return 'briefing';
+  if (/materia/.test(t)) return 'materiais';
+  if (/\barte\b/.test(t)) return 'arte';
+  if (/enviar post|aprova[çc][ãa]o\s*\|\s*(post|geral)|altera[çc][ãa]o\s*\|\s*post/.test(t)) return 'aprovacao';
+  if (/programar|conferir postagem/.test(t)) return 'programacao';
+  return null;
+}
+
+/** A tarefa está na mão do cliente (aprovar, enviar material/informação, direcionar stories)? */
+export function ehTarefaDoCliente(titulo: string): boolean {
+  const t = titulo.toLowerCase();
+  if (/enviar post|aprova[çc][ãa]o\s*\|\s*(arte|briefing|copy|materia|cria)/.test(t)) return false;
+  return /aprova[çc][ãa]o|materiais para produ|pr[ée]vi|conte[úu]do|direcionamento/.test(t);
+}
+
+function diasEntre(deIso: string, ateIso: string): number {
+  const d = (s: string) => {
+    const [y, m, dd] = s.slice(0, 10).split('-').map(Number);
+    return Date.UTC(y, m - 1, dd);
+  };
+  return Math.round((d(ateIso) - d(deIso)) / 86_400_000);
+}
+
+/** Um post na etapa em que ele está agora (primeira tarefa aberta no fluxo). */
+export type PostNaEtapa = {
+  postId: string;
+  postTitulo: string;
+  postData: string | null;
+  /** Tarefa aberta atual do post (a que define a etapa). */
+  tarefa: TarefaDoProjeto;
+  doCliente: boolean;
+};
+
+export type ResumoEtapa = {
+  etapa: EtapaProjeto;
+  nome: string;
+  curto: string;
+  posts: PostNaEtapa[];
+  atrasadas: number;
+  /** Data limite mais recente que já passou (entre as atrasadas). */
+  ultimoAtraso: string | null;
+  /** Próxima data limite (hoje ou depois). */
+  proxima: string | null;
+  diasProxima: number | null;
+};
+
+const ORDEM: EtapaProjeto[] = [
+  'pauta',
+  'previos',
+  'briefing',
+  'materiais',
+  'stories',
+  'arte',
+  'aprovacao',
+  'programacao',
+];
+
+export function resumirEtapas(tarefas: TarefaDoProjeto[], hoje: string): ResumoEtapa[] {
+  const porPost = new Map<string, TarefaDoProjeto[]>();
+  for (const t of tarefas) {
+    if (!t.postId || !etapaDaTarefa(t.titulo)) continue;
+    const lista = porPost.get(t.postId) ?? [];
+    lista.push(t);
+    porPost.set(t.postId, lista);
+  }
+
+  const atuais: (PostNaEtapa & { etapa: EtapaProjeto })[] = [];
+  for (const [postId, ts] of porPost) {
+    const ordenadas = [...ts].sort(
+      (a, b) =>
+        ORDEM.indexOf(etapaDaTarefa(a.titulo)!) - ORDEM.indexOf(etapaDaTarefa(b.titulo)!) ||
+        (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'),
+    );
+    const tarefa = ordenadas[0];
+    atuais.push({
+      postId,
+      postTitulo: tarefa.postTitulo ?? tarefa.titulo,
+      postData: tarefa.postData,
+      tarefa,
+      doCliente: ehTarefaDoCliente(tarefa.titulo),
+      etapa: etapaDaTarefa(tarefa.titulo)!,
+    });
+  }
+
+  return ETAPAS_PROJETO.map((e) => {
+    const posts = atuais
+      .filter((p) => p.etapa === e.id)
+      .sort((a, b) => (a.tarefa.prazo ?? '9999').localeCompare(b.tarefa.prazo ?? '9999'));
+    const vencidas = posts.filter((p) => p.tarefa.prazo && p.tarefa.prazo < hoje).map((p) => p.tarefa.prazo!);
+    const futuras = posts.filter((p) => p.tarefa.prazo && p.tarefa.prazo >= hoje).map((p) => p.tarefa.prazo!);
+    const proxima = futuras.length ? futuras.reduce((a, b) => (a < b ? a : b)) : null;
+    return {
+      etapa: e.id,
+      nome: e.nome,
+      curto: e.curto,
+      posts,
+      atrasadas: vencidas.length,
+      ultimoAtraso: vencidas.length ? vencidas.reduce((a, b) => (a > b ? a : b)) : null,
+      proxima,
+      diasProxima: proxima ? diasEntre(hoje, proxima) : null,
+    };
+  });
+}
+
+export function ddmm(iso: string): string {
+  const [, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}`;
+}
+
+export function textoProxima(dias: number | null): string {
+  if (dias === null) return '';
+  if (dias === 0) return 'hoje';
+  if (dias === 1) return 'amanhã';
+  return `em ${dias} dias`;
+}

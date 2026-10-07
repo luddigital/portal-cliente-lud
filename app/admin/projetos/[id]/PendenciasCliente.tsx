@@ -219,7 +219,7 @@ export function PendenciasCliente({
   );
 }
 
-function ModalMensagem({
+export function ModalMensagem({
   projetoId,
   clienteNome,
   gruposWpp,

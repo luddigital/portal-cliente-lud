@@ -19,9 +19,9 @@ import { getIgAnalyticsDoProjeto, type IgAnalytics } from '@/lib/instagram';
 import { env } from '@/lib/env';
 import type { RelatorioAds } from '@/lib/csvAds';
 import { CalendarMes } from '@/app/_components/CalendarMes';
-import { resumoEntregas, type ResumoEntregas } from '@/lib/entregas';
+import { resumirEtapas, ddmm, textoProxima, type ResumoEtapa } from '@/lib/etapas-projeto';
 import { EntregasKanban } from './EntregasKanban';
-import { PendenciasCliente } from './PendenciasCliente';
+import { EntregasPorEtapa } from './EntregasPorEtapa';
 import { EditarProjeto } from '../EditarProjeto';
 import { FiltroPeriodo } from './FiltroPeriodo';
 
@@ -455,31 +455,14 @@ function mesParam(year: number, month: number): string {
 function hrefProjeto(id: string, aba: Aba, mes: string): string {
   const q = new URLSearchParams();
   if (aba !== 'calendario') q.set('aba', aba);
-  q.set('mes', mes);
+  if (mes) q.set('mes', mes);
   return `/admin/projetos/${id}?${q.toString()}`;
 }
 
-function hojeISO(): string {
-  const h = new Date();
-  return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`;
-}
 
 // ---- header ----------------------------------------------------------------
 
-function ProjetoHeader({
-  d,
-  aba,
-  year,
-  month,
-}: {
-  d: ProjetoDetalhe;
-  aba: Aba;
-  year: number;
-  month: number;
-}) {
-  const mostrarMes = aba === 'calendario' || aba === 'entregas';
-  const prev = deslocarMes(year, month, -1);
-  const next = deslocarMes(year, month, 1);
+function ProjetoHeader({ d }: { d: ProjetoDetalhe }) {
   const inicial = d.nome.trim()[0]?.toUpperCase() ?? '·';
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -510,30 +493,28 @@ function ProjetoHeader({
           </div>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        {mostrarMes && (
-          <div className="flex items-center gap-2">
-            <Link
-              href={hrefProjeto(d.id, aba, mesParam(prev.year, prev.month))}
-              className="flex h-8 w-8 items-center justify-center rounded-[9px] border border-[rgba(21,21,33,0.12)] bg-white text-t2 transition hover:bg-bgSoft"
-              aria-label="Mês anterior"
-            >
-              ‹
-            </Link>
-            <span className="min-w-[128px] text-center text-[14px] font-semibold capitalize text-ink">
-              {MESES[month - 1]} {year}
-            </span>
-            <Link
-              href={hrefProjeto(d.id, aba, mesParam(next.year, next.month))}
-              className="flex h-8 w-8 items-center justify-center rounded-[9px] border border-[rgba(21,21,33,0.12)] bg-white text-t2 transition hover:bg-bgSoft"
-              aria-label="Próximo mês"
-            >
-              ›
-            </Link>
-          </div>
-        )}
-        <EditarProjeto projetoId={d.id} projetoNome={d.nome} configInicial={d.config} />
-      </div>
+      <EditarProjeto projetoId={d.id} projetoNome={d.nome} configInicial={d.config} />
+    </div>
+  );
+}
+
+/** Seletor de mês — só da aba Calendário, logo acima do calendário. */
+function SeletorMes({ id, year, month }: { id: string; year: number; month: number }) {
+  const prev = deslocarMes(year, month, -1);
+  const next = deslocarMes(year, month, 1);
+  const btn =
+    'flex h-8 w-8 items-center justify-center rounded-[9px] border border-[rgba(21,21,33,0.12)] bg-white text-t2 transition hover:bg-bgSoft';
+  return (
+    <div className="mb-3 flex items-center gap-2">
+      <Link href={hrefProjeto(id, 'calendario', mesParam(prev.year, prev.month))} className={btn} aria-label="Mês anterior">
+        ‹
+      </Link>
+      <span className="min-w-[128px] text-center text-[14px] font-semibold capitalize text-ink">
+        {MESES[month - 1]} {year}
+      </span>
+      <Link href={hrefProjeto(id, 'calendario', mesParam(next.year, next.month))} className={btn} aria-label="Próximo mês">
+        ›
+      </Link>
     </div>
   );
 }
@@ -549,38 +530,15 @@ function ChipResumo({ cor, n, txt }: { cor: string; n: number; txt: string }) {
   );
 }
 
-function StatCard({
-  n,
-  k,
-  cor,
-  borda,
-}: {
-  n: number;
-  k: string;
-  cor?: string;
-  borda?: 'atrasada' | 'hoje';
-}) {
-  const bordaCor =
-    borda === 'atrasada'
-      ? 'rgba(110,42,44,0.25)'
-      : borda === 'hoje'
-        ? 'rgba(182,138,46,0.35)'
-        : 'rgba(21,21,33,0.08)';
-  return (
-    <div className="rounded-2xl border bg-white p-4" style={{ borderColor: bordaCor }}>
-      <div
-        className="text-[30px] font-semibold leading-none tracking-[-0.03em]"
-        style={{ color: cor ?? 'var(--ink)' }}
-      >
-        {n}
-      </div>
-      <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-t3">{k}</div>
-    </div>
+function BannerResumo({ etapas, id, hoje }: { etapas: ResumoEtapa[]; id: string; hoje: string }) {
+  const atrasados = etapas.reduce((n, e) => n + e.atrasadas, 0);
+  const comCliente = etapas.reduce((n, e) => n + e.posts.filter((p) => p.doCliente).length, 0);
+  const vencemHoje = etapas.reduce(
+    (n, e) => n + e.posts.filter((p) => p.tarefa.prazo === hoje).length,
+    0,
   );
-}
-
-function BannerResumo({ resumo, id, mes }: { resumo: ResumoEntregas; id: string; mes: string }) {
-  const nAtencao = resumo.atrasados + resumo.aguardandoCliente;
+  const nAtencao = atrasados + vencemHoje;
+  const visiveis = etapas.filter((e) => e.etapa !== 'stories' || e.posts.length > 0);
   return (
     <div className="mt-5 space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-[rgba(21,21,33,0.06)] bg-bgSoft p-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
@@ -591,28 +549,60 @@ function BannerResumo({ resumo, id, mes }: { resumo: ResumoEntregas; id: string;
               : 'Tudo em dia por aqui 🎉'}
           </h3>
           <p className="mt-0.5 text-[12.5px] text-t2">
-            Panorama do mês — o que está travado ou esperando alguém agir.
+            Onde cada post está agora e o prazo de cada etapa.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <ChipResumo cor="var(--prazo-atrasado)" n={resumo.atrasados} txt="atrasados" />
-            <ChipResumo cor="var(--cal-aguardando)" n={resumo.aguardandoCliente} txt="aguardando cliente" />
-            <ChipResumo cor="var(--cal-aprovacao)" n={resumo.aprovacaoHoje} txt="aprovação hoje" />
+            <ChipResumo cor="var(--prazo-atrasado)" n={atrasados} txt="atrasados" />
+            <ChipResumo cor="var(--cal-aprovacao)" n={vencemHoje} txt="vencem hoje" />
+            <ChipResumo cor="var(--cal-aguardando)" n={comCliente} txt="com o cliente" />
           </div>
         </div>
-        {resumo.atrasados > 0 && (
-          <Link href={hrefProjeto(id, 'entregas', mes)} className="btn-primary shrink-0 self-start">
-            Ver atrasados →
+        {atrasados > 0 && (
+          <Link href={`${hrefProjeto(id, 'entregas', '')}`} className="btn-primary shrink-0 self-start">
+            Ver entregas →
           </Link>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-        <StatCard n={resumo.total} k="Posts no mês" />
-        <StatCard n={resumo.publicados} k="Publicados" cor="var(--cal-publicado)" />
-        <StatCard n={resumo.emProducao} k="Em produção" cor="var(--cal-agendado)" />
-        <StatCard n={resumo.aguardandoCliente} k="Aguardando cliente" cor="var(--cal-aprovacao)" borda="hoje" />
-        <StatCard n={resumo.atrasados} k="Atrasados" cor="var(--hubRed)" borda="atrasada" />
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
+        {visiveis.map((e) => (
+          <CardEtapa key={e.etapa} e={e} id={id} />
+        ))}
       </div>
     </div>
+  );
+}
+
+function CardEtapa({ e, id }: { e: ResumoEtapa; id: string }) {
+  const vazio = e.posts.length === 0;
+  return (
+    <Link
+      href={`${hrefProjeto(id, 'entregas', '')}#etapa-${e.etapa}`}
+      className={`block rounded-2xl border bg-white p-3.5 transition hover:bg-bgSoft/60 ${
+        e.atrasadas > 0 ? 'border-[rgba(110,42,44,0.3)]' : 'border-[rgba(21,21,33,0.08)]'
+      } ${vazio ? 'opacity-55' : ''}`}
+    >
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-t3">{e.curto}</div>
+      <div className="mt-1 flex items-baseline gap-1">
+        <span className="text-[26px] font-semibold leading-none tracking-[-0.03em] text-ink">
+          {e.posts.length}
+        </span>
+        <span className="text-[11px] text-t3">{e.posts.length === 1 ? 'post' : 'posts'}</span>
+      </div>
+      <div className="mt-2 space-y-0.5 text-[11px] leading-[1.35]">
+        {vazio && <div className="text-t3">nada nessa etapa</div>}
+        {e.atrasadas > 0 && (
+          <div className="font-semibold text-[var(--prazo-atrasado)]">
+            {e.atrasadas} atrasado{e.atrasadas > 1 ? 's' : ''} · venceu {ddmm(e.ultimoAtraso!)}
+          </div>
+        )}
+        {e.proxima && (
+          <div className="text-t2">
+            Próxima {ddmm(e.proxima)} · {textoProxima(e.diasProxima)}
+          </div>
+        )}
+        {!vazio && e.atrasadas === 0 && !e.proxima && <div className="text-t3">sem data limite</div>}
+      </div>
+    </Link>
   );
 }
 
@@ -662,10 +652,12 @@ function TabNav({
 // ---- abas ------------------------------------------------------------------
 
 function CalendarioTab({
+  id,
   posts,
   year,
   month,
 }: {
+  id: string;
   posts: PostCalendario[];
   year: number;
   month: number;
@@ -680,6 +672,7 @@ function CalendarioTab({
   ];
   return (
     <div>
+      <SeletorMes id={id} year={year} month={month} />
       <CalendarMes year={year} month={month} posts={posts} />
       <div className="mt-3.5 flex flex-wrap gap-x-4 gap-y-2 text-[11.5px] text-t2">
         {legenda.map(([cor, label]) => (
@@ -805,13 +798,15 @@ function ObjetivoMetas({ config }: { config: ProjetoConfig }) {
 
 // ---- pendências com o cliente + mensagem geral -----------------------------
 
-/** O que está na vez do cliente (mesma regra da home dele), dividido por entrega. */
-async function PendenciasSection({
+/** Entregas por etapa + o que já está liberado pro cliente (pra mensagem). */
+async function EntregasSection({
   id,
   clienteNome,
+  etapas,
 }: {
   id: string;
   clienteNome: string;
+  etapas: ResumoEtapa[];
 }) {
   let pendentes;
   try {
@@ -850,11 +845,12 @@ async function PendenciasSection({
   });
 
   return (
-    <PendenciasCliente
+    <EntregasPorEtapa
       projetoId={id}
       clienteNome={clienteNome}
+      etapas={etapas}
+      itensCliente={itens}
       gruposWpp={grupos.map((g) => ({ id: g.id, nome: g.nome, apelido: g.apelido?.trim() || null }))}
-      itens={itens}
       textos={textos}
       hojeIso={hojeEmSaoPaulo()}
     />
@@ -878,29 +874,40 @@ async function ProjetoShell({
   inicioMs: number;
   fimMs: number;
 }) {
-  const [d, posts] = await Promise.all([
+  const hoje = hojeEmSaoPaulo();
+  const mesAtual = { year: Number(hoje.slice(0, 4)), month: Number(hoje.slice(5, 7)) };
+  // Calendário usa o mês escolhido; o kanban de Entregas olha os posts em
+  // produção (este mês e os 2 próximos).
+  const mesesPosts =
+    aba === 'calendario'
+      ? [{ year, month }]
+      : aba === 'entregas'
+        ? [0, 1, 2].map((delta) => deslocarMes(mesAtual.year, mesAtual.month, delta))
+        : [];
+  const [d, porMes] = await Promise.all([
     getProjetoDetalhe(id),
-    listPostsDoMes([id], year, month),
+    Promise.all(mesesPosts.map((m) => listPostsDoMes([id], m.year, m.month).catch(() => []))),
   ]);
   if (!d) notFound();
 
-  const hoje = hojeISO();
-  const resumo = resumoEntregas(posts, hoje);
+  const posts = porMes.flat();
+  const etapas = resumirEtapas(d.tarefas, hoje);
+  const atrasados = etapas.reduce((n, e) => n + e.atrasadas, 0);
   const mes = mesParam(year, month);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
-      <ProjetoHeader d={d} aba={aba} year={year} month={month} />
-      <BannerResumo resumo={resumo} id={id} mes={mes} />
-      <TabNav id={id} aba={aba} mes={mes} atrasados={resumo.atrasados} />
+      <ProjetoHeader d={d} />
+      <BannerResumo etapas={etapas} id={id} hoje={hoje} />
+      <TabNav id={id} aba={aba} mes={mes} atrasados={atrasados} />
       <div className="mt-5">
-        {aba === 'calendario' && <CalendarioTab posts={posts} year={year} month={month} />}
+        {aba === 'calendario' && <CalendarioTab id={id} posts={posts} year={year} month={month} />}
         {aba === 'entregas' && (
           <div className="space-y-8">
             <Suspense
               fallback={<div className="h-[180px] animate-pulse rounded-md bg-[#F4F4F2]" />}
             >
-              <PendenciasSection id={id} clienteNome={d.clienteNome ?? d.nome} />
+              <EntregasSection id={id} clienteNome={d.clienteNome ?? d.nome} etapas={etapas} />
             </Suspense>
             <EntregasKanban posts={posts} hojeIso={hoje} />
           </div>
