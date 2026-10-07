@@ -65,20 +65,20 @@ function porPrazo(a: ItemPendenciaUi, b: ItemPendenciaUi): number {
   return (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999');
 }
 
+export type GrupoWpp = { id: string; nome: string; apelido: string | null };
+
 export function PendenciasCliente({
   projetoId,
   clienteNome,
-  apelido,
-  grupoNome,
+  gruposWpp,
   itens,
   textos,
   hojeIso,
 }: {
   projetoId: string;
   clienteNome: string;
-  apelido: string;
-  /** null = projeto sem grupo de WhatsApp vinculado. */
-  grupoNome: string | null;
+  /** Grupos ativos do projeto, principal primeiro. Vazio = sem grupo vinculado. */
+  gruposWpp: GrupoWpp[];
   itens: ItemPendenciaUi[];
   textos: Record<string, string>;
   hojeIso: string;
@@ -199,8 +199,7 @@ export function PendenciasCliente({
         <ModalMensagem
           projetoId={projetoId}
           clienteNome={clienteNome}
-          apelido={apelido}
-          grupoNome={grupoNome}
+          gruposWpp={gruposWpp}
           titulo={
             aberto === 'todos'
               ? 'Mensagem geral'
@@ -212,7 +211,7 @@ export function PendenciasCliente({
           fechar={() => setAberto(null)}
           aoEnviar={(nomeGrupo) => {
             setAberto(null);
-            setEnviadoPara(nomeGrupo ?? grupoNome ?? 'do cliente');
+            setEnviadoPara(nomeGrupo ?? gruposWpp[0]?.nome ?? 'do cliente');
           }}
         />
       )}
@@ -223,8 +222,7 @@ export function PendenciasCliente({
 function ModalMensagem({
   projetoId,
   clienteNome,
-  apelido,
-  grupoNome,
+  gruposWpp,
   titulo,
   itens,
   textos,
@@ -234,8 +232,7 @@ function ModalMensagem({
 }: {
   projetoId: string;
   clienteNome: string;
-  apelido: string;
-  grupoNome: string | null;
+  gruposWpp: GrupoWpp[];
   titulo: string;
   itens: ItemPendenciaUi[];
   textos: Record<string, string>;
@@ -243,6 +240,10 @@ function ModalMensagem({
   fechar: () => void;
   aoEnviar: (grupoNome: string | null) => void;
 }) {
+  const [grupoId, setGrupoId] = useState<string | null>(gruposWpp[0]?.id ?? null);
+  const grupoAtual = gruposWpp.find((g) => g.id === grupoId) ?? null;
+  const grupoNome = grupoAtual?.nome ?? null;
+  const apelido = grupoAtual?.apelido || clienteNome;
   const [sel, setSel] = useState<Set<string>>(() => new Set(itens.map((i) => i.tarefaId)));
   const selecionados = useMemo(() => itens.filter((i) => sel.has(i.tarefaId)), [itens, sel]);
   const gerado = useMemo(
@@ -299,6 +300,7 @@ function ModalMensagem({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           mensagem: texto,
+          grupoId,
           postIds: [...new Set(selecionados.map((i) => i.postId))],
         }),
       });
@@ -357,7 +359,28 @@ function ModalMensagem({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {grupoNome ? (
+          {gruposWpp.length > 1 ? (
+            <label className="flex flex-wrap items-center gap-2 rounded-md bg-[#F4F4F2] px-3 py-2 text-[12px] text-[#787774]">
+              Vai pro grupo
+              <select
+                value={grupoId ?? ''}
+                onChange={(e) => {
+                  setGrupoId(e.target.value);
+                  setManual(false);
+                }}
+                disabled={enviando}
+                className="rounded-md border border-[rgba(0,0,0,0.09)] bg-white px-2 py-1 text-[12px] font-semibold text-[#37352F]"
+              >
+                {gruposWpp.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.nome}
+                    {g.apelido ? ` (${g.apelido})` : ''}
+                  </option>
+                ))}
+              </select>
+              Nunca no privado.
+            </label>
+          ) : grupoNome ? (
             <div className="rounded-md bg-[#F4F4F2] px-3 py-2 text-[12px] text-[#787774]">
               Vai pro grupo <span className="font-semibold text-[#37352F]">{grupoNome}</span>.
               Nunca no privado.

@@ -6,7 +6,7 @@ import {
   getEmpresaDetalhe,
   listAllProjetos,
 } from '@/lib/notion';
-import { getGrupoWhatsappDoProjeto, registrarEnvioAvulso } from '@/lib/supabase';
+import { getGruposWhatsappDoProjeto, registrarEnvioAvulso } from '@/lib/supabase';
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
 import { montarLembrete } from '@/lib/lembrete-aprovacao';
 import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
@@ -35,6 +35,7 @@ export async function POST(
   const body = (await req.json().catch(() => ({}))) as {
     mensagemCustom?: string;
     apenasPrevia?: boolean;
+    grupoId?: string;
   };
 
   // 1) Tarefa → projeto
@@ -51,7 +52,10 @@ export async function POST(
   }
 
   // 2) Projeto → GRUPO do WhatsApp. SEMPRE pro grupo — nunca pro PV.
-  const grupo = await getGrupoWhatsappDoProjeto(t.projetoId);
+  const grupos = await getGruposWhatsappDoProjeto(t.projetoId);
+  const grupo = body.grupoId
+    ? grupos.find((g) => g.id === body.grupoId) ?? null
+    : grupos[0] ?? null;
 
   // Resolve nome do cliente pra personalizar o cabeçalho da mensagem.
   const projetos = await listAllProjetos();
@@ -89,6 +93,8 @@ export async function POST(
       apelido,
       situacao: lembrete.situacao,
       grupoNome: grupo?.id ? grupo.nome : null,
+      grupoId: grupo?.id ?? null,
+      grupos: grupos.map((g) => ({ id: g.id, nome: g.nome, apelido: g.apelido })),
       erroGrupo: grupo?.id ? null : erroSemGrupo,
     });
   }

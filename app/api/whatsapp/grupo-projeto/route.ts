@@ -24,6 +24,7 @@ export async function PUT(req: Request): Promise<Response> {
     grupoId?: string;
     projetoId?: string | null;
     apelido?: string | null;
+    principal?: boolean;
   };
   const grupoId = (body.grupoId ?? '').trim();
 
@@ -43,6 +44,24 @@ export async function PUT(req: Request): Promise<Response> {
   }
 
   const sb = await supabaseAdmin();
+
+  // Principal é único por projeto: desmarca os outros grupos do mesmo projeto.
+  if (body.principal === true) {
+    const { data: atual } = await sb
+      .from('whatsapp_grupos')
+      .select('projeto_id')
+      .eq('id', grupoId)
+      .maybeSingle();
+    if (atual?.projeto_id) {
+      await sb
+        .from('whatsapp_grupos')
+        .update({ principal: false })
+        .eq('projeto_id', atual.projeto_id)
+        .neq('id', grupoId);
+    }
+    (update as Record<string, unknown>).principal = true;
+  }
+
   const { error } = await sb
     .from('whatsapp_grupos')
     .update(update)

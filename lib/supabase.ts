@@ -62,6 +62,7 @@ export type WhatsappGrupo = {
   ativo: boolean;
   projeto_id: string | null;
   apelido: string | null;
+  principal: boolean;
   criado_em: string;
   atualizado_em: string;
 };
@@ -108,25 +109,34 @@ export type WhatsappSugestao = {
 // Helpers de domínio
 // -----------------------------------------------------------------
 
-/**
- * Retorna o group ID do WhatsApp (ex: "120363XXXX@g.us") associado a um projeto,
- * ou null se o projeto não tem grupo cadastrado.
- */
-export async function getGrupoWhatsappDoProjeto(
-  projetoId: string,
-): Promise<WhatsappGrupo | null> {
+/** Grupos ativos de um projeto, com o principal primeiro. */
+export async function getGruposWhatsappDoProjeto(projetoId: string): Promise<WhatsappGrupo[]> {
   const sb = await supabaseAdmin();
   const { data, error } = await sb
     .from('whatsapp_grupos')
     .select('*')
     .eq('projeto_id', projetoId)
     .eq('ativo', true)
-    .maybeSingle();
+    .order('principal', { ascending: false })
+    .order('nome', { ascending: true });
   if (error) {
-    console.warn('[getGrupoWhatsappDoProjeto]', error.message);
-    return null;
+    console.warn('[getGruposWhatsappDoProjeto]', error.message);
+    return [];
   }
-  return (data as WhatsappGrupo | null) ?? null;
+  return (data as WhatsappGrupo[]) ?? [];
+}
+
+/**
+ * Grupo pra onde mandar mensagens do projeto: o escolhido (se for mesmo
+ * desse projeto) ou o principal. null = projeto sem grupo vinculado.
+ */
+export async function getGrupoWhatsappDoProjeto(
+  projetoId: string,
+  grupoId?: string | null,
+): Promise<WhatsappGrupo | null> {
+  const grupos = await getGruposWhatsappDoProjeto(projetoId);
+  if (grupoId) return grupos.find((g) => g.id === grupoId) ?? null;
+  return grupos[0] ?? null;
 }
 
 /** Lista grupos que um email tem permissão de LER (ativos + permissão concedida). */
@@ -630,6 +640,10 @@ export async function lerVisualizacoes(
 export async function registrarEnvioAvulso(e: {
   projetoId: string;
   postId: string | null;
+  /** Mensagem geral: aparece no histórico de cada post incluído. */
+  postIds?: string[];
+  /** Padrão 'avulso'; a mensagem geral do projeto usa 'geral'. */
+  momento?: string;
   situacao: string;
   texto: string;
   grupoId: string;
@@ -641,10 +655,10 @@ export async function registrarEnvioAvulso(e: {
     await sb.from('regua_envios').insert({
       projeto_id: e.projetoId,
       ciclo: null,
-      momento: 'avulso',
+      momento: e.momento ?? 'avulso',
       variante: e.situacao,
       texto: e.texto,
-      post_ids: e.postId ? [e.postId] : [],
+      post_ids: e.postIds ?? (e.postId ? [e.postId] : []),
       grupo_id: e.grupoId,
       message_id: e.messageId,
       enviado_por: e.email.trim().toLowerCase(),

@@ -380,6 +380,7 @@ const MOMENTO_LABEL: Record<string, string> = {
   segunda_tarde: 'Último dia (tarde)',
   terca: 'Prazo vencido',
   avulso: 'Lembrete avulso',
+  geral: 'Mensagem geral do projeto',
 };
 
 const VARIANTE_LABEL: Record<string, string> = {

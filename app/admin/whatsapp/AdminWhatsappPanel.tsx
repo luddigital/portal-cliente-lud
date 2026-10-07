@@ -56,6 +56,24 @@ export function AdminWhatsappPanel({ grupos, permissoes, projetos }: Props) {
     }
   }
 
+  async function tornarPrincipal(grupo: WhatsappGrupo) {
+    setErro(null);
+    try {
+      const res = await fetch('/api/whatsapp/grupo-projeto', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grupoId: grupo.id, principal: true }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? 'erro');
+      }
+      startTransition(() => router.refresh());
+    } catch (e: any) {
+      setErro(e?.message ?? 'erro marcando principal');
+    }
+  }
+
   async function sincronizar() {
     setErro(null);
     setMsg(null);
@@ -188,6 +206,27 @@ export function AdminWhatsappPanel({ grupos, permissoes, projetos }: Props) {
                       </option>
                     ))}
                   </select>
+
+                  {g.projeto_id &&
+                    grupos.filter((o) => o.projeto_id === g.projeto_id && o.ativo).length > 1 &&
+                    (g.principal ? (
+                      <span
+                        className="rounded-md border border-[rgba(21,21,33,0.2)] px-2 py-1 text-[10.5px] font-semibold text-ink"
+                        title="Grupo padrão dos lembretes desse projeto"
+                      >
+                        ★ Principal
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => tornarPrincipal(g)}
+                        disabled={pending}
+                        title="Esse projeto tem mais de um grupo. O principal é o padrão dos lembretes."
+                        className="rounded-md border border-[rgba(21,21,33,0.12)] px-2 py-1 text-[10.5px] text-t3 hover:bg-bgSoft hover:text-ink"
+                      >
+                        Tornar principal
+                      </button>
+                    ))}
 
                   <label className="flex items-center gap-2 text-[11px] text-t2">
                     <input

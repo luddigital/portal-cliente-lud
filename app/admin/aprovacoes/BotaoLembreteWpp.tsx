@@ -8,6 +8,8 @@ type Previa = {
   apelido: string | null;
   situacao: { codigo: string; rotulo: string };
   grupoNome: string | null;
+  grupoId: string | null;
+  grupos: { id: string; nome: string; apelido: string | null }[];
   erroGrupo: string | null;
 };
 
@@ -82,15 +84,18 @@ function ModalLembrete({
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [grupoEscolhido, setGrupoEscolhido] = useState<string | null>(null);
 
+  // Recarrega a prévia ao trocar de grupo: o apelido muda junto.
   useEffect(() => {
     let cancelado = false;
+    setCarregando(true);
     (async () => {
       try {
         const res = await fetch(`/api/admin/wpp-lembrete-aprovacao/${tarefaId}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ apenasPrevia: true }),
+          body: JSON.stringify({ apenasPrevia: true, grupoId: grupoEscolhido }),
         });
         const j = await res.json();
         if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
@@ -106,7 +111,7 @@ function ModalLembrete({
     return () => {
       cancelado = true;
     };
-  }, [tarefaId]);
+  }, [tarefaId, grupoEscolhido]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -124,7 +129,7 @@ function ModalLembrete({
       const res = await fetch(`/api/admin/wpp-lembrete-aprovacao/${tarefaId}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mensagemCustom: texto }),
+        body: JSON.stringify({ mensagemCustom: texto, grupoId: previa?.grupoId }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
@@ -182,6 +187,23 @@ function ModalLembrete({
                 >
                   {semGrupo ? (
                     previa.erroGrupo
+                  ) : previa.grupos.length > 1 ? (
+                    <label className="flex flex-wrap items-center gap-2">
+                      Vai pro grupo
+                      <select
+                        value={previa.grupoId ?? ''}
+                        onChange={(e) => setGrupoEscolhido(e.target.value)}
+                        disabled={enviando}
+                        className="rounded-md border border-[rgba(21,21,33,0.13)] bg-white px-2 py-1 text-[12px] font-semibold text-ink"
+                      >
+                        {previa.grupos.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.nome}
+                            {g.apelido ? ` (${g.apelido})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   ) : (
                     <>
                       Vai pro grupo{' '}

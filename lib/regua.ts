@@ -54,7 +54,12 @@ export async function montarRegua(): Promise<Regua> {
 
   const sb = await supabaseAdmin();
   const [{ data: grupos }, { data: envios }] = await Promise.all([
-    sb.from('whatsapp_grupos').select('nome, apelido, projeto_id').eq('ativo', true),
+    sb
+      .from('whatsapp_grupos')
+      .select('nome, apelido, projeto_id, principal')
+      .eq('ativo', true)
+      .order('principal', { ascending: false })
+      .order('nome', { ascending: true }),
     sb
       .from('regua_envios')
       .select('projeto_id, ciclo, momento, variante, enviado_em')
@@ -63,7 +68,9 @@ export async function montarRegua(): Promise<Regua> {
 
   const mapaGrupos = new Map<string, { nome: string; apelido: string | null }>();
   for (const g of grupos ?? []) {
-    if (g.projeto_id) mapaGrupos.set(g.projeto_id, { nome: g.nome, apelido: g.apelido });
+    if (g.projeto_id && !mapaGrupos.has(g.projeto_id)) {
+      mapaGrupos.set(g.projeto_id, { nome: g.nome, apelido: g.apelido });
+    }
   }
   const mapaProjetos = new Map(projetos.map((p) => [p.id, { nome: p.nome, clienteNome: p.clienteNome }]));
   const base = { porPost, visualizacoes, projetos: mapaProjetos, grupos: mapaGrupos };

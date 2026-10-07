@@ -4,10 +4,15 @@ import { Suspense } from 'react';
 import {
   getProjetoDetalhe,
   listPostsDoMes,
+  listTarefasPendentesDoCliente,
   type ProjetoConfig,
   type ProjetoDetalhe,
   type PostCalendario,
 } from '@/lib/notion';
+import { getGruposWhatsappDoProjeto, lerVisualizacoes } from '@/lib/supabase';
+import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
+import { hojeEmSaoPaulo } from '@/lib/lembrete-aprovacao';
+import { grupoDaTarefa, type ItemPendencia } from '@/lib/pendencias-cliente';
 import { getHotmartResumo, type HotmartResumo } from '@/lib/hotmart';
 import { getMetaAdsRelatorio, getMetaAdsCampanhas, type CampanhaAds } from '@/lib/metaAds';
 import { getIgAnalyticsDoProjeto, type IgAnalytics } from '@/lib/instagram';
@@ -16,6 +21,7 @@ import type { RelatorioAds } from '@/lib/csvAds';
 import { CalendarMes } from '@/app/_components/CalendarMes';
 import { resumoEntregas, type ResumoEntregas } from '@/lib/entregas';
 import { EntregasKanban } from './EntregasKanban';
+import { PendenciasCliente } from './PendenciasCliente';
 import { EditarProjeto } from '../EditarProjeto';
 import { FiltroPeriodo } from './FiltroPeriodo';
 
@@ -929,6 +935,64 @@ function TarefasPendentes({ tarefas }: { tarefas: ProjetoDetalhe['tarefas'] }) {
   );
 }
 
+// ---- pendências com o cliente + mensagem geral -----------------------------
+
+/** O que está na vez do cliente (mesma regra da home dele), dividido por entrega. */
+async function PendenciasSection({
+  id,
+  clienteNome,
+}: {
+  id: string;
+  clienteNome: string;
+}) {
+  let pendentes;
+  try {
+    pendentes = await listTarefasPendentesDoCliente([id]);
+  } catch (err: any) {
+    console.warn('[projeto] pendências do cliente:', err?.message);
+    return (
+      <p className="rounded-md border border-[rgba(0,0,0,0.09)] px-4 py-3 text-[12px] text-[#787774]">
+        Não consegui carregar as pendências do cliente agora. Recarregue a página em
+        instantes.
+      </p>
+    );
+  }
+
+  const [grupos, textos, vistas] = await Promise.all([
+    getGruposWhatsappDoProjeto(id).catch(() => []),
+    lerMensagensEditadas().catch(() => ({}) as Record<string, string>),
+    lerVisualizacoes(pendentes.map((p) => p.postId)).catch(
+      () => ({}) as Awaited<ReturnType<typeof lerVisualizacoes>>,
+    ),
+  ]);
+
+  const itens = pendentes.map((p) => {
+    const base: ItemPendencia = {
+      tarefaId: p.tarefaId,
+      tarefaTitulo: p.tarefaTitulo,
+      postId: p.postId,
+      postTitulo: p.postTitulo,
+      postData: p.postData,
+      prazo: p.tarefaPrazo,
+      link: `${env.app.url}/post/${p.postId}?tarefa=${p.tarefaId}`,
+      grupo: grupoDaTarefa(p.tarefaTitulo),
+    };
+    const v = vistas[p.postId];
+    return { ...base, visto: v ? { ultima: v.ultima, total: v.total } : null };
+  });
+
+  return (
+    <PendenciasCliente
+      projetoId={id}
+      clienteNome={clienteNome}
+      gruposWpp={grupos.map((g) => ({ id: g.id, nome: g.nome, apelido: g.apelido?.trim() || null }))}
+      itens={itens}
+      textos={textos}
+      hojeIso={hojeEmSaoPaulo()}
+    />
+  );
+}
+
 // ---- shell + página --------------------------------------------------------
 
 async function ProjetoShell({
@@ -965,6 +1029,11 @@ async function ProjetoShell({
         {aba === 'calendario' && <CalendarioTab posts={posts} year={year} month={month} />}
         {aba === 'entregas' && (
           <div className="space-y-8">
+            <Suspense
+              fallback={<div className="h-[180px] animate-pulse rounded-md bg-[#F4F4F2]" />}
+            >
+              <PendenciasSection id={id} clienteNome={d.clienteNome ?? d.nome} />
+            </Suspense>
             <EntregasKanban posts={posts} hojeIso={hoje} />
             <TarefasPendentes tarefas={d.tarefas} />
           </div>
