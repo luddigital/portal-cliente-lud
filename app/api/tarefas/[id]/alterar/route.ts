@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import {
-  adicionarLinkDriveAoPost,
   pedirAlteracao,
   getTarefaComPost,
   invalidarCachesAposMudanca,
 } from '@/lib/notion';
-import { ensurePostFolder } from '@/lib/drive';
+import { ensurePastaMateriaisDoPost } from '@/lib/drive';
 import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -81,7 +80,7 @@ export async function POST(
     let totalArquivos = arquivosPreEnviados;
     if (arquivosFormData.length > 0) {
       const { uploadFile } = await import('@/lib/drive');
-      const folder = await ensurePostFolder({
+      const folder = await ensurePastaMateriaisDoPost({
         cliente: t.projetoNome,
         postTitulo: t.postTitulo,
         dataPostagem: t.postData,
@@ -101,27 +100,12 @@ export async function POST(
 
     // Se veio pré-enviado sem link, resolve a pasta (idempotente).
     if (totalArquivos > 0 && !driveLink) {
-      const folder = await ensurePostFolder({
+      const folder = await ensurePastaMateriaisDoPost({
         cliente: t.projetoNome,
         postTitulo: t.postTitulo,
         dataPostagem: t.postData,
       });
       driveLink = folder.webViewLink;
-    }
-
-    if (totalArquivos > 0 && driveLink) {
-      try {
-        await adicionarLinkDriveAoPost(
-          t.postId,
-          `Alteração pedida pelo cliente — ${t.postTitulo}`,
-          driveLink,
-        );
-      } catch (err: any) {
-        console.warn(
-          '[alterar] falhou adicionar link do Drive:',
-          err?.message,
-        );
-      }
     }
 
     const partes: string[] = [];

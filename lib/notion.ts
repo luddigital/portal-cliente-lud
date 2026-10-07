@@ -2429,7 +2429,10 @@ export type PostDetalhado = {
   /** "O que precisamos de você" — select do Notion */
   demanda: string | null;
   formatoTipo: 'post' | 'reels' | 'story' | 'desconhecido';
+  /** Só a arte/entrega do post (o que aparece na aprovação e na programação). */
   driveLinks: { name: string; url: string }[];
+  /** Links de materiais do cliente que caíram no campo do Drive (posts antigos). */
+  materiaisLinks: { name: string; url: string }[];
   legenda: string | null;
   bodyCompleto: string | null;
   ideiaDoPost: string | null;
@@ -3138,9 +3141,13 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
 
     const driveProp = getProp(page, env.notion.postProps.driveLink);
     const driveLinks: PostDetalhado['driveLinks'] = [];
+    const materiaisLinks: PostDetalhado['materiaisLinks'] = [];
     for (const f of driveProp?.files ?? []) {
       const url = f.type === 'external' ? f.external?.url : f.file?.url;
-      if (url) driveLinks.push({ name: f.name ?? 'arquivo', url });
+      if (!url) continue;
+      const item = { name: f.name ?? 'arquivo', url };
+      if (ehLinkDeMaterial(item.name)) materiaisLinks.push(item);
+      else driveLinks.push(item);
     }
 
     // Lookup O(1) num mapa pré-computado (era O(N) sobre clientes — gargalo).
@@ -3182,6 +3189,7 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       demanda: getProp(page, env.notion.postProps.demanda)?.select?.name ?? null,
       formatoTipo,
       driveLinks,
+      materiaisLinks,
       legenda,
       bodyCompleto,
       ideiaDoPost,
@@ -3986,6 +3994,11 @@ export async function criarPostVazio(
   });
   invalidarCachesAposMudanca();
   return { id: page.id };
+}
+
+/** Nomes que o portal dava aos links de materiais do cliente no campo do Drive. */
+export function ehLinkDeMaterial(nome: string): boolean {
+  return /^(materiais\s*[—-]|link enviado pelo cliente|altera[çc][ãa]o pedida pelo cliente)/i.test(nome.trim());
 }
 
 /** Notion limita o `name` de file property em 100 chars — corta antes de mandar. */
@@ -4863,4 +4876,66 @@ export async function listarTarefasDaRegua(inicio: string, fim: string): Promise
       projetoId: ((getProp(t, 'Projeto')?.relation ?? [])[0]?.id as string) ?? null,
     };
   });
+}
+
+async function blocosDaPaginaSemCache(blockId: string, profundidade = 0): Promise<any[]> {
+  if (profundidade > 4) return [];
+  const out: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await notion.blocks.children.list({
+      block_id: blockId,
+      page_size: 100,
+      start_cursor: cursor,
+    });
+    for (const b of res.results as any[]) {
+      out.push(b);
+      if (b.has_children) out.push(...(await blocosDaPaginaSemCache(b.id, profundidade + 1)));
+    }
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  return out;
+}
+
+/**
+ * Coloca o link dos materiais do cliente na seção "Materiais" (aba Lud.) do
+ * post, onde a equipe já guarda esse link. O "Link do Google Drive" fica só
+ * com a arte. Não repete um link que já esteja na seção.
+ * Retorna false se o post não tem a seção (o link segue no comentário).
+ */
+export async function registrarMateriaisNoPost(
+  postId: string,
+  url: string,
+  legenda: string,
+): Promise<boolean> {
+  const blocos = await blocosDaPaginaSemCache(postId);
+  const norm = (s: string) => s.toLowerCase().replace(/[:.\s]+/g, ' ').trim();
+  const idx = blocos.findIndex((b) => ehHeading(b) && norm(rtTexto(b)) === 'materiais');
+  if (idx < 0) return false;
+
+  const semQuery = url.split('?')[0];
+  for (let i = idx + 1; i < blocos.length && !ehHeading(blocos[i]); i++) {
+    if (JSON.stringify(blocos[i]).includes(semQuery)) return true;
+  }
+
+  const heading = blocos[idx];
+  const pai = heading.parent?.block_id ?? heading.parent?.page_id;
+  if (!pai) return false;
+  await notion.blocks.children.append({
+    block_id: pai,
+    after: heading.id,
+    children: [
+      {
+        object: 'block',
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [
+            { type: 'text', text: { content: `${legenda}: ` } },
+            { type: 'text', text: { content: url, link: { url } } },
+          ],
+        },
+      },
+    ],
+  });
+  return true;
 }

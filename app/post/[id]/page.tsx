@@ -16,6 +16,7 @@ import {
   extractDriveFolderId,
   extractDriveFileId,
   listFolderFiles,
+  listarMateriaisDoPost,
   type DriveFileResumido,
 } from '@/lib/drive';
 import { env } from '@/lib/env';
@@ -107,6 +108,36 @@ function diffDias(iso: string | null): number | null {
   hoje.setHours(0, 0, 0, 0);
   const data = new Date(iso.split('T')[0] + 'T00:00:00');
   return Math.round((data.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/** Pasta do Drive vira a lista de arquivos dela; arquivo solto vira um item. */
+async function resolverArquivosDoDrive(
+  links: { name: string; url: string }[],
+): Promise<PreviewArquivo[]> {
+  const out: PreviewArquivo[] = [];
+  for (const link of links) {
+    const folderId = extractDriveFolderId(link.url);
+    if (folderId) {
+      try {
+        for (const f of await listFolderFiles(folderId)) {
+          if (!f.isFolder) out.push(f);
+        }
+      } catch (err: any) {
+        console.warn('[post] erro listando pasta do Drive:', err?.message);
+      }
+      continue;
+    }
+    const fileId = extractDriveFileId(link.url);
+    out.push({
+      id: fileId ?? link.url,
+      name: link.name,
+      mimeType: '',
+      webViewLink: link.url,
+      thumbnailLink: null,
+      isFolder: false,
+    });
+  }
+  return out;
 }
 
 export default async function PostDetalhePage({
@@ -223,43 +254,23 @@ export default async function PostDetalhePage({
       : Promise.resolve(historicoVazio),
   ]);
 
-  // Resolve arquivos do Drive: se for pasta, lista o conteúdo; se for arquivo, monta um item.
-  const arquivos: PreviewArquivo[] = [];
-  for (const link of post.driveLinks) {
-    const folderId = extractDriveFolderId(link.url);
-    if (folderId) {
-      try {
-        const files = await listFolderFiles(folderId);
-        for (const f of files) {
-          if (f.isFolder) continue;
-          arquivos.push(f);
-        }
-      } catch (err: any) {
-        console.warn('[post] erro listando pasta do Drive:', err?.message);
-      }
-      continue;
-    }
-    const fileId = extractDriveFileId(link.url);
-    if (fileId) {
-      arquivos.push({
-        id: fileId,
-        name: link.name,
-        mimeType: '',
-        webViewLink: link.url,
-        thumbnailLink: null,
-        isFolder: false,
-      });
-      continue;
-    }
-    // arquivo direto (Notion CDN, etc) — usa o url como id
-    arquivos.push({
-      id: link.url,
-      name: link.name,
-      mimeType: '',
-      webViewLink: link.url,
-      thumbnailLink: null,
-      isFolder: false,
-    });
+  // Arte (campo "Link do Google Drive") e materiais do cliente ficam separados:
+  // a aprovação só mostra a arte; materiais aparecem na galeria.
+  const precisaMateriais = modo === 'material' || vista === 'interno';
+  const [arquivos, materiaisDosLinks, materiaisDaPasta] = await Promise.all([
+    resolverArquivosDoDrive(post.driveLinks),
+    precisaMateriais ? resolverArquivosDoDrive(post.materiaisLinks) : Promise.resolve([]),
+    precisaMateriais
+      ? listarMateriaisDoPost({
+          cliente: post.projetoNome,
+          postTitulo: post.titulo,
+          dataPostagem: post.data,
+        }).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+  const materiais: PreviewArquivo[] = [];
+  for (const m of [...materiaisDaPasta, ...materiaisDosLinks]) {
+    if (!materiais.some((x) => x.id === m.id)) materiais.push(m);
   }
 
   // Fallback: enquanto o banco Formato do Notion não estiver compartilhado com a integration,
@@ -342,13 +353,13 @@ export default async function PostDetalhePage({
               </dl>
             )}
 
-            {arquivos.length > 0 ? (
+            {(modo === 'material' ? materiais.length : arquivos.length) > 0 ? (
               modo === 'material' ? (
                 // Fase de matéria-prima: mostra em GALERIA (não carrossel),
                 // porque esses arquivos são o que o cliente enviou pra equipe
                 // usar, não a arte pronta pra aprovação.
                 <GaleriaMateriais
-                  arquivos={arquivos}
+                  arquivos={materiais}
                   titulo="Materiais que você já enviou"
                   legenda="A equipe da Lud. vai usar esses arquivos pra produzir o post. Continue enviando mais abaixo se precisar."
                 />
@@ -658,10 +669,10 @@ export default async function PostDetalhePage({
         {/* pré-visualização + legenda — usa PostPreview em modo readonly
             (sem painel de aprovação; equipe não aprova pelo cliente).
             Em fase de MATERIAIS (matéria-prima do cliente), mostra galeria. */}
-        {arquivos.length > 0 ? (
+        {(modo === 'material' ? materiais.length : arquivos.length) > 0 ? (
           modo === 'material' ? (
             <GaleriaMateriais
-              arquivos={arquivos}
+              arquivos={materiais}
               titulo="Materiais enviados pelo cliente"
               legenda="Matéria-prima pra usar na produção do post. Ainda não é a arte final."
             />
@@ -693,6 +704,14 @@ export default async function PostDetalhePage({
               </p>
             </div>
           )
+        )}
+
+        {modo !== 'material' && materiais.length > 0 && (
+          <GaleriaMateriais
+            arquivos={materiais}
+            titulo="Materiais enviados pelo cliente"
+            legenda="Matéria-prima que o cliente mandou. Não aparece pro cliente na aprovação."
+          />
         )}
 
         <TodasTarefasCard tarefas={tarefasDoPost} />

@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import {
-  adicionarLinkDriveAoPost,
-  atualizarLinkDriveDoPost,
   comentarPost,
   getTarefaComPost,
+  registrarMateriaisNoPost,
   invalidarCachesAposMudanca,
 } from '@/lib/notion';
-import { ensurePostFolder, uploadFile } from '@/lib/drive';
+import { ensurePastaMateriaisDoPost, uploadFile } from '@/lib/drive';
 import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -62,7 +61,7 @@ export async function POST(
 
     // 1) Upload de arquivos — coloca na pasta do post no Drive da Lud
     if (arquivos.length > 0) {
-      const folder = await ensurePostFolder({
+      const folder = await ensurePastaMateriaisDoPost({
         cliente: t.projetoNome,
         postTitulo: t.postTitulo,
         dataPostagem: t.postData,
@@ -80,19 +79,15 @@ export async function POST(
         totalArquivos++;
       }
 
-      // Atualiza o link da pasta no post (substituindo — Drive sempre só 1
-      // pasta principal por post)
-      await atualizarLinkDriveDoPost(
-        t.postId,
-        `Materiais — ${t.postTitulo}`,
-        driveLink,
-      );
     }
 
-    // 2) Link externo (admin colou de Drive/dropbox/etc) — adiciona sem
-    //    sobrescrever os existentes
-    if (linkUrl) {
-      await adicionarLinkDriveAoPost(t.postId, linkNome, linkUrl);
+    // Materiais não entram no "Link do Google Drive" do post (campo da arte,
+    // usado na aprovação): vão pra seção "Materiais" da aba Lud.
+    try {
+      if (driveLink) await registrarMateriaisNoPost(t.postId, driveLink, 'Pasta de materiais');
+      if (linkUrl) await registrarMateriaisNoPost(t.postId, linkUrl, linkNome);
+    } catch (err: any) {
+      console.warn('[anexar] não registrou materiais no post:', err?.message);
     }
 
     // Registra no histórico do post
@@ -105,7 +100,7 @@ export async function POST(
       );
     }
     if (linkUrl) {
-      partes.push(`Link adicionado: ${linkUrl}`);
+      partes.push(`Link adicionado (${linkNome}): ${linkUrl}`);
     }
     await comentarPost(t.postId, partes.join('\n'));
 

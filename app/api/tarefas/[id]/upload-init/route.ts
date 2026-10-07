@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getTarefaComPost } from '@/lib/notion';
-import { criarUploadSession, ensurePostFolder } from '@/lib/drive';
+import { criarUploadSession, ensurePastaMateriaisDoPost } from '@/lib/drive';
 import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -64,7 +64,7 @@ export async function POST(
       return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
     }
 
-    const folder = await ensurePostFolder({
+    const folder = await ensurePastaMateriaisDoPost({
       cliente: t.projetoNome,
       postTitulo: t.postTitulo,
       dataPostagem: t.postData,

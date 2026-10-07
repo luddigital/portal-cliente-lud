@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import {
-  adicionarLinkDriveAoPost,
-  atualizarLinkDriveDoPost,
   comentarPost,
   concluirTarefa,
+  registrarMateriaisNoPost,
   getTarefaComPost,
   invalidarCachesAposMudanca,
 } from '@/lib/notion';
-import { ensurePostFolder, uploadFile } from '@/lib/drive';
+import { ensurePastaMateriaisDoPost, uploadFile } from '@/lib/drive';
 import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -79,7 +78,7 @@ async function handle(req: Request, tarefaId: string) {
   let totalDessaCall = 0;
 
   if (arquivos.length > 0) {
-    const folder = await ensurePostFolder({
+    const folder = await ensurePastaMateriaisDoPost({
       cliente: t.projetoNome,
       postTitulo: t.postTitulo,
       dataPostagem: t.postData,
@@ -112,32 +111,28 @@ async function handle(req: Request, tarefaId: string) {
     });
   }
 
-  // === FINALIZE: atualiza Drive link + comenta + conclui tarefa ===
-  if (driveLink) {
-    await atualizarLinkDriveDoPost(t.postId, `Materiais — ${t.postTitulo}`, driveLink);
-  } else if (totalAcumulado > 0) {
-    // Não temos a URL da pasta nesse request (foi setada no primeiro),
-    // mas se o cliente já subiu arquivos antes a pasta existe.
-    // Ensure pra pegar a URL e gravar.
-    const folder = await ensurePostFolder({
+  // === FINALIZE: comenta + conclui tarefa ===
+  // Materiais NÃO vão pro "Link do Google Drive" do post: esse campo é da arte
+  // e aparece na aprovação.
+  if (!driveLink && totalAcumulado > 0) {
+    const folder = await ensurePastaMateriaisDoPost({
       cliente: t.projetoNome,
       postTitulo: t.postTitulo,
       dataPostagem: t.postData,
     });
     driveLink = folder.webViewLink;
-    await atualizarLinkDriveDoPost(t.postId, `Materiais — ${t.postTitulo}`, driveLink);
   }
 
-  if (linkUrl) {
-    try {
-      await adicionarLinkDriveAoPost(
-        t.postId,
-        `Link enviado pelo cliente — ${t.postTitulo}`,
-        linkUrl,
-      );
-    } catch (err: any) {
-      console.warn('[submit] falhou adicionar link externo:', err?.message);
+  // Link dos materiais vai pra seção "Materiais" do post (aba Lud.).
+  try {
+    if (driveLink) {
+      await registrarMateriaisNoPost(t.postId, driveLink, `Pasta enviada pelo cliente (${t.tarefaTitulo})`);
     }
+    if (linkUrl) {
+      await registrarMateriaisNoPost(t.postId, linkUrl, 'Link enviado pelo cliente');
+    }
+  } catch (err: any) {
+    console.warn('[submit] não registrou materiais no post:', err?.message);
   }
 
   const totalArquivos = totalAcumulado + totalDessaCall;

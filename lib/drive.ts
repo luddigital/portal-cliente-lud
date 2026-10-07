@@ -346,3 +346,40 @@ export async function listFolderFiles(folderId: string): Promise<DriveFileResumi
   arquivos.sort((a, b) => NATURAL_COLLATOR.compare(a.name, b.name));
   return arquivos;
 }
+
+/** Subpasta dos materiais que o cliente envia, separada da arte do post. */
+export const PASTA_MATERIAIS_DO_POST = 'Materiais do cliente';
+
+/** `[Cliente]/[Post]/[data]/Materiais do cliente` — cria se não existir. */
+export async function ensurePastaMateriaisDoPost(opts: {
+  cliente: string;
+  postTitulo: string;
+  dataPostagem: string | null;
+}): Promise<{ folderId: string; webViewLink: string }> {
+  const base = await ensurePostFolder(opts);
+  const folderId = await ensureFolder(base.folderId, PASTA_MATERIAIS_DO_POST);
+  const meta = await driveClient().files.get({
+    fileId: folderId,
+    fields: 'webViewLink',
+    supportsAllDrives: true,
+  });
+  return { folderId, webViewLink: meta.data.webViewLink! };
+}
+
+/** Arquivos da pasta de materiais do post, sem criar nada no Drive. */
+export async function listarMateriaisDoPost(opts: {
+  cliente: string;
+  postTitulo: string;
+  dataPostagem: string | null;
+}): Promise<DriveFileResumido[]> {
+  if (!opts.dataPostagem) return [];
+  const cliente = await findChildFolder(env.drive.rootFolderId, sanitize(opts.cliente));
+  if (!cliente) return [];
+  const post = await findChildFolder(cliente, sanitize(opts.postTitulo));
+  if (!post) return [];
+  const data = await findChildFolder(post, opts.dataPostagem);
+  if (!data) return [];
+  const pasta = await findChildFolder(data, PASTA_MATERIAIS_DO_POST);
+  if (!pasta) return [];
+  return (await listFolderFiles(pasta)).filter((f) => !f.isFolder);
+}
