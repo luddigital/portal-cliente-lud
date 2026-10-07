@@ -21,6 +21,7 @@ import type { RelatorioAds } from '@/lib/csvAds';
 import { CalendarMes } from '@/app/_components/CalendarMes';
 import { resumoEntregas, type ResumoEntregas } from '@/lib/entregas';
 import { EntregasKanban } from './EntregasKanban';
+import { CalendariosStatus, type CalendarioMes } from './CalendariosStatus';
 import { PendenciasCliente } from './PendenciasCliente';
 import { EditarProjeto } from '../EditarProjeto';
 import { FiltroPeriodo } from './FiltroPeriodo';
@@ -588,7 +589,7 @@ function ProjetoHeader({
   year: number;
   month: number;
 }) {
-  const mostrarMes = aba === 'calendario' || aba === 'entregas';
+  const mostrarMes = aba === 'calendario';
   const prev = deslocarMes(year, month, -1);
   const next = deslocarMes(year, month, 1);
   const inicial = d.nome.trim()[0]?.toUpperCase() ?? '·';
@@ -1010,31 +1011,49 @@ async function ProjetoShell({
   inicioMs: number;
   fimMs: number;
 }) {
-  const [d, posts] = await Promise.all([
+  const hoje = hojeISO();
+  const ehEntregas = aba === 'entregas';
+  // Entregas não tem mês: olha os calendários do mês passado até 3 meses à frente.
+  const mesAtual = { year: Number(hoje.slice(0, 4)), month: Number(hoje.slice(5, 7)) };
+  const janela = ehEntregas
+    ? [-1, 0, 1, 2, 3].map((delta) => deslocarMes(mesAtual.year, mesAtual.month, delta))
+    : [];
+
+  const [d, posts, porMes] = await Promise.all([
     getProjetoDetalhe(id),
-    listPostsDoMes([id], year, month),
+    ehEntregas ? Promise.resolve([] as PostCalendario[]) : listPostsDoMes([id], year, month),
+    Promise.all(
+      janela.map(
+        async (m): Promise<CalendarioMes> => ({
+          ...m,
+          posts: await listPostsDoMes([id], m.year, m.month).catch(() => []),
+        }),
+      ),
+    ),
   ]);
   if (!d) notFound();
 
-  const hoje = hojeISO();
-  const resumo = resumoEntregas(posts, hoje);
+  const calendarios = porMes.filter((c) => c.posts.some((p) => p.etapa !== 'publicado'));
+  const postsEmAndamento = calendarios.flatMap((c) => c.posts);
+  const resumo = resumoEntregas(ehEntregas ? postsEmAndamento : posts, hoje);
   const mes = mesParam(year, month);
 
   return (
     <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
       <ProjetoHeader d={d} aba={aba} year={year} month={month} />
-      <BannerResumo resumo={resumo} id={id} mes={mes} />
+      {!ehEntregas && <BannerResumo resumo={resumo} id={id} mes={mes} />}
       <TabNav id={id} aba={aba} mes={mes} atrasados={resumo.atrasados} />
       <div className="mt-5">
         {aba === 'calendario' && <CalendarioTab posts={posts} year={year} month={month} />}
         {aba === 'entregas' && (
           <div className="space-y-8">
+            <CalendariosStatus calendarios={calendarios} hojeIso={hoje} />
             <Suspense
               fallback={<div className="h-[180px] animate-pulse rounded-md bg-[#F4F4F2]" />}
             >
               <PendenciasSection id={id} clienteNome={d.clienteNome ?? d.nome} />
             </Suspense>
-            <EntregasKanban posts={posts} hojeIso={hoje} />
+            <EntregasKanban posts={postsEmAndamento} hojeIso={hoje} />
             <TarefasPendentes tarefas={d.tarefas} />
           </div>
         )}
