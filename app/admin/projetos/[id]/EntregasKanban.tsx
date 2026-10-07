@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { PostCalendario } from '@/lib/notion';
 import {
@@ -13,6 +13,18 @@ import {
 } from '@/lib/entregas';
 
 type Filtro = 'todas' | 'atrasadas' | 'aguardando' | 'programar';
+type Ordem = 'urgencia' | 'distante' | 'titulo' | 'formato';
+
+const ORDENS: { id: Ordem; label: string }[] = [
+  { id: 'urgencia', label: 'Mais urgentes primeiro' },
+  { id: 'distante', label: 'Mais distantes primeiro' },
+  { id: 'titulo', label: 'Título (A–Z)' },
+  { id: 'formato', label: 'Formato' },
+];
+
+const ORDEM_FORMATO: Record<PostCalendario['tipo'], number> = { post: 0, reels: 1, story: 2 };
+const CHAVE_PREFS = 'kanban-entregas-prefs';
+const TODAS_COLUNAS = COLUNAS_ENTREGA.map((c) => c.id);
 
 function emojiTipo(p: PostCalendario): string {
   if (p.tipo === 'reels') return '🎬';
@@ -53,6 +65,37 @@ export function EntregasKanban({
   hojeIso: string;
 }) {
   const [filtro, setFiltro] = useState<Filtro>('todas');
+  const [ordem, setOrdem] = useState<Ordem>('urgencia');
+  const [ocultarVazias, setOcultarVazias] = useState(false);
+  const [visiveis, setVisiveis] = useState<EtapaEntrega[]>(TODAS_COLUNAS);
+  const [menuColunas, setMenuColunas] = useState(false);
+  const [prefsCarregadas, setPrefsCarregadas] = useState(false);
+
+  useEffect(() => {
+    try {
+      const salvo = JSON.parse(localStorage.getItem(CHAVE_PREFS) ?? 'null');
+      if (salvo) {
+        if (ORDENS.some((o) => o.id === salvo.ordem)) setOrdem(salvo.ordem);
+        if (typeof salvo.ocultarVazias === 'boolean') setOcultarVazias(salvo.ocultarVazias);
+        if (Array.isArray(salvo.visiveis)) {
+          const v = TODAS_COLUNAS.filter((c) => salvo.visiveis.includes(c));
+          if (v.length) setVisiveis(v);
+        }
+      }
+    } catch {
+      /* sem storage: usa o padrão */
+    }
+    setPrefsCarregadas(true);
+  }, []);
+
+  useEffect(() => {
+    if (!prefsCarregadas) return;
+    try {
+      localStorage.setItem(CHAVE_PREFS, JSON.stringify({ ordem, ocultarVazias, visiveis }));
+    } catch {
+      /* sem storage */
+    }
+  }, [ordem, ocultarVazias, visiveis, prefsCarregadas]);
 
   const enriquecidos: PostComEtapa[] = useMemo(
     () =>
@@ -85,10 +128,33 @@ export function EntregasKanban({
     const m = new Map<EtapaEntrega, PostComEtapa[]>();
     for (const col of COLUNAS_ENTREGA) m.set(col.id, []);
     for (const e of filtrados) m.get(e.etapa)!.push(e);
-    // dentro da coluna: mais urgentes primeiro
-    for (const lista of m.values()) lista.sort((a, b) => a.saude.dias - b.saude.dias);
+    const cmp = (a: PostComEtapa, b: PostComEtapa): number => {
+      switch (ordem) {
+        case 'distante':
+          return b.saude.dias - a.saude.dias;
+        case 'titulo':
+          return a.post.titulo.localeCompare(b.post.titulo, 'pt-BR');
+        case 'formato':
+          return (
+            ORDEM_FORMATO[a.post.tipo] - ORDEM_FORMATO[b.post.tipo] || a.saude.dias - b.saude.dias
+          );
+        default:
+          return a.saude.dias - b.saude.dias;
+      }
+    };
+    for (const lista of m.values()) lista.sort(cmp);
     return m;
-  }, [filtrados]);
+  }, [filtrados, ordem]);
+
+  const colunasNaTela = COLUNAS_ENTREGA.filter(
+    (c) => visiveis.includes(c.id) && (!ocultarVazias || (porColuna.get(c.id)?.length ?? 0) > 0),
+  );
+
+  function alternarColuna(id: EtapaEntrega) {
+    setVisiveis((v) =>
+      v.includes(id) ? (v.length > 1 ? v.filter((x) => x !== id) : v) : TODAS_COLUNAS.filter((c) => c === id || v.includes(c)),
+    );
+  }
 
   const SEG: { id: Filtro; label: string; badge?: number }[] = [
     { id: 'todas', label: 'Todas' },
@@ -133,10 +199,83 @@ export function EntregasKanban({
             );
           })}
         </div>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-[rgba(21,21,33,0.08)] bg-white px-3 py-1.5 text-[12px] font-semibold text-t2 transition hover:text-ink">
+            <input
+              type="checkbox"
+              checked={ocultarVazias}
+              onChange={(e) => setOcultarVazias(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[#37352F]"
+            />
+            Ocultar vazias
+          </label>
+
+          <label className="flex items-center gap-1.5 rounded-full border border-[rgba(21,21,33,0.08)] bg-white py-1 pl-3 pr-1 text-[12px] font-semibold text-t2">
+            Ordenar
+            <select
+              value={ordem}
+              onChange={(e) => setOrdem(e.target.value as Ordem)}
+              className="rounded-full bg-bgSoft px-2 py-0.5 text-[12px] font-semibold text-ink outline-none"
+            >
+              {ORDENS.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuColunas((v) => !v)}
+              className="rounded-full border border-[rgba(21,21,33,0.08)] bg-white px-3 py-1.5 text-[12px] font-semibold text-t2 transition hover:text-ink"
+            >
+              Colunas {visiveis.length < TODAS_COLUNAS.length ? `(${visiveis.length}/${TODAS_COLUNAS.length})` : ''} ▾
+            </button>
+            {menuColunas && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setMenuColunas(false)} />
+                <div className="absolute right-0 top-full z-30 mt-1.5 w-56 rounded-xl border border-[rgba(21,21,33,0.1)] bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+                  {COLUNAS_ENTREGA.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-[12.5px] text-ink hover:bg-bgSoft"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visiveis.includes(c.id)}
+                        onChange={() => alternarColuna(c.id)}
+                        className="h-3.5 w-3.5 accent-[#37352F]"
+                      />
+                      <span className="h-2 w-2 rounded-full" style={{ background: c.dot }} />
+                      <span className="flex-1">{c.label}</span>
+                      <span className="font-mono text-[10.5px] text-t3">{porColuna.get(c.id)?.length ?? 0}</span>
+                    </label>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setVisiveis(TODAS_COLUNAS)}
+                    className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-[11.5px] text-t3 underline hover:text-ink"
+                  >
+                    Mostrar todas
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
+      {colunasNaTela.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-[rgba(21,21,33,0.12)] px-4 py-6 text-center text-[12px] text-t3">
+          Nenhum post nas colunas escolhidas com esse filtro.
+        </div>
+      )}
+
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {COLUNAS_ENTREGA.map((col) => {
+        {colunasNaTela.map((col) => {
           const lista = porColuna.get(col.id) ?? [];
           const done = col.id === 'publicado';
           return (
