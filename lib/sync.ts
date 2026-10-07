@@ -13,6 +13,7 @@
  */
 import { Client } from '@notionhq/client';
 import { env } from './env';
+import { semTarefasDePost } from './notion';
 import { supabaseAdmin } from './supabase';
 
 const notion = new Client({ auth: env.notion.token });
@@ -62,7 +63,7 @@ export async function sincronizarPostagens(
     // (sincroniza tudo, mesmo Postado/Cancelado, pra ter histórico).
     let cursor: string | undefined;
     do {
-      const res = await notion.databases.query({
+      const res = await notion.databases.query(semTarefasDePost({
         database_id: env.notion.postagensDbId,
         page_size: 100,
         start_cursor: cursor,
@@ -72,7 +73,7 @@ export async function sincronizarPostagens(
             relation: { contains: id },
           })),
         },
-      });
+      }));
 
       lidos += res.results.length;
 
@@ -209,7 +210,7 @@ export async function sincronizarTarefasDosProjetos(
 
     let cursor: string | undefined;
     do {
-      const res = await notion.databases.query({
+      const res = await notion.databases.query(semTarefasDePost({
         database_id: env.notion.tarefasDbId,
         page_size: 100,
         start_cursor: cursor,
@@ -219,7 +220,7 @@ export async function sincronizarTarefasDosProjetos(
             relation: { contains: id },
           })),
         },
-      });
+      }));
 
       lidos += res.results.length;
 

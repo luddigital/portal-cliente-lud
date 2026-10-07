@@ -20,9 +20,20 @@ type Preview = {
   titulo: string;
   legenda: string;
   formatoTipo: string;
+  dataPostagem: string | null;
+  formato: string;
+  status: string | null;
   arquivos: Arquivo[];
   tarefas: Tarefa[];
 };
+
+const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+function dataPostagemTexto(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const dia = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')} (${DIA_SEMANA[dia]})`;
+}
 
 const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -38,14 +49,63 @@ function prazoCurto(iso: string | null): { texto: string; atrasada: boolean } {
   return { texto: `${d} ${MES[m - 1]}`, atrasada: false };
 }
 
-function TarefasResumo({ tarefas }: { tarefas: Tarefa[] }) {
+function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
+  const [tarefas, setTarefas] = useState(iniciais);
+  // Concluídas aqui no popup: guardam o status anterior pro "desfazer".
+  const [agora, setAgora] = useState<Record<string, string | null>>({});
+  const [salvando, setSalvando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => setTarefas(iniciais), [iniciais]);
+
   if (tarefas.length === 0) return null;
   const abertas = tarefas
-    .filter((t) => t.aberta)
+    .filter((t) => t.aberta || t.tarefaId in agora)
     .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'));
-  const concluidas = tarefas.length - abertas.length;
+  const concluidas = tarefas.filter((t) => !t.aberta).length;
   const pct = Math.round((concluidas / tarefas.length) * 100);
   const visiveis = abertas.slice(0, 6);
+
+  async function concluir(t: Tarefa) {
+    setSalvando(t.tarefaId);
+    setErro(null);
+    try {
+      const res = await fetch(`/api/tarefas/${t.tarefaId}/concluir`, { method: 'POST' });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+      setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, aberta: false } : x)));
+      setAgora((a) => ({ ...a, [t.tarefaId]: t.status }));
+    } catch (e: any) {
+      setErro(e?.message ?? 'Não consegui concluir.');
+    } finally {
+      setSalvando(null);
+    }
+  }
+
+  async function desfazer(t: Tarefa) {
+    setSalvando(t.tarefaId);
+    setErro(null);
+    try {
+      const res = await fetch(`/api/tarefas/${t.tarefaId}/reabrir`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: agora[t.tarefaId] }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+      setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, aberta: true } : x)));
+      setAgora((a) => {
+        const n = { ...a };
+        delete n[t.tarefaId];
+        return n;
+      });
+    } catch (e: any) {
+      setErro(e?.message ?? 'Não consegui desfazer.');
+    } finally {
+      setSalvando(null);
+    }
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
@@ -55,22 +115,54 @@ function TarefasResumo({ tarefas }: { tarefas: Tarefa[] }) {
         </span>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-bgSoft">
-        <div className="h-full rounded-full bg-ink" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-ink transition-all" style={{ width: `${pct}%` }} />
       </div>
       {visiveis.length > 0 ? (
         <ul className="space-y-0.5">
           {visiveis.map((t) => {
             const p = prazoCurto(t.prazo);
+            const feita = !t.aberta;
+            const ocupada = salvando === t.tarefaId;
             return (
               <li key={t.tarefaId} className="flex items-baseline gap-2 text-[12px]">
-                <span className="text-t3">○</span>
-                <span className="min-w-0 flex-1 truncate text-ink" title={t.titulo}>
+                <button
+                  type="button"
+                  onClick={() => (feita ? desfazer(t) : concluir(t))}
+                  disabled={ocupada}
+                  title={feita ? 'Desfazer' : 'Concluir tarefa'}
+                  aria-label={feita ? `Desfazer conclusão de ${t.titulo}` : `Concluir ${t.titulo}`}
+                  className={`group shrink-0 leading-none transition ${feita ? 'text-ink' : 'text-t3 hover:text-ink'} disabled:opacity-40`}
+                >
+                  {ocupada ? '…' : feita ? '✓' : (
+                    <>
+                      <span className="group-hover:hidden">○</span>
+                      <span className="hidden group-hover:inline">✓</span>
+                    </>
+                  )}
+                </button>
+                <span
+                  className={`min-w-0 flex-1 truncate ${feita ? 'text-t3 line-through' : 'text-ink'}`}
+                  title={t.titulo}
+                >
                   {t.titulo}
                 </span>
-                {t.pessoa && <span className="shrink-0 text-[11px] text-t3">{t.pessoa.split(' ')[0]}</span>}
-                <span className={`shrink-0 font-mono text-[10.5px] ${p.atrasada ? 'font-semibold text-ink' : 'text-t3'}`}>
-                  {p.atrasada ? `atrasada · ${p.texto}` : p.texto}
-                </span>
+                {feita ? (
+                  <button
+                    type="button"
+                    onClick={() => desfazer(t)}
+                    disabled={ocupada}
+                    className="shrink-0 text-[11px] text-t3 underline hover:text-ink"
+                  >
+                    desfazer
+                  </button>
+                ) : (
+                  <>
+                    {t.pessoa && <span className="shrink-0 text-[11px] text-t3">{t.pessoa.split(' ')[0]}</span>}
+                    <span className={`shrink-0 font-mono text-[10.5px] ${p.atrasada ? 'font-semibold text-ink' : 'text-t3'}`}>
+                      {p.atrasada ? `atrasada · ${p.texto}` : p.texto}
+                    </span>
+                  </>
+                )}
               </li>
             );
           })}
@@ -81,6 +173,7 @@ function TarefasResumo({ tarefas }: { tarefas: Tarefa[] }) {
       ) : (
         <p className="text-[12px] text-t2">Tudo concluído ✓</p>
       )}
+      {erro && <p className="text-[11px] font-semibold text-ink">{erro}</p>}
       {concluidas > 0 && visiveis.length > 0 && (
         <p className="text-[11px] text-t3">
           ✓ {concluidas} {concluidas === 1 ? 'concluída' : 'concluídas'}
@@ -177,6 +270,17 @@ export function PreviaPostModal({
             <div className="mt-0.5 truncate text-[15px] font-semibold text-ink">
               {preview?.titulo ?? 'Carregando…'}
             </div>
+            {preview && (preview.dataPostagem || preview.formato || preview.status) && (
+              <div className="mt-0.5 flex flex-wrap gap-x-2.5 text-[11.5px] text-t3">
+                {preview.dataPostagem && (
+                  <span>
+                    Postagem <span className="font-medium text-t1">{dataPostagemTexto(preview.dataPostagem)}</span>
+                  </span>
+                )}
+                {preview.formato && <span>· {preview.formato}</span>}
+                {preview.status && <span>· {preview.status}</span>}
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <a

@@ -7,6 +7,7 @@ import {
   findProjetosByEmail,
   getNomeDoCliente,
   invalidarCachesAposMudanca,
+  semTarefasDePost,
 } from '@/lib/notion';
 import { sendAvisoTarefas } from '@/lib/mail';
 import { sendPush } from '@/lib/push';
@@ -39,7 +40,7 @@ export async function GET(req: Request): Promise<Response> {
   const tarefasCandidatas: any[] = [];
   let cursor: string | undefined;
   do {
-    const res = await notion.databases.query({
+    const res = await notion.databases.query(semTarefasDePost({
       database_id: env.notion.tarefasDbId,
       start_cursor: cursor,
       filter: {
@@ -60,7 +61,7 @@ export async function GET(req: Request): Promise<Response> {
           },
         ],
       },
-    });
+    }));
     for (const t of res.results as any[]) {
       // Filtra pra os que estão Pronto=true
       const prontoProp = t.properties[' Pronto'];
@@ -93,11 +94,11 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   // 3. Pra cada projeto, descobre o cliente via banco Clientes (busca quem tem esse projeto)
-  const clientesDb = await notion.databases.query({
+  const clientesDb = await notion.databases.query(semTarefasDePost({
     database_id: env.notion.clientesDbId,
     page_size: 100,
     filter: { property: 'Status', status: { equals: 'Ativo' } },
-  });
+  }));
   // Map: projetoId → email
   const projetoParaEmail = new Map<string, string>();
   for (const c of clientesDb.results as any[]) {

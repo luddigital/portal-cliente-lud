@@ -80,12 +80,31 @@ async function comRetry<T>(fn: () => Promise<T>, max = 4): Promise<T> {
  * (query/retrieve/blocks). Outras operações (create, update, etc) seguem
  * direto sem retry — assumem que a chamada é deliberada e o erro propaga.
  */
+// Tarefas "tipo Post" (tipo original = POST) são configuração interna do
+// Notion e não entram no portal: toda consulta à base de Tarefas as exclui.
+const SEM_TAREFAS_DE_POST = {
+  or: [
+    { property: 'tipo original', select: { does_not_equal: 'POST' } },
+    { property: 'tipo original', select: { is_empty: true } },
+  ],
+};
+
+export function semTarefasDePost(args: any): any {
+  if (args?.database_id !== env.notion.tarefasDbId) return args;
+  const f = args.filter;
+  if (!f) return { ...args, filter: SEM_TAREFAS_DE_POST };
+  if (Array.isArray(f.and)) return { ...args, filter: { ...f, and: [...f.and, SEM_TAREFAS_DE_POST] } };
+  return { ...args, filter: { and: [f, SEM_TAREFAS_DE_POST] } };
+}
+
 const notion = {
   ..._notionRaw,
   databases: {
     ..._notionRaw.databases,
     query: ((args: any) =>
-      comRetry(() => _notionRaw.databases.query(args))) as typeof _notionRaw.databases.query,
+      comRetry(() =>
+        _notionRaw.databases.query(semTarefasDePost(args)),
+      )) as typeof _notionRaw.databases.query,
     retrieve: ((args: any) =>
       comRetry(() =>
         _notionRaw.databases.retrieve(args),
@@ -3702,6 +3721,17 @@ export async function findTarefaClienteProntaDoPost(
     }
   }
   return null;
+}
+
+/** Desfaz uma conclusão: volta pro status anterior e limpa "Finalizada em". */
+export async function reabrirTarefa(tarefaId: string, status: string): Promise<void> {
+  await notion.pages.update({
+    page_id: tarefaId,
+    properties: {
+      [env.notion.taskProps.status]: { status: { name: status } },
+      [env.notion.taskProps.finalizada]: { date: null },
+    },
+  });
 }
 
 export async function concluirTarefa(tarefaId: string): Promise<void> {

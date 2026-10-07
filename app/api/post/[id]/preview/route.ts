@@ -88,6 +88,11 @@ export async function GET(
     titulo: post.titulo,
     legenda: post.legenda ?? '',
     formatoTipo: post.formatoTipo,
+    dataPostagem: post.data,
+    formato:
+      post.formato.map((f) => f.name).join(', ') ||
+      ({ post: 'Carrossel', reels: 'Reels', story: 'Stories', desconhecido: '' } as const)[post.formatoTipo],
+    status: post.status,
     arquivos,
     tarefas,
   });
