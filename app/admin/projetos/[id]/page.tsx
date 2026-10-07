@@ -22,6 +22,7 @@ import { CalendarMes } from '@/app/_components/CalendarMes';
 import { resumirEtapas, ddmm, textoProxima, type ResumoEtapa } from '@/lib/etapas-projeto';
 import { EntregasKanban } from './EntregasKanban';
 import { EntregasPorEtapa } from './EntregasPorEtapa';
+import { SeletorMes } from './SeletorMes';
 import { EditarProjeto } from '../EditarProjeto';
 import { FiltroPeriodo } from './FiltroPeriodo';
 
@@ -499,23 +500,15 @@ function ProjetoHeader({ d }: { d: ProjetoDetalhe }) {
 }
 
 /** Seletor de mês — só da aba Calendário, logo acima do calendário. */
-function SeletorMes({ id, year, month }: { id: string; year: number; month: number }) {
+function SeletorMesCalendario({ id, year, month }: { id: string; year: number; month: number }) {
   const prev = deslocarMes(year, month, -1);
   const next = deslocarMes(year, month, 1);
-  const btn =
-    'flex h-8 w-8 items-center justify-center rounded-[9px] border border-[rgba(21,21,33,0.12)] bg-white text-t2 transition hover:bg-bgSoft';
   return (
-    <div className="mb-3 flex items-center gap-2">
-      <Link href={hrefProjeto(id, 'calendario', mesParam(prev.year, prev.month))} className={btn} aria-label="Mês anterior">
-        ‹
-      </Link>
-      <span className="min-w-[128px] text-center text-[14px] font-semibold capitalize text-ink">
-        {MESES[month - 1]} {year}
-      </span>
-      <Link href={hrefProjeto(id, 'calendario', mesParam(next.year, next.month))} className={btn} aria-label="Próximo mês">
-        ›
-      </Link>
-    </div>
+    <SeletorMes
+      rotulo={`${MESES[month - 1]} ${year}`}
+      hrefAnterior={hrefProjeto(id, 'calendario', mesParam(prev.year, prev.month))}
+      hrefProximo={hrefProjeto(id, 'calendario', mesParam(next.year, next.month))}
+    />
   );
 }
 
@@ -672,7 +665,7 @@ function CalendarioTab({
   ];
   return (
     <div>
-      <SeletorMes id={id} year={year} month={month} />
+      <SeletorMesCalendario id={id} year={year} month={month} />
       <CalendarMes year={year} month={month} posts={posts} />
       <div className="mt-3.5 flex flex-wrap gap-x-4 gap-y-2 text-[11.5px] text-t2">
         {legenda.map(([cor, label]) => (
@@ -935,7 +928,7 @@ export default function ProjetoPage({
   return (
     <div className="min-h-screen bg-bg pb-16">
       <Suspense
-        key={`${aba}-${year}-${month}-${inicioMs}-${fimMs}`}
+        key={`${aba}-${inicioMs}-${fimMs}`}
         fallback={
           <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
             <div className="h-[52px] w-64 rounded-xl bg-bgSoft" />
