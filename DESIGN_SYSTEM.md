@@ -191,20 +191,23 @@ Ver a tabela em **Superfícies "fantasma"** — quatro variantes: `sólido`, `m�
 
 ### Chip de data / prazo
 
-**Exceção à regra P&B, aprovada pela Luiza em 08/10/2026.** Toda data com prazo (entrega, aprovação, tarefa) usa o mesmo chip: **sólido, texto branco, negrito, arredondado** — o mesmo visual do selo "SÓ A EQUIPE". A cor é a urgência:
+Toda data com prazo (entrega, aprovação, tarefa) usa o mesmo chip, **discreto**: fundo branco, contorno fino, data em `ink` e uma **bolinha** com a cor da urgência. Atrasado também pinta texto e contorno de vermelho. (A versão sólida, toda colorida, ficou chamativa demais e foi trocada em 08/10/2026.)
 
-| Classe                    | Quando                  | Fundo                    |
+| Classe                    | Quando                  | Bolinha                  |
 | ------------------------- | ----------------------- | ------------------------ |
-| `chip-data atrasado`      | já venceu               | `var(--prazo-atrasado)`  |
+| `chip-data atrasado`      | já venceu (texto vermelho) | `var(--prazo-atrasado)`  |
 | `chip-data hoje`          | vence hoje              | `var(--prazo-hoje)`      |
 | `chip-data chegando`      | em 1–2 dias             | `var(--prazo-chegando)`  |
 | `chip-data em-dia`        | em 3–7 dias             | `var(--prazo-em-dia)`    |
 | `chip-data tranquilo`     | mais de 7 dias          | `var(--prazo-tranquilo)` |
-| `chip-data sem-prazo`     | sem data                | transparente, contorno   |
+| `chip-data sem-prazo`     | sem data                | sem bolinha, contorno tracejado |
 
-- Em React, use `<ChipData prazo hoje />` (`app/_components/ChipData.tsx`): ele calcula a urgência, mostra `dd/mm` e põe o "vence em N dias" no tooltip. `texto` troca o rótulo quando a tela precisa de "hoje", "atrasado 3 dias" etc. — o visual continua o mesmo.
-- Não crie chip de data com fundo claro / texto colorido: isso era o padrão antigo.
-- Classes definidas em `app/globals.css` (`.chip-data`).
+- Em React, use `<ChipData prazo hoje />` (`app/_components/ChipData.tsx`): calcula a urgência, mostra `dd/mm` e põe "vence em N dias" no tooltip. `texto` troca o rótulo ("hoje", "atrasado 3 dias"…) sem mudar o visual.
+- Classes em `app/globals.css` (`.chip-data`).
+
+### Botão de envio ao cliente
+
+Ação positiva de mandar algo pro cliente (enviar pra aprovação, mensagem da entrega): verde `var(--prazo-em-dia)`, texto branco, `rounded-full` — classe `.btn-enviar`. Só aparece quando a ação está liberada (ex.: todos os posts do cliente prontos); **não mostrar botão desabilitado** no lugar, mostrar o que falta no texto do card.
 
 ### Input
 

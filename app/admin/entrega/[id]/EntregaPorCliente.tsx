@@ -111,6 +111,12 @@ function ChipStatus({ item, tipo }: { item: ItemEntrega; tipo: TipoEntrega }) {
   );
 }
 
+/** Cliente pronto: todos os posts pendentes da semana já estão nessa etapa. */
+function clientePronto(itens: ItemEntrega[]): boolean {
+  const pendentes = itens.filter((i) => !i.enviado);
+  return pendentes.length > 0 && pendentes.every((i) => i.relacao === 'aqui');
+}
+
 function PilulaVisto({ visto }: { visto: boolean }) {
   return (
     <span
@@ -169,6 +175,7 @@ export function EntregaPorCliente({
   const [envio, setEnvio] = useState<GrupoEntrega | null>(null);
   const [mensagem, setMensagem] = useState<GrupoEntrega | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState<'todas' | 'prontas' | 'nao'>('todas');
 
   // Uma aba por semana de envio (pela data da tarefa da entrega).
   const semanaAtual = semanaDe(hojeIso);
@@ -284,13 +291,41 @@ export function EntregaPorCliente({
         )}
       </div>
 
+      {gruposDaSemana.length > 0 && (
+        <div className="inline-flex rounded-full border border-[rgba(21,21,33,0.08)] bg-bgSoft p-[3px]">
+          {(
+            [
+              ['todas', 'Todas', gruposDaSemana.length],
+              ['prontas', tipo === 'envio' ? 'Prontas pra enviar' : 'Prontas', gruposDaSemana.filter((g) => clientePronto(g.itens)).length],
+              ['nao', 'Não prontas', gruposDaSemana.filter((g) => !clientePronto(g.itens)).length],
+            ] as const
+          ).map(([id, rotulo, n]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFiltro(id)}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition ${
+                filtro === id ? 'bg-ink text-white' : 'text-t2 hover:text-ink'
+              }`}
+            >
+              {rotulo}
+              <span className={`rounded-full px-1.5 text-[10px] font-bold ${filtro === id ? 'bg-white/25' : 'bg-white text-t2'}`}>
+                {n}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {gruposDaSemana.length === 0 && (
         <p className="rounded-2xl border border-dashed border-[rgba(21,21,33,0.12)] px-4 py-6 text-center text-[12.5px] text-t3">
           {nEnviados > 0 ? `Tudo dessa semana já foi ${tipo === 'envio' ? 'enviado' : 'concluído'} ✨` : 'Nada nessa semana.'}
         </p>
       )}
 
-      {gruposDaSemana.map((g) => {
+      {gruposDaSemana
+        .filter((g) => (filtro === 'todas' ? true : filtro === 'prontas' ? clientePronto(g.itens) : !clientePronto(g.itens)))
+        .map((g) => {
         const prontos = g.itens.filter((i) => i.relacao === 'aqui');
         const travados = g.itens.filter((i) => i.relacao === 'antes');
         const atrasados = g.itens.filter((i) => i.prazo && diasEntre(hojeIso, i.prazo) < 0).length;
@@ -318,38 +353,17 @@ export function EntregaPorCliente({
                   {g.gruposWpp.length === 0 && <span>· sem grupo do WhatsApp</span>}
                 </div>
               </div>
-              {tipo === 'envio' && (
-                // Só libera com TODOS os posts do cliente prontos (o lote não sai pela metade).
-                <div className="flex flex-col items-end gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setEnvio(g)}
-                    disabled={prontos.length === 0 || travados.length > 0}
-                    title={
-                      travados.length > 0
-                        ? 'Libera quando todos os posts desse cliente estiverem prontos'
-                        : prontos.length === 0
-                          ? 'Nenhum post pronto pra enviar'
-                          : undefined
-                    }
-                    className="rounded-full bg-ink px-4 py-2 text-[12.5px] font-semibold text-white transition hover:opacity-90 disabled:opacity-30"
-                  >
-                    📱 Enviar para aprovação{prontos.length > 0 && travados.length === 0 ? ` (${prontos.length})` : ''}
-                  </button>
-                  {travados.length > 0 && (
-                    <span className="text-[11px] text-t3">
-                      Falta{travados.length > 1 ? 'm' : ''} {travados.length} {travados.length === 1 ? 'post' : 'posts'} ficar
-                      {travados.length > 1 ? 'em' : ''} pronto{travados.length > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
+              {tipo === 'envio' && clientePronto(g.itens) && (
+                // Só aparece com TODOS os posts do cliente prontos (o lote não sai pela metade).
+                <button type="button" onClick={() => setEnvio(g)} className="btn-enviar">
+                  📱 Enviar para aprovação ({prontos.length})
+                </button>
               )}
-              {tipo === 'cliente' && (
+              {tipo === 'cliente' && prontos.some((i) => i.postId) && (
                 <button
                   type="button"
                   onClick={() => setMensagem(g)}
-                  disabled={prontos.filter((i) => i.postId).length === 0}
-                  className="rounded-full border border-[rgba(21,21,33,0.12)] bg-white px-4 py-2 text-[12.5px] font-semibold text-ink transition hover:bg-bgSoft disabled:opacity-40"
+                  className="btn-enviar"
                 >
                   📱 Mensagem da entrega{prontos.length > 0 ? ` (${prontos.length})` : ''}
                 </button>
@@ -364,7 +378,7 @@ export function EntregaPorCliente({
                     disabled={!i.postId}
                     className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
                   >
-                    <ChipData prazo={i.prazo} hoje={hojeIso} className="w-[56px]" />
+                    <ChipData prazo={i.prazo} hoje={hojeIso} className="w-[66px]" />
                     <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.postTitulo}</span>
                     {/* colunas fixas: a tag de status fica sempre alinhada na direita */}
                     <span className="hidden w-[132px] shrink-0 justify-end sm:flex">
