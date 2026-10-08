@@ -18,6 +18,8 @@ type Item = {
   postIds: string[];
   /** Só no envio de quinta: tarefas "Enviar Post Aprovação" a concluir. */
   tarefasEnvio?: string[];
+  /** Grupo escolhido (se o projeto tiver mais de um); padrão = principal. */
+  grupoId?: string | null;
 };
 
 /** Envia a fila da Régua. Sempre no GRUPO do cliente, nunca no privado. */
@@ -44,7 +46,7 @@ export async function POST(req: Request): Promise<Response> {
   const resultados: { projetoId: string; ok: boolean; erro?: string }[] = [];
 
   for (const item of itens) {
-    const grupo = await getGrupoWhatsappDoProjeto(item.projetoId);
+    const grupo = await getGrupoWhatsappDoProjeto(item.projetoId, item.grupoId ?? null);
     if (!grupo?.id) {
       resultados.push({ projetoId: item.projetoId, ok: false, erro: 'sem grupo vinculado' });
       continue;

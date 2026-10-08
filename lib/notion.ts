@@ -1346,6 +1346,8 @@ export type TarefaDaEntrega = {
   status: string | null;
   prazo: string | null;
   finalizada: string | null;
+  /** Fórmula "Pronto" do Notion: tarefa liberada (etapa anterior concluída). */
+  pronto?: boolean;
   postId: string | null;
   postTitulo: string | null;
   projetoId: string | null;
@@ -1361,7 +1363,10 @@ export type EntregaDetalhe = EntregaItem & {
  * Pega 1 entrega + retrieve de cada tarefa relacionada (com projeto/cliente).
  * Retorna só tarefas não concluídas.
  */
-async function _getEntregaDetalheUncached(entregaId: string): Promise<EntregaDetalhe | null> {
+async function _getEntregaDetalheUncached(
+  entregaId: string,
+  todas = false,
+): Promise<EntregaDetalhe | null> {
   try {
     const entrega = (await cachedPageRetrieve(entregaId)) as any;
     const titleProp = Object.values(entrega.properties).find(
@@ -1389,11 +1394,29 @@ async function _getEntregaDetalheUncached(entregaId: string): Promise<EntregaDet
         filter: {
           and: [
             { property: 'Entregas', relation: { contains: entregaId } },
-            // só tarefas "prontas" (check ativado na fórmula Pronto)
-            {
-              property: env.notion.taskProps.pronto,
-              formula: { checkbox: { equals: true } },
-            },
+            // Padrão: só tarefas "prontas" (fórmula Pronto). `todas`: inclui as
+            // ainda não liberadas, numa janela de datas (página da entrega).
+            ...(todas
+              ? [
+                  {
+                    property: 'Data Entrega',
+                    date: {
+                      on_or_after: new Date(Date.now() - 45 * 86_400_000).toISOString().slice(0, 10),
+                    },
+                  },
+                  {
+                    property: 'Data Entrega',
+                    date: {
+                      on_or_before: new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10),
+                    },
+                  },
+                ]
+              : [
+                  {
+                    property: env.notion.taskProps.pronto,
+                    formula: { checkbox: { equals: true } },
+                  },
+                ]),
             ...STATUS_TAREFA_FECHADOS.map((s) => ({
               property: env.notion.taskProps.status,
               status: { does_not_equal: s },
@@ -1464,6 +1487,7 @@ async function _getEntregaDetalheUncached(entregaId: string): Promise<EntregaDet
             status,
             prazo,
             finalizada,
+            pronto: !!getProp(t, env.notion.taskProps.pronto)?.formula?.boolean,
             postId: postRel[0]?.id ?? null,
             postTitulo,
             projetoId: projetoRel[0]?.id ?? null,
@@ -1507,6 +1531,17 @@ const _getEntregaDetalheCached = unstable_cache(
   ['get-entrega-detalhe-v1'],
   { revalidate: 60, tags: [TAG_TAREFAS] }, // 1 min
 );
+
+const _getEntregaCompletaCached = unstable_cache(
+  (entregaId: string) => _getEntregaDetalheUncached(entregaId, true),
+  ['get-entrega-completa-v1'],
+  { revalidate: 60, tags: [TAG_TAREFAS] },
+);
+
+/** Todas as tarefas abertas da entrega (prontas ou não), de 45 dias atrás a 10 dias à frente. */
+export async function getEntregaCompleta(entregaId: string): Promise<EntregaDetalhe | null> {
+  return _getEntregaCompletaCached(entregaId);
+}
 
 export async function getEntregaDetalhe(
   entregaId: string,
@@ -5033,4 +5068,58 @@ export async function registrarMateriaisNoPost(
     ],
   });
   return true;
+}
+
+/** Tarefas abertas de vários posts (status real de cada post), por post. */
+export async function listarTarefasAbertasDosPosts(
+  postIds: string[],
+): Promise<Map<string, TarefaDoProjeto[]>> {
+  const out = new Map<string, TarefaDoProjeto[]>();
+  const unicos = [...new Set(postIds)];
+  for (let i = 0; i < unicos.length; i += 25) {
+    const lote = unicos.slice(i, i + 25);
+    let cursor: string | undefined;
+    do {
+      const res = await notion.databases.query({
+        database_id: env.notion.tarefasDbId,
+        start_cursor: cursor,
+        page_size: 100,
+        filter: {
+          and: [
+            {
+              or: lote.map((id) => ({
+                property: env.notion.taskProps.post,
+                relation: { contains: id },
+              })),
+            },
+            ...STATUS_TAREFA_FECHADOS.map((s) => ({
+              property: env.notion.taskProps.status,
+              status: { does_not_equal: s },
+            })),
+          ],
+        },
+      });
+      for (const t of res.results as any[]) {
+        const tt = Object.values(t.properties).find((x: any) => x.type === 'title') as any;
+        const postId = (getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id ?? null;
+        if (!postId) continue;
+        const lista = out.get(postId) ?? [];
+        lista.push({
+          id: t.id,
+          titulo: txt(tt?.title) || 'Tarefa',
+          pessoa: getProp(t, 'Pessoa')?.people?.[0]?.name ?? null,
+          status: getProp(t, env.notion.taskProps.status)?.status?.name ?? null,
+          prazo: dataEmSaoPaulo(
+            getProp(t, 'Data Entrega')?.date?.start ?? getProp(t, 'Data Inicial')?.date?.start,
+          ),
+          postId,
+          postTitulo: null,
+          postData: null,
+        });
+        out.set(postId, lista);
+      }
+      cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+    } while (cursor);
+  }
+  return out;
 }

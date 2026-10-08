@@ -2,9 +2,17 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
-import { getEntregaDetalhe, type TarefaDaEntrega } from '@/lib/notion';
+import {
+  getEntregaCompleta,
+  listarTarefasAbertasDosPosts,
+  type TarefaDoProjeto,
+} from '@/lib/notion';
+import { getGruposWhatsappDoProjeto, lerVisualizacoes } from '@/lib/supabase';
+import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
+import { hojeEmSaoPaulo } from '@/lib/lembrete-aprovacao';
+import { ehTarefaDoCliente, statusRealDoPost } from '@/lib/etapas-projeto';
 import { env } from '@/lib/env';
-import { EntregaTarefas } from './EntregaTarefas';
+import { EntregaPorCliente, type GrupoEntrega, type TipoEntrega } from './EntregaPorCliente';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,48 +21,6 @@ function diasAte(iso: string): number {
   hoje.setHours(0, 0, 0, 0);
   const d = new Date(iso.split('T')[0] + 'T00:00:00');
   return Math.round((d.getTime() - hoje.getTime()) / 86400000);
-}
-
-function fmtDataBR(iso: string): string {
-  const [y, m, d] = iso.split('T')[0].split('-');
-  return `${d}/${m}/${y}`;
-}
-
-const DIAS_SEMANA = [
-  'domingo',
-  'segunda',
-  'terça',
-  'quarta',
-  'quinta',
-  'sexta',
-  'sábado',
-];
-const MESES = [
-  'janeiro',
-  'fevereiro',
-  'março',
-  'abril',
-  'maio',
-  'junho',
-  'julho',
-  'agosto',
-  'setembro',
-  'outubro',
-  'novembro',
-  'dezembro',
-];
-
-/** Título legível pro grupo do dia. Ex: "Hoje · 27/jun (terça)" */
-function tituloDoDia(iso: string, dias: number): string {
-  const [y, m, d] = iso.split('T')[0].split('-');
-  const data = new Date(Number(y), Number(m) - 1, Number(d));
-  const dia = data.getDate();
-  const mes = MESES[data.getMonth()];
-  const diaSemana = DIAS_SEMANA[data.getDay()];
-  const base = `${dia} de ${mes} (${diaSemana})`;
-  if (dias === 0) return `Hoje · ${base}`;
-  if (dias === 1) return `Amanhã · ${base}`;
-  return base;
 }
 
 export default async function EntregaAdminPage({ params }: { params: { id: string } }) {
@@ -96,132 +62,149 @@ export default async function EntregaAdminPage({ params }: { params: { id: strin
 }
 
 async function Conteudo({ id }: { id: string }) {
-  const entrega = await getEntregaDetalhe(id);
+  const entrega = await getEntregaCompleta(id);
   if (!entrega) notFound();
 
-  // Agrupa tarefas pelo dia do prazo (YYYY-MM-DD). Sem prazo cai num grupo
-  // separado no fim. Atrasadas viram um único bloco no topo "Atrasadas".
-  type Grupo = { titulo: string; tarefas: TarefaDaEntrega[]; chaveOrdem: string };
-  const grupos = new Map<string, Grupo>();
-  const addAo = (chave: string, titulo: string, chaveOrdem: string, t: TarefaDaEntrega) => {
-    if (!grupos.has(chave)) grupos.set(chave, { titulo, tarefas: [], chaveOrdem });
-    grupos.get(chave)!.tarefas.push(t);
-  };
+  const tarefas = entrega.tarefasRelacionadas;
+  const postIds = [...new Set(tarefas.map((t) => t.postId).filter((x): x is string => !!x))];
+  const projetoIds = [...new Set(tarefas.map((t) => t.projetoId).filter((x): x is string => !!x))];
 
-  for (const t of entrega.tarefasRelacionadas) {
-    if (!t.prazo) {
-      addAo('sem-prazo', 'Sem prazo', '9999-12-31', t);
-      continue;
+  const [abertasPorPost, vistas, textos, gruposPorProjeto] = await Promise.all([
+    listarTarefasAbertasDosPosts(postIds).catch(() => new Map<string, TarefaDoProjeto[]>()),
+    lerVisualizacoes(postIds).catch(() => ({}) as Awaited<ReturnType<typeof lerVisualizacoes>>),
+    lerMensagensEditadas().catch(() => ({}) as Record<string, string>),
+    Promise.all(
+      projetoIds.map(async (pid) => [pid, await getGruposWhatsappDoProjeto(pid).catch(() => [])] as const),
+    ),
+  ]);
+  const gruposWpp = new Map(gruposPorProjeto);
+
+  const grupos = new Map<string, GrupoEntrega>();
+  for (const t of tarefas) {
+    const chave = t.projetoId ?? 'sem-projeto';
+    let g = grupos.get(chave);
+    if (!g) {
+      g = {
+        projetoId: t.projetoId ?? '',
+        nome: t.clienteNome ?? t.projetoNome ?? 'Sem cliente',
+        projetoNome: t.projetoNome ?? '',
+        gruposWpp: (gruposWpp.get(t.projetoId ?? '') ?? []).map((w) => ({
+          id: w.id,
+          nome: w.nome,
+          apelido: w.apelido?.trim() || null,
+        })),
+        itens: [],
+      };
+      grupos.set(chave, g);
     }
-    const dia = t.prazo.split('T')[0];
-    const dias = diasAte(dia);
-    if (dias < 0) {
-      // Atrasada — junta num bloco só, ordenada por data dentro
-      addAo('atrasadas', 'Atrasadas', '0000-00-00', t);
-    } else {
-      addAo(dia, tituloDoDia(dia, dias), dia, t);
-    }
+    const abertas = t.postId ? abertasPorPost.get(t.postId) ?? [] : [];
+    const base: TarefaDoProjeto = {
+      id: t.tarefaId,
+      titulo: t.titulo,
+      pessoa: null,
+      status: t.status,
+      prazo: t.prazo ? t.prazo.slice(0, 10) : null,
+      postId: t.postId,
+      postTitulo: t.postTitulo,
+      postData: null,
+    };
+    const st = statusRealDoPost(abertas.length ? abertas : [base], t.titulo);
+    const aprovacao = abertas.find((x) => /aprova[çc][ãa]o\s*\|\s*post/i.test(x.titulo));
+    const v = t.postId ? vistas[t.postId] : undefined;
+    g.itens.push({
+      tarefaId: t.tarefaId,
+      titulo: t.titulo,
+      prazo: base.prazo,
+      pronto: !!t.pronto,
+      postId: t.postId,
+      postTitulo: t.postTitulo ?? t.titulo,
+      relacao: st.relacao,
+      rotulo: st.rotulo,
+      comCliente: st.comCliente,
+      atualTitulo: st.atual?.titulo ?? null,
+      atualPrazo: st.atual?.prazo ?? null,
+      responsavel: st.atual?.pessoa ?? null,
+      aprovacaoTarefaId: aprovacao?.id ?? null,
+      prazoCliente: aprovacao?.prazo ?? null,
+      visto: v ? { ultima: v.ultima, total: v.total } : null,
+    });
   }
-  const gruposOrdenados = [...grupos.values()].sort((a, b) =>
-    a.chaveOrdem.localeCompare(b.chaveOrdem),
+  const lista = [...grupos.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  for (const g of lista) g.itens.sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'));
+
+  const tipo: TipoEntrega = /enviar post/i.test(entrega.nome)
+    ? 'envio'
+    : ehTarefaDoCliente(entrega.nome) || /materia|pr[ée]vi|conte[úu]do/i.test(entrega.nome)
+      ? 'cliente'
+      : 'interna';
+
+  const total = lista.reduce((n, g) => n + g.itens.length, 0);
+  const prontos = lista.reduce((n, g) => n + g.itens.filter((i) => i.relacao === 'aqui').length, 0);
+  const atrasados = lista.reduce(
+    (n, g) => n + g.itens.filter((i) => i.prazo && diasAte(i.prazo) < 0).length,
+    0,
   );
-  // Dentro de cada grupo, ordena por prazo (mais antiga primeiro)
-  for (const g of gruposOrdenados) {
-    g.tarefas.sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''));
-  }
-
-  // Data da tarefa pendente mais antiga (a que está esperando há mais tempo).
-  const prazoMaisAntigo =
-    entrega.tarefasRelacionadas
-      .map((t) => t.prazo)
-      .filter((p): p is string => !!p)
-      .sort()[0] ?? null;
 
   return (
     <>
       <div>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-          entrega
-        </div>
-        <h1 className="mt-1 text-[28px] font-semibold tracking-[-0.03em] text-ink">
-          {entrega.nome}
-        </h1>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">entrega</div>
+        <h1 className="mt-1 text-[28px] font-semibold tracking-[-0.03em] text-ink">{entrega.nome}</h1>
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
           {entrega.frequencia && (
-            <span className="rounded-full bg-bgSoft px-2 py-0.5 text-t2">
-              {entrega.frequencia}
-            </span>
+            <span className="rounded-full bg-bgSoft px-2 py-0.5 text-t2">{entrega.frequencia}</span>
           )}
           {entrega.proximaData && (
             <span className="rounded-full bg-bgSoft px-2 py-0.5 text-t2">
               Próxima: {entrega.proximaData.replace(/^⏳\s*/, '')}
             </span>
           )}
-          {prazoMaisAntigo &&
-            (diasAte(prazoMaisAntigo) < 0 ? (
-              <span
-                className="rounded-full px-2 py-0.5 font-semibold"
-                style={{
-                  background: 'var(--prazo-atrasado-soft)',
-                  color: 'var(--prazo-atrasado)',
-                }}
-              >
-                ⚠ Mais antiga pendente: {fmtDataBR(prazoMaisAntigo)}
-              </span>
-            ) : (
-              <span className="rounded-full bg-bgSoft px-2 py-0.5 text-t2">
-                Mais antiga pendente: {fmtDataBR(prazoMaisAntigo)}
-              </span>
-            ))}
         </div>
       </div>
 
-      <div
-        className="rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-5 flex items-center justify-between gap-4 flex-wrap"
-      >
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-            Tarefas em aberto
-          </div>
-          <div className="mt-1 text-[13px] text-t2">
-            Tarefas prontas (check ativado) ainda não concluídas, agrupadas pelo dia do prazo.
-          </div>
-        </div>
-        <div
-          className="rounded-xl px-5 py-3 text-center min-w-[100px]"
-          style={{
-            background: 'var(--prazo-hoje-soft)',
-            color: 'var(--prazo-hoje)',
-          }}
-        >
-          <div className="text-[28px] font-semibold leading-none tracking-[-0.03em]">
-            {entrega.tarefasRelacionadas.length}
-          </div>
-          <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em]">
-            em aberto
-          </div>
-        </div>
+      <div className="grid grid-cols-3 gap-2.5 sm:max-w-xl">
+        <Resumo n={total} rotulo="posts" />
+        <Resumo n={prontos} rotulo={tipo === 'envio' ? 'prontos pra enviar' : 'nessa etapa'} />
+        <Resumo n={atrasados} rotulo="atrasados" alerta={atrasados > 0} />
       </div>
 
-      {gruposOrdenados.length === 0 ? (
-        <div
-          className="rounded-2xl p-8 text-center"
-          style={{ background: 'var(--prazo-em-dia-soft)' }}
-        >
+      {lista.length === 0 ? (
+        <div className="rounded-2xl p-8 text-center" style={{ background: 'var(--prazo-em-dia-soft)' }}>
           <div className="text-[24px]">✨</div>
-          <div
-            className="mt-2 text-[14px] font-semibold"
-            style={{ color: 'var(--prazo-em-dia)' }}
-          >
+          <div className="mt-2 text-[14px] font-semibold" style={{ color: 'var(--prazo-em-dia)' }}>
             Entrega zerada
           </div>
-          <p className="mt-1 text-[12px] text-t2">
-            Nenhuma tarefa em aberto vinculada a essa entrega.
-          </p>
+          <p className="mt-1 text-[12px] text-t2">Nenhuma tarefa em aberto vinculada a essa entrega.</p>
         </div>
       ) : (
-        <EntregaTarefas grupos={gruposOrdenados} />
+        <EntregaPorCliente
+          entregaNome={entrega.nome}
+          tipo={tipo}
+          grupos={lista}
+          textos={textos}
+          baseUrl={env.app.url}
+          hojeIso={hojeEmSaoPaulo()}
+        />
       )}
     </>
+  );
+}
+
+function Resumo({ n, rotulo, alerta }: { n: number; rotulo: string; alerta?: boolean }) {
+  return (
+    <div
+      className={`rounded-2xl border bg-white px-4 py-3 ${
+        alerta ? 'border-[rgba(110,42,44,0.3)]' : 'border-[rgba(21,21,33,0.08)]'
+      }`}
+    >
+      <div
+        className={`text-[24px] font-semibold leading-none tracking-[-0.03em] ${
+          alerta ? 'text-[var(--prazo-atrasado)]' : 'text-ink'
+        }`}
+      >
+        {n}
+      </div>
+      <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-t3">{rotulo}</div>
+    </div>
   );
 }

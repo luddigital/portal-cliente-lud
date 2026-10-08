@@ -44,7 +44,7 @@ export function etapaDaTarefa(titulo: string): EtapaProjeto | null {
 /** A tarefa está na mão do cliente (aprovar, enviar material/informação, direcionar stories)? */
 export function ehTarefaDoCliente(titulo: string): boolean {
   const t = titulo.toLowerCase();
-  if (/enviar post|aprova[çc][ãa]o\s*\|\s*(arte|briefing|copy|materia|cria)/.test(t)) return false;
+  if (/enviar post|aprova[çc][ãa]o\s*\|\s*(arte|briefing|copy|materia|cria|geral)/.test(t)) return false;
   return /aprova[çc][ãa]o|materiais para produ|pr[ée]vi|conte[úu]do|direcionamento/.test(t);
 }
 
@@ -147,4 +147,66 @@ export function textoProxima(dias: number | null): string {
   if (dias === 0) return 'hoje';
   if (dias === 1) return 'amanhã';
   return `em ${dias} dias`;
+}
+
+/** Nome amigável do que está acontecendo com o post, pela tarefa aberta atual. */
+export function rotuloDaTarefaAtual(titulo: string): string {
+  const t = titulo.toLowerCase().trim();
+  if (t === 'arte') return 'Arte em produção';
+  if (/aprova[çc][ãa]o\s*\|\s*arte/.test(t)) return 'Aguardando aprovação de arte';
+  if (/altera[çc][ãa]o\s*\|\s*arte/.test(t)) return 'Arte em alteração';
+  if (/aprova[çc][ãa]o\s*\|\s*geral/.test(t)) return 'Aguardando aprovação geral (interna)';
+  if (/enviar post/.test(t)) return 'Pronto pra enviar ao cliente';
+  if (/aprova[çc][ãa]o\s*\|\s*post/.test(t)) return 'Com o cliente pra aprovar';
+  if (/altera[çc][ãa]o\s*\|\s*post/.test(t)) return 'Alteração pedida pelo cliente';
+  if (/programar/.test(t)) return 'Aprovado · falta programar';
+  if (/conferir postagem/.test(t)) return 'Publicado · conferir postagem';
+  if (/aprova[çc][ãa]o\s*\|\s*materia/.test(t)) return 'Conferir materiais recebidos';
+  if (/materia/.test(t)) return 'Esperando materiais do cliente';
+  if (/pr[ée]vi|conte[úu]do/.test(t)) return 'Esperando informações prévias';
+  if (/aprova[çc][ãa]o\s*\|\s*(briefing|copy)/.test(t)) return 'Aguardando aprovação do briefing';
+  if (/briefing|copy/.test(t)) return 'Briefing & copy em produção';
+  if (/aprova[çc][ãa]o\s*\|\s*(pauta|cria)/.test(t)) return 'Pauta em aprovação';
+  if (/pauta|produzir post/.test(t)) return 'Pauta em criação';
+  if (/direcionamento|stories/.test(t)) return 'Direcionamento de stories';
+  return titulo;
+}
+
+export type StatusReal = {
+  /** Tarefa aberta que define onde o post está agora (null = nada aberto). */
+  atual: TarefaDoProjeto | null;
+  rotulo: string;
+  /** Em relação à entrega da página: o post está nela, ainda não chegou ou já passou. */
+  relacao: 'aqui' | 'antes' | 'depois' | 'concluido';
+  comCliente: boolean;
+};
+
+function chaveTitulo(t: string): string {
+  return t.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Onde o post está de verdade, comparado com a entrega `tituloEntrega`. */
+export function statusRealDoPost(abertas: TarefaDoProjeto[], tituloEntrega: string): StatusReal {
+  const ordem = (t: TarefaDoProjeto) => {
+    const e = etapaDaTarefa(t.titulo);
+    return e ? ORDEM.indexOf(e) : 99;
+  };
+  const ordenadas = [...abertas].sort(
+    (a, b) => ordem(a) - ordem(b) || (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'),
+  );
+  const atual = ordenadas[0] ?? null;
+  if (!atual) return { atual: null, rotulo: 'Concluído', relacao: 'concluido', comCliente: false };
+
+  const daEntrega = abertas.find((t) => chaveTitulo(t.titulo) === chaveTitulo(tituloEntrega));
+  let relacao: StatusReal['relacao'];
+  if (chaveTitulo(atual.titulo) === chaveTitulo(tituloEntrega)) relacao = 'aqui';
+  else if (daEntrega) relacao = 'antes';
+  else relacao = 'depois';
+
+  return {
+    atual,
+    rotulo: rotuloDaTarefaAtual(atual.titulo),
+    relacao,
+    comCliente: ehTarefaDoCliente(atual.titulo),
+  };
 }
