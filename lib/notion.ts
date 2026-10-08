@@ -1276,10 +1276,22 @@ export type EntregaItem = {
   proximaEntregaTexto: string | null;
   proximaData: string | null;
   frequencia: string | null;
+  /** Propriedade "Dia": "Todos", dia da semana ("Quinta") ou dia do mês ("05"). */
+  dia: string | null;
   totalTarefas: number;
   /** Quantas tarefas em atraso, extraído da fórmula Status. */
   atrasadas: number;
 };
+
+function lerDiaDaEntrega(p: any): string | null {
+  const d = p.properties?.['Dia'];
+  return (
+    d?.select?.name ??
+    d?.multi_select?.[0]?.name ??
+    (d?.rich_text ? txt(d.rich_text) || null : null) ??
+    null
+  );
+}
 
 async function _listEntregasUncached(): Promise<EntregaItem[]> {
   const out: EntregaItem[] = [];
@@ -1297,6 +1309,7 @@ async function _listEntregasUncached(): Promise<EntregaItem[]> {
       const proximaEntregaTexto = p.properties['Próxima Entrega']?.formula?.string ?? null;
       const proximaData = p.properties['Próxima data']?.formula?.string ?? null;
       const frequencia = p.properties['Frequência']?.select?.name ?? null;
+      const dia = lerDiaDaEntrega(p);
       const totalTarefas = p.properties.Tarefas?.relation?.length ?? 0;
       const m = (statusTexto ?? '').match(/(\d+)\s*tarefa/i);
       const atrasadas = m ? parseInt(m[1], 10) : 0;
@@ -1307,6 +1320,7 @@ async function _listEntregasUncached(): Promise<EntregaItem[]> {
         proximaEntregaTexto,
         proximaData,
         frequencia,
+        dia,
         totalTarefas,
         atrasadas,
       });
@@ -1322,7 +1336,7 @@ async function _listEntregasUncached(): Promise<EntregaItem[]> {
 
 const _listEntregasCached = unstable_cache(
   _listEntregasUncached,
-  ['entregas-v2'],
+  ['entregas-v3-dia'],
   { revalidate: 300, tags: [TAG_TAREFAS] },
 );
 
@@ -1338,11 +1352,50 @@ function parseProximaData(s: string | null): string | null {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
-/** Retorna as entregas com Próxima data = data fornecida (default hoje). */
+const DIAS_DA_SEMANA_ENTREGA = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+
+function hojeSp(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+
+/**
+ * Próxima data (YYYY-MM-DD, a partir de hoje) em que a entrega vence, pela
+ * propriedade "Dia" — igual ao Notion: "Todos" = todo dia, "Quinta" = toda
+ * quinta, "05" = dia 5 do mês. Sem "Dia" reconhecível, usa a fórmula Próxima data.
+ */
+export function proximaDataDaEntrega(e: Pick<EntregaItem, 'dia' | 'proximaData'>, hoje: string = hojeSp()): string | null {
+  const dia = (e.dia ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/-feira$/, '');
+  const base = new Date(`${hoje}T12:00:00Z`);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  if (dia === 'todos' || dia === 'todo dia') return hoje;
+  const semana = DIAS_DA_SEMANA_ENTREGA.indexOf(dia);
+  if (semana >= 0) {
+    const d = new Date(base);
+    d.setUTCDate(d.getUTCDate() + ((semana - d.getUTCDay() + 7) % 7));
+    return iso(d);
+  }
+  const n = /^\d{1,2}$/.test(dia) ? Number(dia) : NaN;
+  if (n >= 1 && n <= 31) {
+    const d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), n, 12));
+    if (iso(d) < hoje) d.setUTCMonth(d.getUTCMonth() + 1);
+    return iso(d);
+  }
+  return parseProximaData(e.proximaData);
+}
+
+/** Retorna as entregas que vencem na data fornecida (default hoje, em Brasília). */
 export async function getEntregasDoDia(data?: Date): Promise<EntregaItem[]> {
   const all = await listEntregas();
-  const target = (data ?? new Date()).toISOString().slice(0, 10);
-  return all.filter((e) => parseProximaData(e.proximaData) === target);
+  const hoje = hojeSp();
+  const target = data
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(data)
+    : hoje;
+  return all.filter((e) => proximaDataDaEntrega(e, hoje) === target);
 }
 
 export type TarefaDaEntrega = {
@@ -1383,6 +1436,7 @@ async function _getEntregaDetalheUncached(
       entrega.properties['Próxima Entrega']?.formula?.string ?? null;
     const proximaData = entrega.properties['Próxima data']?.formula?.string ?? null;
     const frequencia = entrega.properties['Frequência']?.select?.name ?? null;
+    const dia = lerDiaDaEntrega(entrega);
     const m = (statusTexto ?? '').match(/(\d+)\s*tarefa/i);
     const atrasadas = m ? parseInt(m[1], 10) : 0;
 
@@ -1523,6 +1577,7 @@ async function _getEntregaDetalheUncached(
       proximaEntregaTexto,
       proximaData,
       frequencia,
+      dia,
       totalTarefas: tarefasRelacionadas.length,
       atrasadas,
       tarefasRelacionadas,

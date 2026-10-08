@@ -1,13 +1,13 @@
 import Link from 'next/link';
-import { listEntregas, type EntregaItem } from '@/lib/notion';
+import { listEntregas, proximaDataDaEntrega, type EntregaItem } from '@/lib/notion';
 import { hojeEmSaoPaulo } from '@/lib/lembrete-aprovacao';
 import { ChipData } from '@/app/_components/ChipData';
 
-/** "⏳ 13/05/2026" → "2026-05-13". */
-function dataDaEntrega(e: EntregaItem): string | null {
-  const m = (e.proximaData ?? '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
-}
+const ORDEM_FREQUENCIA = ['Diária', 'Semanal', 'Mensal'];
+const pesoFrequencia = (e: EntregaItem) => {
+  const i = ORDEM_FREQUENCIA.indexOf(e.frequencia ?? '');
+  return i < 0 ? 9 : i;
+};
 
 function somarDias(iso: string, n: number): string {
   const d = new Date(`${iso}T12:00:00Z`);
@@ -35,13 +35,17 @@ async function montarResumo(): Promise<Resumo> {
   const amanha = somarDias(hoje, 1);
   const agora = entregas
     .map((e) => {
-      const d = dataDaEntrega(e);
+      const d = proximaDataDaEntrega(e, hoje);
       const quando = d === hoje ? ('hoje' as const) : d === amanha ? ('amanha' as const) : null;
       return quando ? { e, quando } : null;
     })
     .filter((x): x is { e: EntregaItem; quando: 'hoje' | 'amanha' } => !!x)
     .sort((a, b) =>
-      a.quando !== b.quando ? (a.quando === 'hoje' ? -1 : 1) : b.e.atrasadas - a.e.atrasadas,
+      a.quando !== b.quando
+        ? a.quando === 'hoje'
+          ? -1
+          : 1
+        : b.e.atrasadas - a.e.atrasadas || pesoFrequencia(a.e) - pesoFrequencia(b.e),
     );
   return {
     entregas,
@@ -155,14 +159,21 @@ export async function EntregasResumo({ titulo = 'Entregas pendentes', linkTodas 
 }
 
 function LinhaEntrega({ e, hoje }: { e: EntregaItem; hoje: string }) {
-  const data = dataDaEntrega(e);
+  const data = proximaDataDaEntrega(e, hoje);
   return (
     <li>
       <Link
         href={`/admin/entrega/${e.id}`}
         className="group flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 transition hover:bg-bgSoft/70"
       >
-        <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{e.nome}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="truncate text-[14px] font-semibold text-ink">{e.nome}</span>
+          {data === hoje && (
+            <span className="shrink-0 rounded-full bg-[var(--prazo-hoje-soft)] px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--prazo-hoje)]">
+              Hoje
+            </span>
+          )}
+        </span>
         <span className="w-[84px] shrink-0 text-[12px] text-t3">{e.frequencia ?? '—'}</span>
         <span className="w-[86px] shrink-0">
           {data ? <ChipData prazo={data} hoje={hoje} /> : <span className="text-[12px] text-t3">sem data</span>}
@@ -202,15 +213,21 @@ function Grupo({ titulo, itens, hoje }: { titulo: string; itens: EntregaItem[]; 
   );
 }
 
-/** Todas as entregas do Notion: com atraso primeiro, depois pela próxima data. */
+/** Todas as entregas do Notion: as de hoje no topo, depois com atraso, depois pela próxima data. */
 export async function EntregasLista() {
   const r = await montarResumo();
+  const data = (e: EntregaItem) => proximaDataDaEntrega(e, r.hoje);
   const porData = (a: EntregaItem, b: EntregaItem) =>
-    (dataDaEntrega(a) ?? '9999').localeCompare(dataDaEntrega(b) ?? '9999') || a.nome.localeCompare(b.nome, 'pt-BR');
-  const comAtraso = r.entregas.filter((e) => e.atrasadas > 0).sort((a, b) => b.atrasadas - a.atrasadas);
-  const emDia = r.entregas.filter((e) => e.atrasadas === 0).sort(porData);
+    (data(a) ?? '9999').localeCompare(data(b) ?? '9999') || a.nome.localeCompare(b.nome, 'pt-BR');
+  const deHoje = r.entregas
+    .filter((e) => data(e) === r.hoje)
+    .sort((a, b) => b.atrasadas - a.atrasadas || pesoFrequencia(a) - pesoFrequencia(b));
+  const resto = r.entregas.filter((e) => data(e) !== r.hoje);
+  const comAtraso = resto.filter((e) => e.atrasadas > 0).sort((a, b) => b.atrasadas - a.atrasadas);
+  const emDia = resto.filter((e) => e.atrasadas === 0).sort(porData);
   return (
     <div className="space-y-6">
+      <Grupo titulo="Vencem hoje" itens={deHoje} hoje={r.hoje} />
       <Grupo titulo="Com atraso" itens={comAtraso} hoje={r.hoje} />
       <Grupo titulo="Em dia" itens={emDia} hoje={r.hoje} />
     </div>

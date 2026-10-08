@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import {
   getEntregaCompleta,
+  proximaDataDaEntrega,
   listarTarefasAbertasDosPosts,
   type TarefaDoProjeto,
 } from '@/lib/notion';
@@ -155,6 +156,9 @@ async function Conteudo({ id }: { id: string }) {
       ? 'cliente'
       : 'interna';
 
+  const hojeIso = hojeEmSaoPaulo();
+  const proximaEntrega = proximaDataDaEntrega(entrega, hojeIso);
+
   return (
     <>
       <div>
@@ -164,11 +168,16 @@ async function Conteudo({ id }: { id: string }) {
           {entrega.frequencia && (
             <span className="rounded-full bg-bgSoft px-2 py-0.5 text-t2">{entrega.frequencia}</span>
           )}
-          {entrega.proximaData && (
-            <span className="rounded-full bg-bgSoft px-2 py-0.5 text-t2">
-              Próxima: {entrega.proximaData.replace(/^⏳\s*/, '')}
+          {proximaEntrega === hojeIso ? (
+            <span className="rounded-full bg-[var(--prazo-hoje)] px-2.5 py-0.5 font-bold uppercase tracking-[0.06em] text-white">
+              Vence hoje{entrega.dia && entrega.dia !== 'Todos' ? ` · ${entrega.dia.toLowerCase()}` : ''}
             </span>
-          )}
+          ) : proximaEntrega ? (
+            <span className="rounded-full bg-bgSoft px-2 py-0.5 text-t2">
+              Próxima: {proximaEntrega.split('-').reverse().join('/')}
+              {entrega.dia && !/^\d+$/.test(entrega.dia) && entrega.dia !== 'Todos' ? ` (${entrega.dia.toLowerCase()})` : ''}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -187,7 +196,7 @@ async function Conteudo({ id }: { id: string }) {
           grupos={lista}
           textos={textos}
           baseUrl={env.app.url}
-          hojeIso={hojeEmSaoPaulo()}
+          hojeIso={hojeIso}
         />
       )}
     </>
