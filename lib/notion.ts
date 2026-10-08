@@ -802,6 +802,9 @@ export type TarefaDoProjeto = {
   postId: string | null;
   postTitulo: string | null;
   postData: string | null;
+  /** "Ordem" e "Ordem (1)" do Notion: a ordem do processo dentro do post. */
+  ordem?: string | null;
+  ordemUm?: string | null;
 };
 
 /** Título e data dos posts recentes do projeto, numa consulta só. */
@@ -932,6 +935,8 @@ async function _getProjetoDetalheUncached(
         postId,
         postTitulo: post?.titulo ?? null,
         postData: post?.data ?? null,
+        ordem: getProp(t, 'Ordem')?.select?.name ?? null,
+        ordemUm: getProp(t, 'Ordem (1)')?.select?.name ?? null,
       });
     }
 
@@ -943,7 +948,7 @@ async function _getProjetoDetalheUncached(
 
 const _getProjetoDetalheCached = unstable_cache(
   _getProjetoDetalheUncached,
-  ['get-projeto-detalhe-v3-etapas'],
+  ['get-projeto-detalhe-v4-ordem'],
   { revalidate: 120, tags: [TAG_TAREFAS, TAG_CLIENTES] }, // 2 min
 );
 
@@ -1641,6 +1646,8 @@ export type TarefaDoPost = {
   pessoaAvatar: string | null;
   /** Notion user id do responsável (liga com a página do colaborador). */
   pessoaId: string | null;
+  /** "Ordem" do Notion (01–22): posição da tarefa no processo do post. */
+  ordem: string | null;
   ordemUm: string | null; // '01', '02', '03'
   categoria: 'aprovacao' | 'alteracao' | 'briefing' | 'arte' | 'copy' | 'outro';
   aberta: boolean;
@@ -1690,6 +1697,7 @@ async function _listarTarefasDoPostUncached(
       );
       const pessoa = getProp(t, 'Pessoa')?.people?.[0] ?? null;
       const ordemUm = getProp(t, 'Ordem (1)')?.select?.name ?? null;
+      const ordem = getProp(t, 'Ordem')?.select?.name ?? null;
       const aberta = !STATUS_TAREFA_FECHADOS.includes(status ?? '') && !finalizada;
       out.push({
         tarefaId: t.id,
@@ -1700,6 +1708,7 @@ async function _listarTarefasDoPostUncached(
         pessoaNome: pessoa?.name ?? null,
         pessoaAvatar: pessoa?.avatar_url ?? null,
         pessoaId: pessoa?.id ?? null,
+        ordem,
         ordemUm,
         categoria: categoriaDaTarefa2(titulo),
         aberta,
@@ -1727,7 +1736,7 @@ async function _listarTarefasDoPostUncached(
 
 const _listarTarefasDoPostCached = unstable_cache(
   _listarTarefasDoPostUncached,
-  ['listar-tarefas-do-post-v3'],
+  ['listar-tarefas-do-post-v4'],
   { revalidate: 30, tags: [TAG_TAREFAS] },
 );
 
@@ -2544,6 +2553,8 @@ export type PostDetalhado = {
   titulo: string;
   data: string | null;
   status: string | null;
+  /** Fórmula "Status Geral" do Notion: a etapa em que o post está ("Alteração | Arte"). */
+  statusGeral: string | null;
   projetoId: string | null;
   projetoNome: string;
   formato: RelacaoItem[];
@@ -3289,6 +3300,10 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
       titulo: txt(titleProp?.title) || 'Post sem título',
       data: getProp(page, env.notion.postProps.data)?.date?.start ?? null,
       status: getProp(page, env.notion.postProps.status)?.status?.name ?? null,
+      statusGeral: (() => {
+        const f = getProp(page, 'Status Geral')?.formula;
+        return f?.type === 'string' && f.string ? String(f.string).trim() || null : null;
+      })(),
       projetoId,
       projetoNome,
       formato:
@@ -5333,6 +5348,8 @@ export async function listarTarefasAbertasDosPosts(
           postId,
           postTitulo: null,
           postData: null,
+          ordem: getProp(t, 'Ordem')?.select?.name ?? null,
+          ordemUm: getProp(t, 'Ordem (1)')?.select?.name ?? null,
         });
         out.set(postId, lista);
       }

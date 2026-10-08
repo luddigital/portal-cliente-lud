@@ -96,7 +96,8 @@ export async function GET(
     formato:
       post.formato.map((f) => f.name).join(', ') ||
       ({ post: 'Carrossel', reels: 'Reels', story: 'Stories', desconhecido: '' } as const)[post.formatoTipo],
-    status: post.status,
+    // Etapa como no Notion ("Alteração | Arte"); sem ela, o Status do post.
+    status: post.statusGeral ?? post.status,
     arquivos,
     tarefas,
     colaboradores: colaboradorPorPessoa,

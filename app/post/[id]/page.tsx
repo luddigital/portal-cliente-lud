@@ -21,7 +21,7 @@ import {
   type DriveFileResumido,
 } from '@/lib/drive';
 import { env } from '@/lib/env';
-import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
+import { compararNoFluxo, ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import {
   lerConfigProgramacao,
   lerHistoricoComunicacao,
@@ -660,10 +660,20 @@ export default async function PostDetalhePage({
   // internos empilhados no fluxo: Status + Programar / Tarefas / Comentários.
   // Nada de grid 2 col ou sidebar sticky — parte do layout do cliente.
   // ==========================================================================
-  const tarefaCliente =
-    tarefasDoPost
-      .filter((x) => x.aberta && !x.finalizada && ehTarefaDoCliente(x.titulo))
-      .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'))[0] ?? null;
+  const abertasNaOrdem = tarefasDoPost
+    .filter((x) => x.aberta && !x.finalizada)
+    .sort((a, b) => compararNoFluxo(a as any, b as any));
+  const tarefaCliente = abertasNaOrdem.find((x) => ehTarefaDoCliente(x.titulo)) ?? null;
+  // Tarefa atual = primeira aberta na Ordem do Notion (é ela que o Status Geral mostra).
+  const tarefaAtual = abertasNaOrdem[0] ?? null;
+  const prazoAtual = tarefaAtual?.prazo ?? null;
+  const diasAtual = diffDias(prazoAtual);
+  // Botão pro cliente só quando a vez é do cliente (ou de enviar pra ele).
+  const vezDoCliente =
+    !!tarefaCliente &&
+    !!tarefaAtual &&
+    (ehTarefaDoCliente(tarefaAtual.titulo) || /enviar post/i.test(tarefaAtual.titulo));
+  const statusGeral = post.statusGeral ?? tarefaAtual?.titulo ?? null;
 
   return (
     <div className="min-h-screen pb-32">
@@ -702,13 +712,15 @@ export default async function PostDetalhePage({
         </h1>
 
         {/* cabeçalho: prazo em destaque + postagem, formato e status */}
-        <div className={`grid gap-4 lg:gap-3 ${tarefaPrazo ? 'lg:grid-cols-[minmax(0,1.25fr)_minmax(0,2.4fr)]' : ''}`}>
-          {tarefaPrazo && (
+        <div className={`grid gap-4 lg:gap-3 ${prazoAtual ? 'lg:grid-cols-[minmax(0,1.25fr)_minmax(0,2.4fr)]' : ''}`}>
+          {prazoAtual && tarefaAtual && (
             <CardPrazo
-              dias={dias}
-              prazo={tarefaPrazo}
+              dias={diasAtual}
+              prazo={prazoAtual}
+              rotulo={`Prazo · ${tarefaAtual.titulo}`}
+              detalheExtra={tarefaAtual.pessoaNome ? `com ${tarefaAtual.pessoaNome.split(' ')[0]}` : null}
               botao={
-                tarefaCliente ? (
+                vezDoCliente && tarefaCliente ? (
                   <BotaoLembreteWpp
                     tarefaId={tarefaCliente.tarefaId}
                     clienteNome={post.projetoNome}
@@ -727,7 +739,7 @@ export default async function PostDetalhePage({
                 valor={formatoResumo(post.formato, formatoTipoDetectado, arquivos.length)}
               />
             </div>
-            <StatusDoPostChips postId={post.id} status={post.status} alinhar="esquerda" grande />
+            <StatusDoPostChips postId={post.id} status={post.status} statusGeral={statusGeral} alinhar="esquerda" grande />
           </div>
         </div>
 
@@ -832,10 +844,14 @@ function CardPrazo({
   dias,
   prazo,
   botao,
+  rotulo = 'Prazo de aprovação',
+  detalheExtra = null,
 }: {
   dias: number | null;
   prazo: string;
   botao: React.ReactNode;
+  rotulo?: string;
+  detalheExtra?: string | null;
 }) {
   const fundo =
     dias === null ? '#37352F' : dias <= 0 ? '#B0001E' : dias <= 2 ? 'var(--prazo-hoje)' : '#37352F';
@@ -862,14 +878,18 @@ function CardPrazo({
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.12em] lg:text-[10px]">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg className="shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v5l3 2" />
           </svg>
-          Prazo de aprovação
+          <span className="truncate">{rotulo}</span>
         </div>
         <div className="mt-2 text-[40px] font-bold leading-none tracking-[-0.03em] lg:mt-1 lg:text-[24px]">{grande}</div>
-        {detalhe && <div className="mt-1.5 text-[12.5px] opacity-85 lg:mt-1 lg:text-[11.5px]">{detalhe}</div>}
+        {(detalhe || detalheExtra) && (
+          <div className="mt-1.5 text-[12.5px] opacity-85 lg:mt-1 lg:text-[11.5px]">
+            {[detalhe, detalheExtra].filter(Boolean).join(' · ')}
+          </div>
+        )}
       </div>
       {botao && <div className="lg:shrink-0" style={{ color: fundo }}>{botao}</div>}
     </div>

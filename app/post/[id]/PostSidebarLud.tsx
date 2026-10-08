@@ -48,14 +48,31 @@ function coresDoStatus(chip: StatusChip): { bg: string; fg: string } {
   }
 }
 
+/** Cor da etapa (mesmas do calendário) pelo texto do Status Geral do Notion. */
+function coresDaEtapa(etapa: string): { bg: string; fg: string } {
+  const t = etapa.toLowerCase();
+  const par = (n: string) => ({ bg: `var(--${n}-soft)`, fg: `var(--${n})` });
+  if (/postado|publicado/.test(t)) return par('cal-publicado');
+  if (/conferir/.test(t)) return par('cal-conferir');
+  if (/programar|agendad/.test(t)) return par('cal-programar');
+  if (/altera/.test(t)) return par('cal-alteracao');
+  if (/aprova[çc][ãa]o\s*\|\s*(post|pauta)/.test(t)) return par('cal-aguardando');
+  if (/aprova|enviar post/.test(t)) return par('cal-aprovacao');
+  if (/materia|pr[ée]vi|conte[úu]do/.test(t)) return par('cal-aguardando');
+  return par('cal-agendado');
+}
+
 export function StatusDoPostChips({
   postId,
   status,
+  statusGeral = null,
   alinhar = 'direita',
   grande = false,
 }: {
   postId: string;
   status: string | null;
+  /** Etapa do post como no Notion ("Alteração | Arte"). Com ela, os chips de troca ficam recolhidos. */
+  statusGeral?: string | null;
   alinhar?: 'esquerda' | 'direita';
   /** Cabeçalho do post: chips maiores, sem borda. */
   grande?: boolean;
@@ -64,6 +81,7 @@ export function StatusDoPostChips({
   const atual = bucketDoStatus(status);
   const [loading, setLoading] = useState<StatusChip | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [trocando, setTrocando] = useState(false);
 
   async function trocar(novo: StatusChip) {
     if (novo === atual) return;
@@ -83,6 +101,40 @@ export function StatusDoPostChips({
     } finally {
       setLoading(null);
     }
+  }
+
+  if (statusGeral && !trocando) {
+    const cor = coresDaEtapa(statusGeral);
+    return (
+      <div className={`flex flex-col gap-1 ${alinhar === 'esquerda' ? 'items-start' : 'items-end'}`}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`font-semibold uppercase text-t3 ${
+              grande ? 'mr-1 text-[11px] tracking-[0.12em] lg:text-[10px]' : 'text-[10px] tracking-[0.1em]'
+            }`}
+          >
+            Status
+          </span>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full font-semibold ${
+              grande ? 'px-4 py-1.5 text-[13.5px] lg:px-3 lg:py-1 lg:text-[12.5px]' : 'px-2.5 py-1 text-[11px]'
+            }`}
+            style={{ background: cor.bg, color: cor.fg }}
+            title="Status Geral do Notion"
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
+            {statusGeral}
+          </span>
+          <button
+            type="button"
+            onClick={() => setTrocando(true)}
+            className="text-[11px] font-semibold text-t3 underline-offset-2 transition hover:text-ink hover:underline"
+          >
+            trocar
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -124,6 +176,15 @@ export function StatusDoPostChips({
             </button>
           );
         })}
+        {statusGeral && (
+          <button
+            type="button"
+            onClick={() => setTrocando(false)}
+            className="ml-1 text-[11px] font-semibold text-t3 transition hover:text-ink"
+          >
+            fechar
+          </button>
+        )}
       </div>
       {erro && (
         <p className="rounded-md bg-[var(--prazo-atrasado-soft)] px-2 py-1 text-[11px] text-[var(--prazo-atrasado)]">
@@ -190,8 +251,8 @@ function TagTipo({ doCliente }: { doCliente: boolean }) {
   );
 }
 
-const porPrazo = (a: TarefaDoPost, b: TarefaDoPost) =>
-  (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999') || compararNoFluxo(a as any, b as any);
+/** Mesma ordem da view de tarefas do post no Notion (Ordem → Ordem (1)). */
+const porOrdem = (a: TarefaDoPost, b: TarefaDoPost) => compararNoFluxo(a as any, b as any);
 
 function fmtQuando(iso: string): string {
   const d = new Date(iso);
@@ -345,10 +406,8 @@ export function TodasTarefasCard({
   const [erro, setErro] = useState<string | null>(null);
 
   const feita = (t: TarefaDoPost) => !t.aberta || !!t.finalizada;
-  const abertas = tarefas.filter((t) => !feita(t) || t.tarefaId in agora).sort(porPrazo);
-  const concluidas = tarefas
-    .filter((t) => feita(t) && !(t.tarefaId in agora))
-    .sort((a, b) => (a.finalizada ?? a.prazo ?? '').localeCompare(b.finalizada ?? b.prazo ?? ''));
+  const abertas = tarefas.filter((t) => !feita(t) || t.tarefaId in agora).sort(porOrdem);
+  const concluidas = tarefas.filter((t) => feita(t) && !(t.tarefaId in agora)).sort(porOrdem);
   const total = tarefas.length;
   const nFeitas = tarefas.filter(feita).length;
   const pct = total > 0 ? Math.round((nFeitas / total) * 100) : 0;

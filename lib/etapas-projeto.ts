@@ -111,7 +111,23 @@ function subOrdem(titulo: string): number {
   return 0;
 }
 
+/**
+ * Ordem do processo. Com a propriedade "Ordem" do Notion preenchida, vale ela
+ * (e "Ordem (1)": 01 original, 02 alteração, 03 nova aprovação), igual à view
+ * de tarefas do post no Notion. Sem ela, cai na ordem pelas etapas do título.
+ */
 export function compararNoFluxo(a: TarefaDoProjeto, b: TarefaDoProjeto): number {
+  const na = a.ordem ? Number(a.ordem) : NaN;
+  const nb = b.ordem ? Number(b.ordem) : NaN;
+  if (!Number.isNaN(na) || !Number.isNaN(nb)) {
+    if (Number.isNaN(na)) return 1;
+    if (Number.isNaN(nb)) return -1;
+    return (
+      na - nb ||
+      Number(a.ordemUm ?? '01') - Number(b.ordemUm ?? '01') ||
+      (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999')
+    );
+  }
   const ea = etapaDaTarefa(a.titulo);
   const eb = etapaDaTarefa(b.titulo);
   const oa = ea ? ORDEM.indexOf(ea) : 99;

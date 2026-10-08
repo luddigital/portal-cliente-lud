@@ -58,7 +58,7 @@ function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
   if (tarefas.length === 0) return null;
   const abertas = tarefas
     .filter((t) => t.aberta || t.tarefaId in agora)
-    .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999') || compararNoFluxo(a as any, b as any));
+    .sort((a, b) => compararNoFluxo(a as any, b as any));
   const concluidas = tarefas.filter((t) => !t.aberta).length;
   const pct = Math.round((concluidas / tarefas.length) * 100);
   const visiveis = abertas.slice(0, 6);
