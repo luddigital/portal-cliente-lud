@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TarefaDoPost } from '@/lib/notion';
 import { compararNoFluxo, ehTarefaDoCliente } from '@/lib/etapas-projeto';
@@ -398,6 +398,14 @@ export function TodasTarefasCard({
   const router = useRouter();
   const [tarefas, setTarefas] = useState(iniciais);
   const [mudancas, setMudancas] = useState<MudancaPrazo[]>(historico ?? []);
+  const [atualizando, iniciarAtualizacao] = useTransition();
+  // Depois de concluir/mudar prazo a página recarrega os dados do servidor;
+  // o card acompanha (o que foi marcado aqui segue na lista pro "desmarcar").
+  useEffect(() => setTarefas(iniciais), [iniciais]);
+  useEffect(() => {
+    if (historico) setMudancas(historico);
+  }, [historico]);
+  const atualizarPagina = () => iniciarAtualizacao(() => router.refresh());
   const [verConcluidas, setVerConcluidas] = useState(false);
   const [verHistorico, setVerHistorico] = useState(false);
   // Concluídas aqui: guardam o status anterior pro "desmarcar".
@@ -439,6 +447,8 @@ export function TodasTarefasCard({
         else n[t.tarefaId] = t.status;
         return n;
       });
+      // Status, prazo, "agora", card de alteração e histórico vêm do servidor.
+      atualizarPagina();
     } catch (e: any) {
       setErro(e?.message ?? 'Não consegui salvar.');
     } finally {
@@ -458,7 +468,7 @@ export function TodasTarefasCard({
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, prazo: novo } : x)));
       if (j.mudanca) setMudancas((m) => [j.mudanca as MudancaPrazo, ...m]);
-      router.refresh();
+      atualizarPagina();
     } catch (e: any) {
       setErro(e?.message ?? 'Não consegui mudar o prazo.');
       throw e;
@@ -530,7 +540,10 @@ export function TodasTarefasCard({
   return (
     <div className={semMoldura ? '' : 'card p-5'}>
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">Tarefas</h2>
+        <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em] text-ink">
+          Tarefas
+          {atualizando && <span className="text-[11px] font-normal text-t3">atualizando…</span>}
+        </h2>
         {total > 0 && (
           <span className="font-mono text-[11px] text-t3">
             {nFeitas}/{total} concluídas

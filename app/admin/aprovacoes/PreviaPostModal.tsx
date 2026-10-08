@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { compararNoFluxo } from '@/lib/etapas-projeto';
 import type { TarefaDoPost } from '@/lib/notion';
 import { TodasTarefasCard } from '@/app/post/[id]/PostSidebarLud';
@@ -47,6 +48,7 @@ function prazoCurto(iso: string | null): { texto: string; atrasada: boolean } {
 }
 
 function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
+  const router = useRouter();
   const [tarefas, setTarefas] = useState(iniciais);
   // Concluídas aqui no popup: guardam o status anterior pro "desfazer".
   const [agora, setAgora] = useState<Record<string, string | null>>({});
@@ -72,6 +74,7 @@ function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, aberta: false } : x)));
       setAgora((a) => ({ ...a, [t.tarefaId]: t.status }));
+      router.refresh(); // a página atrás do popup (entrega, projeto…) acompanha
     } catch (e: any) {
       setErro(e?.message ?? 'Não consegui concluir.');
     } finally {
@@ -91,6 +94,7 @@ function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, aberta: true } : x)));
+      router.refresh();
       setAgora((a) => {
         const n = { ...a };
         delete n[t.tarefaId];

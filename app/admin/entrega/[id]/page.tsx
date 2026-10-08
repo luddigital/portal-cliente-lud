@@ -143,8 +143,8 @@ async function Conteudo({ id }: { id: string }) {
       visto: v ? { ultima: v.ultima, total: v.total } : null,
       // Feito nessa entrega: tarefa concluída ou o post já passou dessa etapa.
       enviado: (t.status === 'Concluído' && st.relacao !== 'antes') || st.relacao === 'depois' || st.relacao === 'concluido',
-      // Horário exato quando o envio saiu pelo portal; senão, só a data da conclusão no Notion.
-      enviadoEm: (t.postId && enviosPortal[t.postId]) || (t.finalizada ? t.finalizada.slice(0, 10) : null),
+      // Horário exato do envio pelo portal; senão, o "Finalizada em" do Notion (com hora, quando tem).
+      enviadoEm: (t.postId && enviosPortal[t.postId]) || t.finalizada || null,
     });
   }
   const lista = [...grupos.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));

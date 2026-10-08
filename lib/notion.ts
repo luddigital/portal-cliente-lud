@@ -4013,12 +4013,13 @@ export async function reabrirTarefa(tarefaId: string, status: string): Promise<v
 }
 
 export async function concluirTarefa(tarefaId: string): Promise<void> {
-  const hoje = new Date().toISOString().split('T')[0];
+  // Com hora: o histórico do post mostra quando foi concluída.
+  const agora = new Date().toISOString();
   await notion.pages.update({
     page_id: tarefaId,
     properties: {
       [env.notion.taskProps.status]: { status: { name: 'Concluído' } },
-      [env.notion.taskProps.finalizada]: { date: { start: hoje } },
+      [env.notion.taskProps.finalizada]: { date: { start: agora } },
     },
   });
 }
