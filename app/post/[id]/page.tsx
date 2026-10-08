@@ -28,7 +28,6 @@ import {
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
 import { EtapaPautaCards } from './EtapaPautaCards';
-import { TarefasDoPostPanel } from './TarefasDoPostPanel';
 import { GaleriaMateriais } from './GaleriaMateriais';
 import {
   StatusDoPostChips,
@@ -96,11 +95,6 @@ async function HistoricoComentarios({ postId }: { postId: string }) {
   return <HistoricoBox comentarios={comentarios} />;
 }
 
-/** Painel admin de Tarefas do post — visível só pra equipe interna. */
-async function TarefasDoPostSection({ postId }: { postId: string }) {
-  const tarefas = await listarTarefasDoPost(postId);
-  return <TarefasDoPostPanel tarefas={tarefas} />;
-}
 
 function diffDias(iso: string | null): number | null {
   if (!iso) return null;
@@ -568,14 +562,6 @@ export default async function PostDetalhePage({
                 <TarefaForm tarefaId={tarefaId} voltarPara={voltarPara} {...props} />
               );
             })()}
-
-            {ehAdmin && (
-              <Suspense
-                fallback={<div className="h-[120px] rounded-2xl bg-bgSoft animate-pulse" />}
-              >
-                <TarefasDoPostSection postId={post.id} />
-              </Suspense>
-            )}
 
             <Suspense fallback={null}>
               <HistoricoComentarios postId={post.id} />
