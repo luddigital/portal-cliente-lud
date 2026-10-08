@@ -175,9 +175,14 @@ export function EntregaPorCliente({
 
   // Uma aba por semana de envio (pela data da tarefa da entrega).
   const semanaAtual = semanaDe(hojeIso);
+  // Semanas que já passaram entram em "Esta semana": o atrasado é prioridade dela.
+  const abaDe = (prazo: string | null) => {
+    const k = semanaDe(prazo);
+    return k !== 'sem-data' && k < semanaAtual ? semanaAtual : k;
+  };
   const semanas = useMemo(() => {
     const set = new Set<string>();
-    for (const g of grupos) for (const i of g.itens) set.add(semanaDe(i.prazo));
+    for (const g of grupos) for (const i of g.itens) set.add(abaDe(i.prazo));
     return [...set].sort();
   }, [grupos]);
   const [semana, setSemana] = useState<string>(() =>
@@ -186,14 +191,14 @@ export function EntregaPorCliente({
       : semanas.find((k) => k !== 'sem-data' && k > semanaAtual) ?? semanas[semanas.length - 1] ?? '',
   );
   const gruposDaSemana = grupos
-    .map((g) => ({ ...g, itens: g.itens.filter((i) => semanaDe(i.prazo) === semana) }))
+    .map((g) => ({ ...g, itens: g.itens.filter((i) => abaDe(i.prazo) === semana) }))
     .filter((g) => g.itens.length > 0);
   const contar = (k: string) => {
     let total = 0;
     let atrasados = 0;
     for (const g of grupos)
       for (const i of g.itens) {
-        if (semanaDe(i.prazo) !== k) continue;
+        if (abaDe(i.prazo) !== k) continue;
         total++;
         if (i.prazo && diasEntre(hojeIso, i.prazo) < 0) atrasados++;
       }
@@ -290,15 +295,30 @@ export function EntregaPorCliente({
                 </div>
               </div>
               {tipo === 'envio' && (
-                <button
-                  type="button"
-                  onClick={() => setEnvio(g)}
-                  disabled={prontos.length === 0}
-                  title={prontos.length === 0 ? 'Nenhum post pronto pra enviar' : undefined}
-                  className="rounded-full bg-ink px-4 py-2 text-[12.5px] font-semibold text-white transition hover:opacity-90 disabled:opacity-30"
-                >
-                  📱 Enviar para aprovação{prontos.length > 0 ? ` (${prontos.length})` : ''}
-                </button>
+                // Só libera com TODOS os posts do cliente prontos (o lote não sai pela metade).
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setEnvio(g)}
+                    disabled={prontos.length === 0 || travados.length > 0}
+                    title={
+                      travados.length > 0
+                        ? 'Libera quando todos os posts desse cliente estiverem prontos'
+                        : prontos.length === 0
+                          ? 'Nenhum post pronto pra enviar'
+                          : undefined
+                    }
+                    className="rounded-full bg-ink px-4 py-2 text-[12.5px] font-semibold text-white transition hover:opacity-90 disabled:opacity-30"
+                  >
+                    📱 Enviar para aprovação{prontos.length > 0 && travados.length === 0 ? ` (${prontos.length})` : ''}
+                  </button>
+                  {travados.length > 0 && (
+                    <span className="text-[11px] text-t3">
+                      Falta{travados.length > 1 ? 'm' : ''} {travados.length} {travados.length === 1 ? 'post' : 'posts'} ficar
+                      {travados.length > 1 ? 'em' : ''} pronto{travados.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
               )}
               {tipo === 'cliente' && (
                 <button
