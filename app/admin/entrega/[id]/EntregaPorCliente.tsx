@@ -54,6 +54,29 @@ function diasEntre(deIso: string, ateIso: string): number {
   return Math.round((t(ateIso) - t(deIso)) / 86_400_000);
 }
 
+/** Segunda-feira da semana da data (chave da aba). Sem data → 'sem-data'. */
+function semanaDe(iso: string | null): string {
+  if (!iso) return 'sem-data';
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
+  return dt.toISOString().slice(0, 10);
+}
+
+function somarDiasIso(iso: string, dias: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + dias)).toISOString().slice(0, 10);
+}
+
+function rotuloSemana(chave: string, atual: string): { titulo: string; datas: string } {
+  if (chave === 'sem-data') return { titulo: 'Sem data', datas: '' };
+  const datas = `${ddmm(chave)} a ${ddmm(somarDiasIso(chave, 6))}`;
+  const dif = Math.round(diasEntre(atual, chave) / 7);
+  const titulo =
+    dif === 0 ? 'Esta semana' : dif === 1 ? 'Próxima semana' : dif === -1 ? 'Semana passada' : datas;
+  return { titulo, datas: dif >= -1 && dif <= 1 ? datas : '' };
+}
+
 function ChipPrazo({ prazo, hoje }: { prazo: string | null; hoje: string }) {
   if (!prazo) return <span className="w-[54px] shrink-0 text-center text-[11px] text-t3">—</span>;
   const dias = diasEntre(hoje, prazo);
@@ -73,24 +96,55 @@ function ChipPrazo({ prazo, hoje }: { prazo: string | null; hoje: string }) {
   );
 }
 
+/** Cor semântica do design system (mesmas do calendário) pelo que está acontecendo com o post. */
+function corDoStatus(item: ItemEntrega, tipo: TipoEntrega): { bg: string; fg: string } {
+  const par = (nome: string) => ({ bg: `var(--${nome}-soft)`, fg: `var(--${nome})` });
+  if (item.relacao === 'aqui' && tipo === 'envio') return par('prazo-em-dia');
+  if (item.relacao === 'concluido') return par('cal-publicado');
+  const t = (item.atualTitulo ?? '').toLowerCase();
+  if (/altera/.test(t)) return par('cal-alteracao');
+  if (/enviar post/.test(t)) return par('prazo-em-dia');
+  if (/programar/.test(t)) return par('cal-programar');
+  if (/conferir/.test(t)) return par('cal-conferir');
+  if (/aprova/.test(t)) return par('cal-aprovacao');
+  if (item.comCliente) return par('cal-aguardando');
+  return par('cal-agendado');
+}
+
 function ChipStatus({ item, tipo }: { item: ItemEntrega; tipo: TipoEntrega }) {
-  let cls = 'bg-bgSoft text-t2';
-  let texto = item.rotulo;
-  if (item.relacao === 'aqui') {
-    if (tipo === 'envio') {
-      cls = 'bg-ink text-white';
-      texto = 'Pronto pra enviar ✓';
-    } else if (item.comCliente) {
-      cls = 'bg-[var(--prazo-hoje-soft)] text-[var(--prazo-hoje)]';
-    } else {
-      cls = 'bg-[#E9E9E7] text-ink';
-    }
-  } else if (item.relacao === 'depois' || item.relacao === 'concluido') {
-    cls = 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]';
-  }
+  const cor = corDoStatus(item, tipo);
+  const texto = item.relacao === 'aqui' && tipo === 'envio' ? 'Pronto pra enviar' : item.rotulo;
   return (
-    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`} title={item.atualTitulo ?? undefined}>
+    <span
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+      style={{ background: cor.bg, color: cor.fg }}
+      title={item.atualTitulo ?? undefined}
+    >
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
       {texto}
+    </span>
+  );
+}
+
+/** Responsável (inicial) + prazo da etapa atual, vermelho se atrasado. */
+function MetaAtual({ item, hoje }: { item: ItemEntrega; hoje: string }) {
+  if (!item.atualPrazo && !item.responsavel) return null;
+  const atrasada = item.atualPrazo ? diasEntre(hoje, item.atualPrazo) < 0 : false;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 text-[11px]">
+      {item.responsavel && (
+        <span
+          title={item.responsavel}
+          className="flex h-5 w-5 items-center justify-center rounded-full bg-[#E9E9E7] text-[9.5px] font-semibold text-ink"
+        >
+          {item.responsavel.trim()[0]?.toUpperCase()}
+        </span>
+      )}
+      {item.atualPrazo && (
+        <span className={atrasada ? 'font-semibold text-[var(--prazo-atrasado)]' : 'text-t3'}>
+          {atrasada ? `atrasada · ${ddmm(item.atualPrazo)}` : `até ${ddmm(item.atualPrazo)}`}
+        </span>
+      )}
     </span>
   );
 }
@@ -119,6 +173,36 @@ export function EntregaPorCliente({
   const [mensagem, setMensagem] = useState<GrupoEntrega | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
+  // Uma aba por semana de envio (pela data da tarefa da entrega).
+  const semanaAtual = semanaDe(hojeIso);
+  const semanas = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of grupos) for (const i of g.itens) set.add(semanaDe(i.prazo));
+    return [...set].sort();
+  }, [grupos]);
+  const [semana, setSemana] = useState<string>(() =>
+    semanas.includes(semanaAtual)
+      ? semanaAtual
+      : semanas.find((k) => k !== 'sem-data' && k > semanaAtual) ?? semanas[semanas.length - 1] ?? '',
+  );
+  const gruposDaSemana = grupos
+    .map((g) => ({ ...g, itens: g.itens.filter((i) => semanaDe(i.prazo) === semana) }))
+    .filter((g) => g.itens.length > 0);
+  const contar = (k: string) => {
+    let total = 0;
+    let atrasados = 0;
+    for (const g of grupos)
+      for (const i of g.itens) {
+        if (semanaDe(i.prazo) !== k) continue;
+        total++;
+        if (i.prazo && diasEntre(hojeIso, i.prazo) < 0) atrasados++;
+      }
+    return { total, atrasados };
+  };
+  const itensSemana = gruposDaSemana.flatMap((g) => g.itens);
+  const nProntos = itensSemana.filter((i) => i.relacao === 'aqui').length;
+  const nAtrasados = itensSemana.filter((i) => i.prazo && diasEntre(hojeIso, i.prazo) < 0).length;
+
   useEffect(() => {
     if (!aviso) return;
     const t = setTimeout(() => setAviso(null), 8000);
@@ -133,7 +217,52 @@ export function EntregaPorCliente({
         </div>
       )}
 
-      {grupos.map((g) => {
+      <div className="flex gap-1 overflow-x-auto border-b border-[rgba(21,21,33,0.08)]">
+        {semanas.map((k) => {
+          const r = rotuloSemana(k, semanaAtual);
+          const c = contar(k);
+          const ativa = k === semana;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setSemana(k)}
+              className={`-mb-px shrink-0 border-b-2 px-4 py-2.5 text-left transition ${
+                ativa ? 'border-ink' : 'border-transparent hover:border-[rgba(21,21,33,0.2)]'
+              }`}
+            >
+              <div className={`flex items-center gap-1.5 text-[13px] ${ativa ? 'font-semibold text-ink' : 'text-t2'}`}>
+                {r.titulo}
+                <span
+                  className={`rounded-full px-1.5 text-[10px] font-bold ${
+                    c.atrasados > 0 ? 'bg-[var(--prazo-atrasado)] text-white' : 'bg-bgSoft text-t2'
+                  }`}
+                >
+                  {c.total}
+                </span>
+              </div>
+              {r.datas && <div className="text-[11px] text-t3">{r.datas}</div>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-t2">
+        <span>
+          <b className="text-ink">{itensSemana.length}</b> posts
+        </span>
+        <span>
+          <b className="text-[var(--prazo-em-dia)]">{nProntos}</b>{' '}
+          {tipo === 'envio' ? 'prontos pra enviar' : 'nessa etapa'}
+        </span>
+        {nAtrasados > 0 && (
+          <span>
+            <b className="text-[var(--prazo-atrasado)]">{nAtrasados}</b> atrasados
+          </span>
+        )}
+      </div>
+
+      {gruposDaSemana.map((g) => {
         const prontos = g.itens.filter((i) => i.relacao === 'aqui');
         const travados = g.itens.filter((i) => i.relacao === 'antes');
         const atrasados = g.itens.filter((i) => i.prazo && diasEntre(hojeIso, i.prazo) < 0).length;
@@ -194,14 +323,13 @@ export function EntregaPorCliente({
                     <ChipPrazo prazo={i.prazo} hoje={hojeIso} />
                     <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.postTitulo}</span>
                     <ChipStatus item={i} tipo={tipo} />
-                    {i.relacao !== 'aqui' && i.atualPrazo && (
-                      <span className="shrink-0 text-[11px] text-t3">
-                        {i.responsavel ? `${i.responsavel.split(' ')[0]} · ` : ''}
-                        {ddmm(i.atualPrazo)}
-                      </span>
-                    )}
+                    {i.relacao !== 'aqui' && <MetaAtual item={i} hoje={hojeIso} />}
                     {i.comCliente && (
-                      <span className={`shrink-0 text-[11px] ${i.visto ? 'font-semibold text-ink' : 'text-t3'}`}>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+                          i.visto ? 'bg-[var(--cal-conferir-soft)] text-[var(--cal-conferir)]' : 'bg-bgSoft text-t3'
+                        }`}
+                      >
                         {i.visto ? '👁 visto' : 'não visto'}
                       </span>
                     )}

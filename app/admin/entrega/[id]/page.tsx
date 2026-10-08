@@ -16,13 +16,6 @@ import { EntregaPorCliente, type GrupoEntrega, type TipoEntrega } from './Entreg
 
 export const dynamic = 'force-dynamic';
 
-function diasAte(iso: string): number {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const d = new Date(iso.split('T')[0] + 'T00:00:00');
-  return Math.round((d.getTime() - hoje.getTime()) / 86400000);
-}
-
 export default async function EntregaAdminPage({ params }: { params: { id: string } }) {
   const session = await getSession();
   if (!session) redirect('/login');
@@ -138,13 +131,6 @@ async function Conteudo({ id }: { id: string }) {
       ? 'cliente'
       : 'interna';
 
-  const total = lista.reduce((n, g) => n + g.itens.length, 0);
-  const prontos = lista.reduce((n, g) => n + g.itens.filter((i) => i.relacao === 'aqui').length, 0);
-  const atrasados = lista.reduce(
-    (n, g) => n + g.itens.filter((i) => i.prazo && diasAte(i.prazo) < 0).length,
-    0,
-  );
-
   return (
     <>
       <div>
@@ -160,12 +146,6 @@ async function Conteudo({ id }: { id: string }) {
             </span>
           )}
         </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2.5 sm:max-w-xl">
-        <Resumo n={total} rotulo="posts" />
-        <Resumo n={prontos} rotulo={tipo === 'envio' ? 'prontos pra enviar' : 'nessa etapa'} />
-        <Resumo n={atrasados} rotulo="atrasados" alerta={atrasados > 0} />
       </div>
 
       {lista.length === 0 ? (
@@ -187,24 +167,5 @@ async function Conteudo({ id }: { id: string }) {
         />
       )}
     </>
-  );
-}
-
-function Resumo({ n, rotulo, alerta }: { n: number; rotulo: string; alerta?: boolean }) {
-  return (
-    <div
-      className={`rounded-2xl border bg-white px-4 py-3 ${
-        alerta ? 'border-[rgba(110,42,44,0.3)]' : 'border-[rgba(21,21,33,0.08)]'
-      }`}
-    >
-      <div
-        className={`text-[24px] font-semibold leading-none tracking-[-0.03em] ${
-          alerta ? 'text-[var(--prazo-atrasado)]' : 'text-ink'
-        }`}
-      >
-        {n}
-      </div>
-      <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-t3">{rotulo}</div>
-    </div>
   );
 }
