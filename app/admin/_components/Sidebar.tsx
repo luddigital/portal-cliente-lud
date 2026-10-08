@@ -22,6 +22,7 @@ const SOCIAL: Item[] = [
   { label: 'Calendário', href: '/admin/calendario', icon: 'calendario', soon: true },
   { label: 'Esteira Copy', href: '/esteira', icon: 'esteira' },
   { label: 'Esteira Arte', href: '/admin/esteira-arte', icon: 'arte', soon: true },
+  { label: 'Entregas', href: '/admin/entregas', icon: 'entregas' },
   { label: 'Programação', href: '/programacao', icon: 'programacao' },
   { label: 'Aprovações', href: '/admin/aprovacoes', icon: 'aprovacao' },
   { label: 'Régua da semana', href: '/admin/regua', icon: 'regua' },
@@ -72,6 +73,7 @@ const ICONES = {
   programacao: 'M12 6v6l4 2 M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z',
   sync: 'M3 12a9 9 0 0 1 15-6.7L21 8 M21 12a9 9 0 0 1-15 6.7L3 16 M17 4v4h4 M7 20v-4H3',
   regua: 'M3 17 17 3l4 4L7 21z M7 13l2 2 M10 10l2 2 M13 7l2 2',
+  entregas: 'M3 12h5l2 3h4l2-3h5 M5.5 5h13l2.5 7v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7z',
   ajustes: 'M4 6h9 M17 6h3 M15 4v4 M4 12h3 M11 12h9 M9 10v4 M4 18h11 M19 18h1 M17 16v4',
 };
 
@@ -97,6 +99,8 @@ function NavIcon({ icon }: { icon: keyof typeof ICONES }) {
 
 function ehAtivo(pathname: string, href: string): boolean {
   if (href === '/admin') return pathname === '/admin';
+  // A página de uma entrega (/admin/entrega/[id]) fica dentro de Entregas.
+  if (href === '/admin/entregas' && pathname.startsWith('/admin/entrega/')) return true;
   return pathname === href || pathname.startsWith(href + '/');
 }
 

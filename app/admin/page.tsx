@@ -4,19 +4,16 @@ import { getSession } from '@/lib/auth';
 import {
   listAllProjetos,
   getResumoTarefasCliente,
-  listEntregas,
   getEntregasDoDia,
   listPostsNoIntervalo,
-  ehEntregaDeAprovacao,
   CATEGORIA_LABEL,
   type ProjetoListItem,
   type CategoriaTarefa,
   type ResumoTarefasCliente,
-  type EntregaItem,
   type PostCalendario,
 } from '@/lib/notion';
 import { env } from '@/lib/env';
-import { EntregaCard } from './EntregaCard';
+import { EntregasResumo } from './_components/EntregasPainel';
 import { CalendarSemana, type DiaSemana } from './_components/CalendarSemana';
 import { AtualizacoesCompacto } from './_components/AtualizacoesCompacto';
 import { ProjetosTabs, type ItemProjeto } from './_components/ProjetosTabs';
@@ -154,28 +151,9 @@ export default async function AdminPage({
           </Suspense>
         </section>
 
-        <section className="space-y-4">
-          <div>
-            <h1 className="text-[26px] font-semibold tracking-[-0.03em] text-ink">
-              Entregas pendentes
-            </h1>
-            <p className="mt-1 text-[14px] text-t2">
-              Status de cada tipo de entrega vindo direto do banco do Notion.
-            </p>
-          </div>
-          <Suspense
-            fallback={
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-[58px] rounded-xl border border-[rgba(21,21,33,0.06)] bg-bgSoft animate-pulse"
-                  />
-                ))}
-              </div>
-            }
-          >
-            <EntregasGrid />
+        <section>
+          <Suspense fallback={<div className="h-[260px] rounded-2xl bg-bgSoft animate-pulse" />}>
+            <EntregasResumo linkTodas />
           </Suspense>
         </section>
 
@@ -487,58 +465,4 @@ async function BannerHoje() {
     );
   }
   return banner;
-}
-
-async function EntregasGrid() {
-  const entregas = await listEntregas();
-  if (entregas.length === 0) {
-    return <p className="text-[13px] text-t3">Nenhuma entrega no banco.</p>;
-  }
-
-  // Junta todas as entregas de "Aprovação" num card único "Aprovações".
-  const aprovacoes = entregas.filter((e) => ehEntregaDeAprovacao(e.nome));
-  const outras = entregas.filter((e) => !ehEntregaDeAprovacao(e.nome));
-
-  let lista = outras;
-  if (aprovacoes.length > 0) {
-    const totalTarefas = aprovacoes.reduce((s, e) => s + e.totalTarefas, 0);
-    const atrasadas = aprovacoes.reduce((s, e) => s + e.atrasadas, 0);
-    const cardAprovacoes: EntregaItem = {
-      id: 'aprovacoes',
-      nome: 'Aprovações',
-      statusTexto: null,
-      proximaEntregaTexto: `${totalTarefas} em aberto`,
-      proximaData: null,
-      frequencia: `${aprovacoes.length} tipos`,
-      totalTarefas,
-      atrasadas,
-    };
-    lista = [cardAprovacoes, ...outras];
-  }
-
-  const comAtraso = lista.filter((e) => e.atrasadas > 0);
-  return (
-    <div className="space-y-3">
-      {comAtraso.length > 0 && (
-        <div
-          className="rounded-lg px-3 py-2 text-[12px] font-semibold"
-          style={{
-            background: 'var(--prazo-atrasado-soft)',
-            color: 'var(--prazo-atrasado)',
-          }}
-        >
-          🚨 {comAtraso.length} entrega{comAtraso.length === 1 ? '' : 's'} com tarefas em atraso
-        </div>
-      )}
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {lista.map((e) => (
-          <EntregaCard
-            key={e.id}
-            entrega={e}
-            href={e.id === 'aprovacoes' ? '/admin/aprovacoes' : undefined}
-          />
-        ))}
-      </div>
-    </div>
-  );
 }
