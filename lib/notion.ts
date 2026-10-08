@@ -1639,6 +1639,8 @@ export type TarefaDoPost = {
   finalizada: string | null;
   pessoaNome: string | null;
   pessoaAvatar: string | null;
+  /** Notion user id do responsável (liga com a página do colaborador). */
+  pessoaId: string | null;
   ordemUm: string | null; // '01', '02', '03'
   categoria: 'aprovacao' | 'alteracao' | 'briefing' | 'arte' | 'copy' | 'outro';
   aberta: boolean;
@@ -1697,6 +1699,7 @@ async function _listarTarefasDoPostUncached(
         finalizada,
         pessoaNome: pessoa?.name ?? null,
         pessoaAvatar: pessoa?.avatar_url ?? null,
+        pessoaId: pessoa?.id ?? null,
         ordemUm,
         categoria: categoriaDaTarefa2(titulo),
         aberta,
@@ -1724,7 +1727,7 @@ async function _listarTarefasDoPostUncached(
 
 const _listarTarefasDoPostCached = unstable_cache(
   _listarTarefasDoPostUncached,
-  ['listar-tarefas-do-post-v2'],
+  ['listar-tarefas-do-post-v3'],
   { revalidate: 30, tags: [TAG_TAREFAS] },
 );
 
@@ -3779,6 +3782,62 @@ export async function concluirTarefa(tarefaId: string): Promise<void> {
       [env.notion.taskProps.finalizada]: { date: { start: hoje } },
     },
   });
+}
+
+/**
+ * Muda o prazo (Data Entrega) de uma tarefa. Se a data tinha horário, mantém
+ * a mesma hora de Brasília e troca só o dia. Devolve o prazo anterior pro
+ * histórico.
+ */
+export async function atualizarPrazoTarefa(
+  tarefaId: string,
+  novaData: string,
+): Promise<{ anterior: string | null; titulo: string; postId: string | null }> {
+  const page: any = await comRetry(() => notion.pages.retrieve({ page_id: tarefaId }));
+  const atual = getProp(page, 'Data Entrega')?.date ?? null;
+  const anterior = dataEmSaoPaulo(atual?.start ?? getProp(page, 'Data Inicial')?.date?.start);
+
+  let start = novaData;
+  let end: string | null = null;
+  let timeZone: string | undefined;
+  if (atual?.start && atual.start.length > 10) {
+    const hora = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(atual.start));
+    start = `${novaData}T${hora}:00`;
+    timeZone = 'America/Sao_Paulo';
+  }
+  // Intervalo: anda o fim junto com o início.
+  if (atual?.end && anterior) {
+    const delta = Math.round(
+      (Date.parse(`${novaData}T00:00:00Z`) - Date.parse(`${anterior}T00:00:00Z`)) / 86_400_000,
+    );
+    const fimSp = dataEmSaoPaulo(atual.end);
+    if (fimSp) {
+      const d = new Date(`${fimSp}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + delta);
+      end = d.toISOString().slice(0, 10);
+    }
+  }
+
+  await comRetry(() =>
+    notion.pages.update({
+      page_id: tarefaId,
+      properties: {
+        'Data Entrega': { date: { start, end, ...(timeZone ? { time_zone: timeZone } : {}) } },
+      } as any,
+    }),
+  );
+
+  const titleProp = Object.values(page.properties).find((p: any) => p.type === 'title') as any;
+  return {
+    anterior,
+    titulo: txt(titleProp?.title) || '',
+    postId: getProp(page, env.notion.taskProps.post)?.relation?.[0]?.id ?? null,
+  };
 }
 
 /** Atualiza o Status do post (Agendado, Postado, etc). Usado pelo botão

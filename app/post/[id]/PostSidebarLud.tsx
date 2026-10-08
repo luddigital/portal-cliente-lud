@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { TarefaDoPost } from '@/lib/notion';
 import { compararNoFluxo, ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
-import type { ProgramacaoConfig } from '@/lib/supabase';
+import type { MudancaPrazo, ProgramacaoConfig } from '@/lib/supabase';
 
 // ============================================================================
 // Status do post — só os chips de troca rápida (o atual fica preenchido)
@@ -193,9 +193,152 @@ function TagTipo({ doCliente }: { doCliente: boolean }) {
 const porPrazo = (a: TarefaDoPost, b: TarefaDoPost) =>
   (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999') || compararNoFluxo(a as any, b as any);
 
-export function TodasTarefasCard({ tarefas: iniciais }: { tarefas: TarefaDoPost[] }) {
+function fmtQuando(iso: string): string {
+  const d = new Date(iso);
+  const data = d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
+  const hora = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+  return `${data} às ${hora}`;
+}
+
+/** Data da tarefa: clica pra trocar (Enter salva, Esc cancela). */
+function PrazoEditavel({
+  prazo,
+  mudancas,
+  onSalvar,
+}: {
+  prazo: string | null;
+  mudancas: MudancaPrazo[];
+  onSalvar: (novo: string) => Promise<void>;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const ultima = mudancas[0];
+
+  async function salvar() {
+    if (!valor || valor === prazo) {
+      setEditando(false);
+      return;
+    }
+    setSalvando(true);
+    try {
+      await onSalvar(valor);
+      setEditando(false);
+    } catch {
+      /* erro aparece no card */
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (editando) {
+    return (
+      <span className="flex shrink-0 items-center gap-1">
+        <input
+          type="date"
+          autoFocus
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') salvar();
+            if (e.key === 'Escape') setEditando(false);
+          }}
+          className="h-7 rounded-md border border-[rgba(21,21,33,0.2)] bg-white px-1.5 font-mono text-[11px] text-ink outline-none focus:border-ink"
+        />
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={salvando}
+          className="h-7 rounded-md bg-ink px-2 text-[11px] font-semibold text-white disabled:opacity-50"
+        >
+          {salvando ? '…' : 'Salvar'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditando(false)}
+          aria-label="Cancelar"
+          className="h-7 px-1 text-[14px] text-t3 hover:text-ink"
+        >
+          ×
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setValor(prazo ?? hojeLocal());
+        setEditando(true);
+      }}
+      title={
+        ultima
+          ? `Prazo mudou ${mudancas.length}x · última: ${ddmmCurto(ultima.de)} → ${ddmmCurto(ultima.para)} (${ultima.por}, ${fmtQuando(ultima.em)}). Clique pra mudar.`
+          : 'Clique pra mudar o prazo'
+      }
+      className="group -mx-1 flex w-[54px] shrink-0 items-center gap-1 rounded px-1 py-0.5 font-mono text-[11px] text-t2 transition hover:bg-bgSoft hover:text-ink"
+    >
+      {ddmmCurto(prazo)}
+      {mudancas.length > 0 ? (
+        <span className="text-[9px] text-[var(--cal-agendado)]">↺</span>
+      ) : (
+        <span className="text-[9px] text-t3 opacity-0 transition group-hover:opacity-100">✎</span>
+      )}
+    </button>
+  );
+}
+
+function Responsavel({
+  nome,
+  url,
+  colaboradorId,
+}: {
+  nome: string | null;
+  url: string | null;
+  colaboradorId: string | null;
+}) {
+  const conteudo = (
+    <>
+      <Avatar nome={nome} url={url} />
+      <span className="truncate text-[11.5px]">{nome ? nome.split(' ')[0] : '—'}</span>
+    </>
+  );
+  if (nome && colaboradorId) {
+    return (
+      <Link
+        href={`/admin/equipe/${colaboradorId}`}
+        title={`Abrir a página de ${nome}`}
+        className="flex w-[96px] shrink-0 items-center gap-1.5 rounded-full py-0.5 pr-2 text-t2 transition hover:bg-bgSoft hover:text-ink hover:underline"
+      >
+        {conteudo}
+      </Link>
+    );
+  }
+  return <span className="flex w-[96px] shrink-0 items-center gap-1.5 text-t3">{conteudo}</span>;
+}
+
+export function TodasTarefasCard({
+  tarefas: iniciais,
+  colaboradores = {},
+  historico,
+  podeEditarPrazo = false,
+  semMoldura = false,
+}: {
+  tarefas: TarefaDoPost[];
+  /** Notion user id do responsável → id da página do colaborador. */
+  colaboradores?: Record<string, string>;
+  /** Mudanças de prazo; sem isso o card não mostra a seção de histórico. */
+  historico?: MudancaPrazo[];
+  podeEditarPrazo?: boolean;
+  /** Dentro do popup: sem o card em volta. */
+  semMoldura?: boolean;
+}) {
+  const router = useRouter();
   const [tarefas, setTarefas] = useState(iniciais);
+  const [mudancas, setMudancas] = useState<MudancaPrazo[]>(historico ?? []);
   const [verConcluidas, setVerConcluidas] = useState(false);
+  const [verHistorico, setVerHistorico] = useState(false);
   // Concluídas aqui: guardam o status anterior pro "desmarcar".
   const [agora, setAgora] = useState<Record<string, string | null>>({});
   const [salvando, setSalvando] = useState<string | null>(null);
@@ -243,15 +386,40 @@ export function TodasTarefasCard({ tarefas: iniciais }: { tarefas: TarefaDoPost[
     }
   }
 
-  function Linha({ t, concluida }: { t: TarefaDoPost; concluida: boolean }) {
+  async function mudarPrazo(t: TarefaDoPost, novo: string) {
+    setErro(null);
+    try {
+      const res = await fetch(`/api/admin/tarefas/${t.tarefaId}/prazo`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prazo: novo }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+      setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, prazo: novo } : x)));
+      if (j.mudanca) setMudancas((m) => [j.mudanca as MudancaPrazo, ...m]);
+      router.refresh();
+    } catch (e: any) {
+      setErro(e?.message ?? 'Não consegui mudar o prazo.');
+      throw e;
+    }
+  }
+
+  // Função (não componente) pra não remontar a linha a cada render.
+  const linha = (t: TarefaDoPost, concluida: boolean) => {
     const p = prazoRelativo(t.prazo);
     const marcada = feita(t);
     const podeMexer = !concluida;
+    const doTarefa = mudancas.filter((m) => m.tarefaId === t.tarefaId);
     return (
-      <li className="flex items-center gap-2.5 py-2">
-        <span className="w-[42px] shrink-0 font-mono text-[11px] text-t2">{ddmmCurto(t.prazo)}</span>
+      <li key={t.tarefaId} className="flex items-center gap-2.5 py-2">
+        {podeEditarPrazo && !concluida && !marcada ? (
+          <PrazoEditavel prazo={t.prazo} mudancas={doTarefa} onSalvar={(novo) => mudarPrazo(t, novo)} />
+        ) : (
+          <span className="w-[54px] shrink-0 font-mono text-[11px] text-t2">{ddmmCurto(t.prazo)}</span>
+        )}
         <span
-          className={`w-[92px] shrink-0 text-[11px] ${
+          className={`w-[84px] shrink-0 text-[11px] ${
             concluida || marcada
               ? 'text-t3'
               : p.atrasada
@@ -270,7 +438,11 @@ export function TodasTarefasCard({ tarefas: iniciais }: { tarefas: TarefaDoPost[
           {t.titulo}
           {t.status === 'Reprovado' && <span className="ml-1.5 text-[11px] text-t3">(reprovado)</span>}
         </span>
-        <Avatar nome={t.pessoaNome} url={t.pessoaAvatar} />
+        <Responsavel
+          nome={t.pessoaNome}
+          url={t.pessoaAvatar}
+          colaboradorId={t.pessoaId ? colaboradores[t.pessoaId] ?? null : null}
+        />
         <TagTipo doCliente={ehTarefaDoCliente(t.titulo)} />
         <button
           type="button"
@@ -288,10 +460,10 @@ export function TodasTarefasCard({ tarefas: iniciais }: { tarefas: TarefaDoPost[
         </button>
       </li>
     );
-  }
+  };
 
   return (
-    <div className="card p-5">
+    <div className={semMoldura ? '' : 'card p-5'}>
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">Tarefas</h2>
         {total > 0 && (
@@ -310,15 +482,27 @@ export function TodasTarefasCard({ tarefas: iniciais }: { tarefas: TarefaDoPost[
           </div>
 
           {abertas.length > 0 ? (
-            <ul className="mt-2 divide-y divide-[rgba(21,21,33,0.05)]">
-              {abertas.map((t) => (
-                <Linha key={t.tarefaId} t={t} concluida={false} />
-              ))}
-            </ul>
+            <>
+              <div className="mt-3 flex items-center gap-2.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-t3">
+                <span className="w-[54px] shrink-0">Prazo</span>
+                <span className="w-[84px] shrink-0" />
+                <span className="min-w-0 flex-1">Tarefa</span>
+                <span className="w-[96px] shrink-0">Responsável</span>
+                <span className="w-[58px] shrink-0" />
+                <span className="w-[18px] shrink-0" />
+              </div>
+              <ul className="mt-0.5 divide-y divide-[rgba(21,21,33,0.05)]">
+                {abertas.map((t) => linha(t, false))}
+              </ul>
+            </>
           ) : (
             <p className="mt-3 text-[12px] font-semibold text-[var(--prazo-em-dia)]">Tudo concluído ✨</p>
           )}
-          {erro && <p className="mt-2 text-[11.5px] font-semibold text-ink">{erro}</p>}
+          {erro && (
+            <p className="mt-2 rounded-md bg-[var(--prazo-atrasado-soft)] px-2 py-1 text-[11.5px] text-[var(--prazo-atrasado)]">
+              {erro}
+            </p>
+          )}
 
           {concluidas.length > 0 && (
             <div className="mt-3 border-t border-[rgba(21,21,33,0.06)] pt-3">
@@ -332,10 +516,40 @@ export function TodasTarefasCard({ tarefas: iniciais }: { tarefas: TarefaDoPost[
               </button>
               {verConcluidas && (
                 <ul className="mt-1 divide-y divide-[rgba(21,21,33,0.05)]">
-                  {concluidas.map((t) => (
-                    <Linha key={t.tarefaId} t={t} concluida />
-                  ))}
+                  {concluidas.map((t) => linha(t, true))}
                 </ul>
+              )}
+            </div>
+          )}
+
+          {historico && (
+            <div className="mt-3 border-t border-[rgba(21,21,33,0.06)] pt-3">
+              {mudancas.length === 0 ? (
+                <p className="text-[12px] text-t3">Nenhum prazo mudou por aqui ainda.</p>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setVerHistorico((v) => !v)}
+                    className="text-[12px] font-semibold text-t2 transition hover:text-ink"
+                  >
+                    {verHistorico ? '▾' : '▸'} Histórico de prazos ({mudancas.length})
+                  </button>
+                  {verHistorico && (
+                    <ul className="mt-1 divide-y divide-[rgba(21,21,33,0.05)]">
+                      {mudancas.map((m) => (
+                        <li key={m.id} className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 py-2 text-[12px]">
+                          <span className="w-[104px] shrink-0 text-t3">{fmtQuando(m.em)}</span>
+                          <span className="min-w-0 flex-1 truncate text-ink">{m.tarefaTitulo ?? 'Tarefa'}</span>
+                          <span className="shrink-0 font-mono text-[11px] text-t2">
+                            {ddmmCurto(m.de)} → <span className="font-semibold text-ink">{ddmmCurto(m.para)}</span>
+                          </span>
+                          <span className="w-[64px] shrink-0 truncate text-right text-t3">{m.por}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </div>
           )}

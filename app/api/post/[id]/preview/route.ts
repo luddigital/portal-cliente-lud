@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { getPostComDetalhes, listarTarefasDoPost } from '@/lib/notion';
+import { getPostComDetalhes, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
 import { extractDriveFileId, extractDriveFolderId, listFolderFiles } from '@/lib/drive';
 
 export const runtime = 'nodejs';
@@ -73,16 +73,20 @@ export async function GET(
   }
 
   // Tarefas internas só pra admin.
-  const tarefas = ehAdmin
-    ? (await listarTarefasDoPost(post.id).catch(() => [])).map((t) => ({
-        tarefaId: t.tarefaId,
-        titulo: t.titulo,
-        status: t.status,
-        prazo: t.prazo,
-        aberta: t.aberta && !t.finalizada,
-        pessoa: t.pessoaNome,
-      }))
-    : [];
+  const [brutas, colaboradores] = ehAdmin
+    ? await Promise.all([
+        listarTarefasDoPost(post.id).catch(() => []),
+        listColaboradores().catch(() => []),
+      ])
+    : [[], []];
+  const tarefas = brutas.map((t) => ({
+    ...t,
+    aberta: t.aberta && !t.finalizada,
+    pessoa: t.pessoaNome,
+  }));
+  // Responsável (Notion user) → página do colaborador.
+  const colaboradorPorPessoa: Record<string, string> = {};
+  for (const c of colaboradores) if (c.pessoaUserId) colaboradorPorPessoa[c.pessoaUserId] = c.id;
 
   return NextResponse.json({
     titulo: post.titulo,
@@ -95,5 +99,6 @@ export async function GET(
     status: post.status,
     arquivos,
     tarefas,
+    colaboradores: colaboradorPorPessoa,
   });
 }

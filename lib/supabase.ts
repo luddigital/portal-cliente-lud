@@ -723,3 +723,79 @@ export async function lerEnviosParaAprovacao(postIds: string[], dias = 70): Prom
   }
   return out;
 }
+
+// ============================================================================
+// Histórico de prazos das tarefas (mudanças de Data Entrega feitas no portal)
+// ============================================================================
+
+export type MudancaPrazo = {
+  id: number;
+  tarefaId: string;
+  tarefaTitulo: string | null;
+  de: string | null;
+  para: string;
+  por: string;
+  em: string;
+};
+
+function linhaParaMudanca(r: any): MudancaPrazo {
+  return {
+    id: r.id,
+    tarefaId: r.tarefa_id,
+    tarefaTitulo: r.tarefa_titulo ?? null,
+    de: r.prazo_anterior ?? null,
+    para: r.prazo_novo,
+    por: r.alterado_por_nome || String(r.alterado_por ?? '').split('@')[0],
+    em: r.alterado_em,
+  };
+}
+
+export async function registrarMudancaPrazo(m: {
+  tarefaId: string;
+  postId: string | null;
+  tarefaTitulo: string | null;
+  de: string | null;
+  para: string;
+  email: string;
+  nome: string | null;
+}): Promise<MudancaPrazo | null> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('tarefa_prazo_historico')
+      .insert({
+        tarefa_id: m.tarefaId,
+        post_id: m.postId,
+        tarefa_titulo: m.tarefaTitulo,
+        prazo_anterior: m.de,
+        prazo_novo: m.para,
+        alterado_por: m.email.trim().toLowerCase(),
+        alterado_por_nome: m.nome,
+      })
+      .select('*')
+      .single();
+    if (error) throw error;
+    return linhaParaMudanca(data);
+  } catch (err: any) {
+    console.warn('[tarefa_prazo_historico]', err?.message);
+    return null;
+  }
+}
+
+/** Mudanças de prazo das tarefas de um post, mais recentes primeiro. */
+export async function lerHistoricoPrazos(postId: string): Promise<MudancaPrazo[]> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('tarefa_prazo_historico')
+      .select('*')
+      .eq('post_id', postId)
+      .order('alterado_em', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    return (data ?? []).map(linhaParaMudanca);
+  } catch (err: any) {
+    console.warn('[tarefa_prazo_historico]', err?.message);
+    return [];
+  }
+}

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { compararNoFluxo } from '@/lib/etapas-projeto';
+import type { TarefaDoPost } from '@/lib/notion';
+import { TodasTarefasCard } from '@/app/post/[id]/PostSidebarLud';
 
 type Arquivo = {
   id: string;
@@ -9,14 +11,7 @@ type Arquivo = {
   mimeType: string;
   webViewLink: string;
 };
-type Tarefa = {
-  tarefaId: string;
-  titulo: string;
-  status: string | null;
-  prazo: string | null;
-  aberta: boolean;
-  pessoa: string | null;
-};
+type Tarefa = TarefaDoPost & { pessoa: string | null };
 type Preview = {
   titulo: string;
   legenda: string;
@@ -26,6 +21,7 @@ type Preview = {
   status: string | null;
   arquivos: Arquivo[];
   tarefas: Tarefa[];
+  colaboradores?: Record<string, string>;
 };
 
 const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -36,7 +32,6 @@ function dataPostagemTexto(iso: string): string {
   return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')} (${DIA_SEMANA[dia]})`;
 }
 
-const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 function prazoCurto(iso: string | null): { texto: string; atrasada: boolean } {
   if (!iso) return { texto: 'sem prazo', atrasada: false };
@@ -44,10 +39,11 @@ function prazoCurto(iso: string | null): { texto: string; atrasada: boolean } {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
   const dias = Math.round((new Date(y, m - 1, d).getTime() - hoje.getTime()) / 86_400_000);
-  if (dias === 0) return { texto: 'hoje', atrasada: false };
-  if (dias === 1) return { texto: 'amanhã', atrasada: false };
-  if (dias < 0) return { texto: `${d} ${MES[m - 1]}`, atrasada: true };
-  return { texto: `${d} ${MES[m - 1]}`, atrasada: false };
+  const data = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+  if (dias === 0) return { texto: `${data} · hoje`, atrasada: false };
+  if (dias === 1) return { texto: `${data} · amanhã`, atrasada: false };
+  if (dias < 0) return { texto: data, atrasada: true };
+  return { texto: data, atrasada: false };
 }
 
 function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
@@ -159,7 +155,11 @@ function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
                 ) : (
                   <>
                     {t.pessoa && <span className="shrink-0 text-[11px] text-t3">{t.pessoa.split(' ')[0]}</span>}
-                    <span className={`shrink-0 font-mono text-[10.5px] ${p.atrasada ? 'font-semibold text-ink' : 'text-t3'}`}>
+                    <span
+                      className={`shrink-0 font-mono text-[10.5px] ${
+                        p.atrasada ? 'font-semibold text-[var(--prazo-atrasado)]' : 'text-t2'
+                      }`}
+                    >
                       {p.atrasada ? `atrasada · ${p.texto}` : p.texto}
                     </span>
                   </>
@@ -249,6 +249,7 @@ export function PreviaPostModal({
   }, [fechar, preview]);
 
   const arquivoAtivo = preview?.arquivos[ativo] ?? null;
+  const semArte = !!preview && preview.arquivos.length === 0;
   const tipo = arquivoAtivo
     ? tipoArquivo(arquivoAtivo.mimeType, arquivoAtivo.name)
     : null;
@@ -323,12 +324,26 @@ export function PreviaPostModal({
           )}
           {preview && (
             <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-              {/* Mídia */}
+              {/* Mídia — sem arte ainda, as tarefas ocupam o lugar dela */}
               <div className="space-y-3">
-                {preview.arquivos.length === 0 ? (
-                  <div className="flex min-h-[260px] items-center justify-center rounded-xl bg-bgSoft text-[13px] text-t3">
-                    Nenhum arquivo anexado ao post ainda.
-                  </div>
+                {semArte ? (
+                  preview.tarefas.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-[11.5px] text-t3">Arte ainda não anexada. Andamento do post:</p>
+                      <div className="rounded-xl border border-[rgba(21,21,33,0.08)] p-4">
+                        <TodasTarefasCard
+                          tarefas={preview.tarefas}
+                          colaboradores={preview.colaboradores ?? {}}
+                          podeEditarPrazo
+                          semMoldura
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[260px] items-center justify-center rounded-xl bg-bgSoft text-[13px] text-t3">
+                      Nenhum arquivo anexado ao post ainda.
+                    </div>
+                  )
                 ) : (
                   <>
                     <div className="relative overflow-hidden rounded-xl bg-ink">
@@ -466,7 +481,7 @@ export function PreviaPostModal({
                   </div>
                 )}
               </div>
-              <TarefasResumo tarefas={preview.tarefas ?? []} />
+              {!semArte && <TarefasResumo tarefas={preview.tarefas ?? []} />}
               </div>
             </div>
           )}

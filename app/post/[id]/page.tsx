@@ -8,6 +8,7 @@ import {
   getTarefaComPost,
   findTarefaClienteProntaDoPost,
   lerComentariosDoPost,
+  listColaboradores,
   listarTarefasDoPost,
   type MaterialBloco,
   type RelacaoItem,
@@ -24,7 +25,9 @@ import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import {
   lerConfigProgramacao,
   lerHistoricoComunicacao,
+  lerHistoricoPrazos,
   registrarVisualizacao,
+  type MudancaPrazo,
 } from '@/lib/supabase';
 import { PostPreview, type PreviewArquivo } from './PostPreview';
 import { AprovacaoSimples } from './AprovacaoSimples';
@@ -241,7 +244,7 @@ export default async function PostDetalhePage({
   // vai ser interna. Server components dão erro se retornar Promise sem await,
   // então busca sempre pra simplificar (barato porque já vem cacheado).
   const historicoVazio = { visualizacoes: [], envios: [] };
-  const [tarefasDoPost, configProgramacao, historico] = await Promise.all([
+  const [tarefasDoPost, configProgramacao, historico, historicoPrazos, colaboradores] = await Promise.all([
     listarTarefasDoPost(post.id).catch(() => []),
     lerConfigProgramacao(post.id).catch(() => ({
       data: '',
@@ -255,7 +258,12 @@ export default async function PostDetalhePage({
     vista === 'interno'
       ? lerHistoricoComunicacao(post.id).catch(() => historicoVazio)
       : Promise.resolve(historicoVazio),
+    vista === 'interno' ? lerHistoricoPrazos(post.id) : Promise.resolve([] as MudancaPrazo[]),
+    vista === 'interno' && ehAdmin ? listColaboradores().catch(() => []) : Promise.resolve([]),
   ]);
+  // Responsável da tarefa (Notion user) → página do colaborador.
+  const colaboradorPorPessoa: Record<string, string> = {};
+  for (const c of colaboradores) if (c.pessoaUserId) colaboradorPorPessoa[c.pessoaUserId] = c.id;
 
   // Arte (campo "Link do Google Drive") e materiais do cliente ficam separados:
   // a aprovação só mostra a arte; materiais aparecem na galeria.
@@ -287,6 +295,17 @@ export default async function PostDetalhePage({
       formatoTipoDetectado = 'story';
     }
   }
+
+  // Sem arte ainda, o que importa é o andamento: tarefas sobem pro topo.
+  const semArte = modo !== 'material' && arquivos.length === 0;
+  const cardTarefas = (
+    <TodasTarefasCard
+      tarefas={tarefasDoPost}
+      colaboradores={colaboradorPorPessoa}
+      historico={historicoPrazos}
+      podeEditarPrazo={ehAdmin}
+    />
+  );
 
   const dias = diffDias(tarefaPrazo);
   const prazoLabel =
@@ -668,6 +687,8 @@ export default async function PostDetalhePage({
           </dl>
         )}
 
+        {semArte && cardTarefas}
+
         {/* pré-visualização + legenda — usa PostPreview em modo readonly
             (sem painel de aprovação; equipe não aprova pelo cliente).
             Em fase de MATERIAIS (matéria-prima do cliente), mostra galeria. */}
@@ -713,7 +734,7 @@ export default async function PostDetalhePage({
           />
         )}
 
-        <TodasTarefasCard tarefas={tarefasDoPost} />
+        {!semArte && cardTarefas}
 
         <Suspense fallback={null}>
           <HistoricoComentarios postId={post.id} />
