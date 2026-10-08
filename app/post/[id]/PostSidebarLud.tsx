@@ -90,7 +90,7 @@ export function StatusDoPostChips({
       <div className={`flex flex-wrap items-center gap-1.5 ${alinhar === 'esquerda' ? 'justify-start' : 'justify-end'}`}>
         <span
           className={`mr-1 font-semibold uppercase text-t3 ${
-            grande ? 'mr-3 text-[11px] tracking-[0.12em]' : 'text-[10px] tracking-[0.1em]'
+            grande ? 'mr-3 text-[11px] tracking-[0.12em] lg:mr-1 lg:text-[10px]' : 'text-[10px] tracking-[0.1em]'
           }`}
         >
           Status
@@ -105,7 +105,7 @@ export function StatusDoPostChips({
               onClick={() => trocar(opt)}
               disabled={loading !== null || selecionado}
               className={`rounded-full border font-semibold transition disabled:cursor-not-allowed ${
-                grande ? 'px-4 py-1.5 text-[13.5px]' : 'px-2.5 py-1 text-[11px]'
+                grande ? 'px-4 py-1.5 text-[13.5px] lg:px-3 lg:py-1 lg:text-[12px]' : 'px-2.5 py-1 text-[11px]'
               } ${
                 selecionado
                   ? 'text-white'
@@ -643,10 +643,27 @@ function fmtDataHora(iso: string): string {
   });
 }
 
+export type ComentarioCliente = {
+  quando: string;
+  tipo: 'comentou' | 'aprovou' | 'alteracao' | 'enviou';
+  autor: string | null;
+  trecho: string;
+};
+
+const COMENTARIO_LABEL: Record<ComentarioCliente['tipo'], { icone: string; texto: string }> = {
+  comentou: { icone: '💬', texto: 'Cliente comentou' },
+  aprovou: { icone: '✅', texto: 'Cliente aprovou' },
+  alteracao: { icone: '🔁', texto: 'Cliente pediu alteração' },
+  enviou: { icone: '📎', texto: 'Cliente enviou materiais' },
+};
+
 export function ComunicacaoCard({
   historico,
   lembrete,
+  comentarios = [],
 }: {
+  /** Comentários do cliente no post (aprovou, pediu alteração, comentou…). */
+  comentarios?: ComentarioCliente[];
   /** Tarefa que está com o cliente agora (pra mandar lembrete). */
   lembrete?: { tarefaId: string; titulo: string; clienteNome: string } | null;
   historico: {
@@ -671,7 +688,14 @@ export function ComunicacaoCard({
       texto: 'Cliente abriu o post',
       quem: v.email,
     })),
+    ...comentarios.map((c) => ({
+      quando: c.quando,
+      icone: COMENTARIO_LABEL[c.tipo].icone,
+      texto: c.trecho ? `${COMENTARIO_LABEL[c.tipo].texto}: “${c.trecho.replace(/\s+/g, ' ')}”` : COMENTARIO_LABEL[c.tipo].texto,
+      quem: c.autor,
+    })),
   ].sort((a, b) => b.quando.localeCompare(a.quando));
+  const ultimoComentario = [...comentarios].sort((a, b) => b.quando.localeCompare(a.quando))[0];
   const visiveis = verTudo ? eventos : eventos.slice(0, 6);
   const ultimaVista = visualizacoes[0]?.vistoEm;
   const ultimoEnvio = envios[0]?.enviadoEm;
@@ -688,7 +712,7 @@ export function ComunicacaoCard({
           />
         )}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div className="rounded-xl bg-bgSoft/60 px-3 py-2.5">
           <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-t3">Lembretes enviados</div>
           <div className="mt-0.5 text-[18px] font-semibold text-ink">{envios.length}</div>
@@ -703,6 +727,17 @@ export function ComunicacaoCard({
           </div>
           <div className="text-[11px] text-t3">
             {ultimaVista ? `última ${fmtDataHora(ultimaVista)}` : 'ainda não abriu'}
+          </div>
+        </div>
+        <div className="rounded-xl bg-bgSoft/60 px-3 py-2.5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-t3">Cliente comentou</div>
+          <div className="mt-0.5 text-[18px] font-semibold text-ink">
+            {comentarios.length} {comentarios.length === 1 ? 'vez' : 'vezes'}
+          </div>
+          <div className="text-[11px] text-t3">
+            {ultimoComentario
+              ? `${COMENTARIO_LABEL[ultimoComentario.tipo].texto.replace('Cliente ', '')} ${fmtDataHora(ultimoComentario.quando)}`
+              : 'nenhum comentário'}
           </div>
         </div>
       </div>
@@ -729,7 +764,7 @@ export function ComunicacaoCard({
         </button>
       )}
       <p className="mt-2 text-[10.5px] text-t3">
-        Visualizações contam desde 06/10. Acessos da equipe não entram.
+        Visualizações contam desde 06/10. Acessos e comentários da equipe não entram.
       </p>
     </div>
   );

@@ -3428,6 +3428,8 @@ function montarPropsHerdadas(
     postId: string;
     prazoIso: string;
     pessoaIds?: string[];
+    /** Troca a entrega herdada (ex.: "Alteração", "Aprovação de alteração"). */
+    entregaId?: string;
   },
 ): any {
   const props: any = {
@@ -3449,6 +3451,10 @@ function montarPropsHerdadas(
     if (rel && rel.length > 0) {
       props[name] = { relation: rel.map((r: any) => ({ id: r.id })) };
     }
+  }
+
+  if (overrides.entregaId) {
+    props['Entregas'] = { relation: [{ id: overrides.entregaId }] };
   }
 
   if (overrides.pessoaIds && overrides.pessoaIds.length > 0) {
@@ -3545,6 +3551,158 @@ export async function pedirAlteracao(tarefaId: string, comentario: string): Prom
   );
 }
 
+
+// Entregas do Notion usadas nas alterações (mesmo padrão do botão de reprovar).
+const ENTREGA_ALTERACAO = '2bcd04d23b4a8088bb31fb2d83e29fbf';
+const ENTREGA_APROVACAO_ALTERACAO = '2e9d04d23b4a80a68ea9d1602cf286f9';
+
+export type TipoAlteracao = 'arte' | 'copy';
+const BASE_DA_ALTERACAO: Record<TipoAlteracao, string> = {
+  arte: 'Arte',
+  copy: 'Briefing & Copy',
+};
+
+/**
+ * Quando o cliente pede alteração no post, a Luiza lê os comentários e decide
+ * se é arte, copy ou as duas. Pra cada uma, igual ao padrão do Notion:
+ *  - reprova a última "Aprovação | X" interna;
+ *  - cria "Alteração | X" (Ordem 02, mesma pessoa da produção, entrega Alteração)
+ *    e "Aprovação | X" (Ordem 03, quem aprovou antes, entrega Aprovação de alteração),
+ *    as duas penduradas na tarefa de produção original (Mãe);
+ *  - conclui a "Alteração | Post" (o pedido do cliente foi lido).
+ */
+export async function solicitarAlteracaoDoPost(params: {
+  postId: string;
+  tipos: TipoAlteracao[];
+  /** YYYY-MM-DD; a tarefa vence às 17h de Brasília. */
+  prazo: string;
+  nota: string | null;
+  alteracaoPostId: string | null;
+}): Promise<{ criadas: { titulo: string; pessoa: string | null }[] }> {
+  const { postId, tipos, prazo, nota, alteracaoPostId } = params;
+  const tarefas: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await comRetry(() =>
+      notion.databases.query({
+        database_id: env.notion.tarefasDbId,
+        start_cursor: cursor,
+        page_size: 100,
+        filter: { property: env.notion.taskProps.post, relation: { contains: postId } },
+      }),
+    );
+    tarefas.push(...(res.results as any[]).filter((t) => !t.archived));
+    cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
+  } while (cursor);
+
+  const tituloDe = (t: any) => {
+    const tp = Object.values(t.properties).find((p: any) => p.type === 'title') as any;
+    return (txt(tp?.title) || '').trim();
+  };
+  const maisRecente = (titulo: string) =>
+    tarefas
+      .filter((t) => tituloDe(t) === titulo)
+      .sort((a, b) => String(b.created_time).localeCompare(String(a.created_time)))[0] ?? null;
+  const pessoasDe = (t: any): string[] =>
+    (getProp(t, 'Pessoa')?.people ?? []).map((p: any) => p.id).filter(Boolean);
+  const nomeDe = (t: any): string | null => getProp(t, 'Pessoa')?.people?.[0]?.name ?? null;
+
+  const alteracaoPost = alteracaoPostId
+    ? tarefas.find((t) => t.id.replace(/-/g, '') === alteracaoPostId.replace(/-/g, '')) ?? null
+    : null;
+  const prazoIso = `${prazo}T17:00:00`;
+  const criadas: { titulo: string; pessoa: string | null }[] = [];
+
+  for (const tipo of tipos) {
+    const base = BASE_DA_ALTERACAO[tipo];
+    const producao = maisRecente(base);
+    const aprovacaoAnterior = maisRecente(`Aprovação | ${base}`);
+    const modelo = producao ?? alteracaoPost ?? tarefas[0];
+    if (!modelo) throw new Error('Esse post não tem tarefas no Notion pra servir de base.');
+    const maeId = (producao ?? alteracaoPost ?? modelo).id;
+
+    const pessoaAlteracao = producao ? pessoasDe(producao) : [];
+    const alteracao = (await comRetry(() =>
+      notion.pages.create({
+        parent: { database_id: env.notion.tarefasDbId },
+        properties: montarPropsHerdadas(modelo, {
+          titulo: `Alteração | ${base}`,
+          ordemUm: '02',
+          maeId,
+          postId,
+          prazoIso,
+          pessoaIds: pessoaAlteracao.length > 0 ? pessoaAlteracao : undefined,
+          entregaId: ENTREGA_ALTERACAO,
+        }),
+      }),
+    )) as any;
+    await aplicarTemplateNovaTarefa(alteracao.id);
+    criadas.push({ titulo: `Alteração | ${base}`, pessoa: producao ? nomeDe(producao) : nomeDe(modelo) });
+
+    // O que mudar fica escrito na própria tarefa de quem vai alterar.
+    if (nota && nota.trim()) {
+      await comRetry(() =>
+        notion.blocks.children.append({
+          block_id: alteracao.id,
+          children: [
+            {
+              object: 'block',
+              type: 'callout',
+              callout: {
+                icon: { type: 'emoji', emoji: '🔁' },
+                rich_text: [{ type: 'text', text: { content: nota.trim().slice(0, 1900) } }],
+              },
+            },
+          ] as any,
+        }),
+      ).catch((err: any) => console.warn('[solicitarAlteracao] nota na tarefa:', err?.message));
+    }
+
+    const pessoaAprovacao = aprovacaoAnterior ? pessoasDe(aprovacaoAnterior) : [];
+    const aprovacao = (await comRetry(() =>
+      notion.pages.create({
+        parent: { database_id: env.notion.tarefasDbId },
+        properties: montarPropsHerdadas(aprovacaoAnterior ?? modelo, {
+          titulo: `Aprovação | ${base}`,
+          ordemUm: '03',
+          maeId,
+          postId,
+          prazoIso,
+          pessoaIds: pessoaAprovacao.length > 0 ? pessoaAprovacao : undefined,
+          entregaId: ENTREGA_APROVACAO_ALTERACAO,
+        }),
+      }),
+    )) as any;
+    await aplicarTemplateNovaTarefa(aprovacao.id);
+    criadas.push({
+      titulo: `Aprovação | ${base}`,
+      pessoa: aprovacaoAnterior ? nomeDe(aprovacaoAnterior) : nomeDe(modelo),
+    });
+
+    if (aprovacaoAnterior && getProp(aprovacaoAnterior, env.notion.taskProps.status)?.status?.name !== 'Reprovado') {
+      await comRetry(() =>
+        notion.pages.update({
+          page_id: aprovacaoAnterior.id,
+          properties: { [env.notion.taskProps.status]: { status: { name: 'Reprovado' } } },
+        }),
+      ).catch((err: any) => console.warn('[solicitarAlteracao] reprovar aprovação:', err?.message));
+    }
+  }
+
+  if (alteracaoPost && !STATUS_TAREFA_FECHADOS.includes(getProp(alteracaoPost, env.notion.taskProps.status)?.status?.name ?? '')) {
+    await concluirTarefa(alteracaoPost.id);
+  }
+
+  const [, m, d] = prazo.split('-');
+  const nomes = tipos.map((t) => (t === 'arte' ? 'arte' : 'copy')).join(' e ');
+  await comentarPost(
+    postId,
+    `🛠 Alteração de ${nomes} pedida pra equipe · prazo ${d}/${m}.${nota && nota.trim() ? `\n\n${nota.trim()}` : ''}`,
+  ).catch(() => {});
+
+  invalidarCachesAposMudanca();
+  return { criadas };
+}
 
 export async function getTarefaComPost(tarefaId: string): Promise<{
   tarefa: TarefaPendente;

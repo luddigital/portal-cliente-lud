@@ -38,8 +38,10 @@ import {
   TodasTarefasCard,
   ProgramacaoCard,
   ComunicacaoCard,
+  type ComentarioCliente,
 } from './PostSidebarLud';
 import { ComentariosLud } from './ComentariosLud';
+import { SolicitarAlteracao } from './SolicitarAlteracao';
 import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
 import { TarefaForm } from '../../tarefa/[id]/form';
 import { HistoricoBox } from '../../_components/HistoricoBox';
@@ -100,6 +102,34 @@ async function HistoricoComentarios({ postId }: { postId: string }) {
   return <HistoricoBox comentarios={comentarios} />;
 }
 
+
+/**
+ * Comentários que vieram do cliente pelo portal (o portal grava no Notion com
+ * prefixos fixos). Comentário da equipe fica de fora.
+ */
+function comentariosDoCliente(
+  lista: { texto: string; criadoEm: string }[],
+  equipe: Set<string>,
+): ComentarioCliente[] {
+  const out: ComentarioCliente[] = [];
+  const corpo = (t: string) => t.split(/\n\s*\n/).slice(1).join(' ').trim();
+  for (const c of lista) {
+    const t = c.texto.trim();
+    const m = t.match(/^💬\s*(\S+@\S+)\s*\n+([\s\S]*)$/);
+    if (m) {
+      const email = m[1].toLowerCase();
+      if (equipe.has(email) || email.endsWith('@lud.digital')) continue;
+      out.push({ quando: c.criadoEm, tipo: 'comentou', autor: email, trecho: m[2].trim() });
+    } else if (/— aprovado pelo cliente/.test(t)) {
+      out.push({ quando: c.criadoEm, tipo: 'aprovou', autor: null, trecho: corpo(t) });
+    } else if (/— alteração solicitada pelo cliente/.test(t)) {
+      out.push({ quando: c.criadoEm, tipo: 'alteracao', autor: null, trecho: corpo(t) });
+    } else if (/— recebida do cliente/.test(t)) {
+      out.push({ quando: c.criadoEm, tipo: 'enviou', autor: null, trecho: '' });
+    }
+  }
+  return out;
+}
 
 function diffDias(iso: string | null): number | null {
   if (!iso) return null;
@@ -244,7 +274,7 @@ export default async function PostDetalhePage({
   // vai ser interna. Server components dão erro se retornar Promise sem await,
   // então busca sempre pra simplificar (barato porque já vem cacheado).
   const historicoVazio = { visualizacoes: [], envios: [] };
-  const [tarefasDoPost, configProgramacao, historico, historicoPrazos, colaboradores] = await Promise.all([
+  const [tarefasDoPost, configProgramacao, historico, historicoPrazos, colaboradores, comentariosDoPost] = await Promise.all([
     listarTarefasDoPost(post.id).catch(() => []),
     lerConfigProgramacao(post.id).catch(() => ({
       data: '',
@@ -259,8 +289,14 @@ export default async function PostDetalhePage({
       ? lerHistoricoComunicacao(post.id).catch(() => historicoVazio)
       : Promise.resolve(historicoVazio),
     vista === 'interno' ? lerHistoricoPrazos(post.id) : Promise.resolve([] as MudancaPrazo[]),
-    vista === 'interno' && ehAdmin ? listColaboradores().catch(() => []) : Promise.resolve([]),
+    vista === 'interno' ? listColaboradores().catch(() => []) : Promise.resolve([]),
+    vista === 'interno' ? lerComentariosDoPost(post.id) : Promise.resolve([]),
   ]);
+  const emailsDaEquipe = new Set([
+    ...env.auth.adminEmails,
+    ...colaboradores.map((c) => (c.email ?? '').trim().toLowerCase()).filter(Boolean),
+  ]);
+  const comentariosCliente = comentariosDoCliente(comentariosDoPost, emailsDaEquipe);
   // Responsável da tarefa (Notion user) → página do colaborador.
   const colaboradorPorPessoa: Record<string, string> = {};
   for (const c of colaboradores) if (c.pessoaUserId) colaboradorPorPessoa[c.pessoaUserId] = c.id;
@@ -301,11 +337,26 @@ export default async function PostDetalhePage({
   const cardTarefas = (
     <TodasTarefasCard
       tarefas={tarefasDoPost}
-      colaboradores={colaboradorPorPessoa}
+      colaboradores={ehAdmin ? colaboradorPorPessoa : {}}
       historico={historicoPrazos}
       podeEditarPrazo={ehAdmin}
     />
   );
+
+  // Cliente pediu alteração → Luiza decide se é arte, copy ou as duas.
+  const pedidoAlteracao = tarefasDoPost.find(
+    (t) => t.titulo.trim() === 'Alteração | Post' && t.aberta && !t.finalizada,
+  );
+  const responsavelDe = (titulo: string) =>
+    tarefasDoPost.filter((t) => t.titulo.trim() === titulo).find((t) => t.pessoaNome)?.pessoaNome ?? null;
+  const painelAlteracao = ehAdmin ? (
+    <SolicitarAlteracao
+      postId={post.id}
+      pedido={pedidoAlteracao ? { tarefaId: pedidoAlteracao.tarefaId, prazo: pedidoAlteracao.prazo } : null}
+      comentarios={comentariosCliente}
+      responsaveis={{ arte: responsavelDe('Arte'), copy: responsavelDe('Briefing & Copy') }}
+    />
+  ) : null;
 
   const dias = diffDias(tarefaPrazo);
   const prazoLabel =
@@ -651,7 +702,7 @@ export default async function PostDetalhePage({
         </h1>
 
         {/* cabeçalho: prazo em destaque + postagem, formato e status */}
-        <div className={`grid gap-4 ${tarefaPrazo ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2.6fr)]' : ''}`}>
+        <div className={`grid gap-4 lg:gap-3 ${tarefaPrazo ? 'lg:grid-cols-[minmax(0,1.25fr)_minmax(0,2.4fr)]' : ''}`}>
           {tarefaPrazo && (
             <CardPrazo
               dias={dias}
@@ -668,8 +719,8 @@ export default async function PostDetalhePage({
               }
             />
           )}
-          <div className="flex flex-col justify-between gap-6 rounded-[28px] bg-white px-7 py-6">
-            <div className="flex flex-wrap gap-x-12 gap-y-4">
+          <div className="flex flex-col justify-between gap-6 rounded-[28px] bg-white px-7 py-6 lg:flex-row lg:items-center lg:gap-8 lg:rounded-2xl lg:px-5 lg:py-3.5">
+            <div className="flex flex-wrap gap-x-12 gap-y-4 lg:shrink-0 lg:gap-x-8">
               <DadoCabecalho rotulo="Postagem" valor={fmtData(post.data)} />
               <DadoCabecalho
                 rotulo="Formato"
@@ -687,7 +738,10 @@ export default async function PostDetalhePage({
           </dl>
         )}
 
+        {pedidoAlteracao && painelAlteracao}
+
         {semArte && cardTarefas}
+        {semArte && !pedidoAlteracao && painelAlteracao}
 
         {/* pré-visualização + legenda — usa PostPreview em modo readonly
             (sem painel de aprovação; equipe não aprova pelo cliente).
@@ -735,6 +789,7 @@ export default async function PostDetalhePage({
         )}
 
         {!semArte && cardTarefas}
+        {!semArte && !pedidoAlteracao && painelAlteracao}
 
         <Suspense fallback={null}>
           <HistoricoComentarios postId={post.id} />
@@ -745,6 +800,7 @@ export default async function PostDetalhePage({
 
         <ComunicacaoCard
           historico={historico}
+          comentarios={comentariosCliente}
           lembrete={
             tarefaCliente
               ? { tarefaId: tarefaCliente.tarefaId, titulo: tarefaCliente.titulo, clienteNome: post.projetoNome }
@@ -765,8 +821,8 @@ export default async function PostDetalhePage({
 function DadoCabecalho({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
     <div>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-t3">{rotulo}</div>
-      <div className="mt-1 text-[22px] font-semibold tracking-[-0.02em] text-ink">{valor}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-t3 lg:text-[10px]">{rotulo}</div>
+      <div className="mt-1 text-[22px] font-semibold tracking-[-0.02em] text-ink lg:mt-0.5 lg:text-[16px]">{valor}</div>
     </div>
   );
 }
@@ -800,19 +856,22 @@ function CardPrazo({
         ? `até ${fmtData(prazo)}`
         : null;
   return (
-    <div className="flex flex-col justify-between gap-4 rounded-[28px] px-7 py-6 text-white" style={{ background: fundo, color: '#fff' }}>
-      <div>
-        <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.12em]">
+    <div
+      className="flex flex-col justify-between gap-4 rounded-[28px] px-7 py-6 text-white lg:flex-row lg:items-center lg:gap-3 lg:rounded-2xl lg:px-5 lg:py-3.5"
+      style={{ background: fundo, color: '#fff' }}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.12em] lg:text-[10px]">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v5l3 2" />
           </svg>
           Prazo de aprovação
         </div>
-        <div className="mt-2 text-[40px] font-bold leading-none tracking-[-0.03em]">{grande}</div>
-        {detalhe && <div className="mt-1.5 text-[12.5px] opacity-85">{detalhe}</div>}
+        <div className="mt-2 text-[40px] font-bold leading-none tracking-[-0.03em] lg:mt-1 lg:text-[24px]">{grande}</div>
+        {detalhe && <div className="mt-1.5 text-[12.5px] opacity-85 lg:mt-1 lg:text-[11.5px]">{detalhe}</div>}
       </div>
-      {botao && <div style={{ color: fundo }}>{botao}</div>}
+      {botao && <div className="lg:shrink-0" style={{ color: fundo }}>{botao}</div>}
     </div>
   );
 }
