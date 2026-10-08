@@ -44,7 +44,7 @@ import { ComentariosLud } from './ComentariosLud';
 import { SolicitarAlteracao } from './SolicitarAlteracao';
 import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
 import { TarefaForm } from '../../tarefa/[id]/form';
-import { HistoricoBox } from '../../_components/HistoricoBox';
+import { HistoricoBox, type ComentarioItem } from '../../_components/HistoricoBox';
 
 export const dynamic = 'force-dynamic';
 
@@ -675,6 +675,55 @@ export default async function PostDetalhePage({
     (ehTarefaDoCliente(tarefaAtual.titulo) || /enviar post/i.test(tarefaAtual.titulo));
   const statusGeral = post.statusGeral ?? tarefaAtual?.titulo ?? null;
 
+  // Ciclo de alteração no histórico: alteração concluída, aprovação interna, reprovação.
+  const eventosAlteracao: ComentarioItem[] = tarefasDoPost.flatMap((t): ComentarioItem[] => {
+    const titulo = t.titulo.trim();
+    if (!t.finalizadaEm) return [];
+    const quem = t.pessoaNome ? ` · ${t.pessoaNome.split(' ')[0]}` : '';
+    if (/^altera[çc][ãa]o\s*\|/i.test(titulo) && t.status === 'Concluído') {
+      return [{ id: `ev-${t.tarefaId}`, texto: `✓ ${titulo} concluída${quem}`, criadoEm: t.finalizadaEm, evento: 'ok' }];
+    }
+    if (t.ordemUm === '03' && /^aprova[çc][ãa]o\s*\|/i.test(titulo)) {
+      if (t.status === 'Concluído') {
+        return [{ id: `ev-${t.tarefaId}`, texto: `✓ ${titulo} da alteração aprovada${quem}`, criadoEm: t.finalizadaEm, evento: 'ok' }];
+      }
+      if (t.status === 'Reprovado') {
+        return [{ id: `ev-${t.tarefaId}`, texto: `↺ ${titulo} da alteração reprovada${quem}, voltou pra ajuste`, criadoEm: t.finalizadaEm, evento: 'voltou' }];
+      }
+    }
+    return [];
+  });
+
+  // Alteração pronta e a nova aprovação esperando o cliente → reenviar.
+  const reaprovacao =
+    tarefaAtual && tarefaAtual.ordemUm === '03' && ehTarefaDoCliente(tarefaAtual.titulo) ? tarefaAtual : null;
+  const ms = (iso: string | null | undefined) => (iso ? Date.parse(iso) || 0 : 0);
+  const maisRecente = (lista: typeof tarefasDoPost) =>
+    [...lista].sort((a, b) => ms(b.finalizadaEm) - ms(a.finalizadaEm))[0] ?? null;
+  const ultimaAlteracao = reaprovacao
+    ? maisRecente(
+        tarefasDoPost.filter(
+          (t) => /^altera[çc][ãa]o\s*\|/i.test(t.titulo.trim()) && !/\|\s*post/i.test(t.titulo) && t.status === 'Concluído',
+        ),
+      )
+    : null;
+  const ultimaAprovacaoInterna = ultimaAlteracao
+    ? maisRecente(
+        tarefasDoPost.filter(
+          (t) =>
+            t.ordemUm === '03' &&
+            t.status === 'Concluído' &&
+            t.titulo.trim() === ultimaAlteracao.titulo.trim().replace(/^altera[çc][ãa]o/i, 'Aprovação'),
+        ),
+      )
+    : null;
+  const marcoAlteracao = ultimaAprovacaoInterna?.finalizadaEm ?? ultimaAlteracao?.finalizadaEm ?? '';
+  const reenvio = reaprovacao
+    ? historico.envios
+        .filter((e) => ms(e.enviadoEm) >= ms(marcoAlteracao))
+        .sort((a, b) => ms(b.enviadoEm) - ms(a.enviadoEm))[0] ?? null
+    : null;
+
   return (
     <div className="min-h-screen pb-32">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
@@ -724,7 +773,13 @@ export default async function PostDetalhePage({
                   <BotaoLembreteWpp
                     tarefaId={tarefaCliente.tarefaId}
                     clienteNome={post.projetoNome}
-                    rotulo={/aprova/i.test(tarefaCliente.titulo) ? 'Enviar para aprovação' : 'Lembrar cliente'}
+                    rotulo={
+                      reaprovacao && !reenvio
+                        ? 'Enviar reaprovação'
+                        : /aprova/i.test(tarefaCliente.titulo)
+                          ? 'Enviar para aprovação'
+                          : 'Lembrar cliente'
+                    }
                     branco
                   />
                 ) : null
@@ -751,6 +806,22 @@ export default async function PostDetalhePage({
         )}
 
         {pedidoAlteracao && painelAlteracao}
+
+        {reaprovacao && (
+          <CardAlteracaoConcluida
+            alteracao={ultimaAlteracao}
+            aprovacaoInterna={ultimaAprovacaoInterna}
+            reenvio={reenvio?.enviadoEm ?? null}
+            botao={
+              <BotaoLembreteWpp
+                tarefaId={reaprovacao.tarefaId}
+                clienteNome={post.projetoNome}
+                rotulo={reenvio ? 'Lembrar de novo' : 'Enviar reaprovação'}
+                verde={!reenvio}
+              />
+            }
+          />
+        )}
 
         {semArte && cardTarefas}
         {semArte && !pedidoAlteracao && painelAlteracao}
@@ -803,9 +874,7 @@ export default async function PostDetalhePage({
         {!semArte && cardTarefas}
         {!semArte && !pedidoAlteracao && painelAlteracao}
 
-        <Suspense fallback={null}>
-          <HistoricoComentarios postId={post.id} />
-        </Suspense>
+        <HistoricoBox comentarios={[...comentariosDoPost, ...eventosAlteracao]} />
 
         {/* Comentários (2 painéis: Com o cliente + Nota interna) */}
         <ComentariosLud postId={post.id} tarefaId={tarefaId} />
@@ -827,6 +896,55 @@ export default async function PostDetalhePage({
         />
       </main>
     </div>
+  );
+}
+
+function quandoFoi(iso: string | null | undefined): string {
+  if (!iso) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [, m, d] = iso.split('-');
+    return `${d}/${m}`;
+  }
+  const d = new Date(iso);
+  const data = d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
+  const hora = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+  return `${data} às ${hora}`;
+}
+
+/** Alteração feita e aprovada por dentro; falta mandar a nova versão pro cliente. */
+function CardAlteracaoConcluida({
+  alteracao,
+  aprovacaoInterna,
+  reenvio,
+  botao,
+}: {
+  alteracao: { titulo: string; pessoaNome: string | null; finalizadaEm: string | null } | null;
+  aprovacaoInterna: { titulo: string; pessoaNome: string | null; finalizadaEm: string | null } | null;
+  reenvio: string | null;
+  botao: React.ReactNode;
+}) {
+  const linha = (rotulo: string, t: { pessoaNome: string | null; finalizadaEm: string | null }) =>
+    [rotulo, t.pessoaNome?.split(' ')[0], quandoFoi(t.finalizadaEm)].filter(Boolean).join(' · ');
+  return (
+    <section className="card border-l-4 border-l-[var(--prazo-em-dia)] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--prazo-em-dia)]">
+            Alteração concluída ✓
+          </h2>
+          <ul className="mt-1.5 space-y-0.5 text-[12.5px] text-t2">
+            {alteracao && <li>{linha(alteracao.titulo, alteracao)}</li>}
+            {aprovacaoInterna && <li>{linha('Aprovada por dentro', aprovacaoInterna)}</li>}
+            <li className={reenvio ? 'text-t2' : 'font-semibold text-ink'}>
+              {reenvio
+                ? `Reaprovação enviada pro cliente · ${quandoFoi(reenvio)}`
+                : 'Falta mandar a nova versão pro cliente aprovar.'}
+            </li>
+          </ul>
+        </div>
+        <div className="shrink-0">{botao}</div>
+      </div>
+    </section>
   );
 }
 

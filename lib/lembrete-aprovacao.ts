@@ -6,7 +6,7 @@
  * Arquivo puro (sem acesso a banco) pra ser usado também na prévia do admin.
  */
 
-export type EtapaLembrete = 'pauta' | 'previos' | 'producao' | 'post';
+export type EtapaLembrete = 'pauta' | 'previos' | 'producao' | 'post' | 'reaprovacao';
 
 export type SituacaoLembrete =
   | 'no_prazo'
@@ -45,6 +45,12 @@ export const ETAPAS: {
     nome: 'Aprovação de post',
     condicao: 'Qualquer outra aprovação (post, arte, geral)',
     onboarding: 'De quinta a domingo. Alterações todas de uma vez, até 3 vezes.',
+  },
+  {
+    id: 'reaprovacao',
+    nome: 'Reaprovação (depois da alteração)',
+    condicao: 'Aprovação nova que nasce depois de uma alteração (Ordem (1) = 03 no Notion)',
+    onboarding: 'A equipe já fez os ajustes pedidos. O cliente revisa a nova versão; o post pode ser alterado até 3x.',
   },
 ];
 
@@ -106,6 +112,12 @@ export const PADRAO: Record<string, string> = {
   'lembrete.etapa.post.regra':
     'O post poderá ser alterado 3x apenas, então não esquece de enviar todas as solicitações que deseja em apenas uma solicitação 😉',
   'lembrete.etapa.post.verbo': 'aprovar',
+
+  'lembrete.etapa.reaprovacao.abertura': 'Fizemos os ajustes que você pediu nesse post ✨',
+  'lembrete.etapa.reaprovacao.acao': 'Dá uma olhada na nova versão e aprova por aqui:',
+  'lembrete.etapa.reaprovacao.regra':
+    'Se ainda faltar algum ajuste, manda tudo junto numa solicitação só, combinado? Lembrando que o post pode ser alterado até 3x 😉',
+  'lembrete.etapa.reaprovacao.verbo': 'aprovar',
 
   'lembrete.prazo.no_prazo': 'O prazo é até *{prazo_dia}*.',
   'lembrete.prazo.vence_amanha': 'O prazo termina *amanhã ({prazo})*.',

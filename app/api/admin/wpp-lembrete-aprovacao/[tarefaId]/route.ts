@@ -5,6 +5,7 @@ import {
   getTarefaComPost,
   getEmpresaDetalhe,
   listAllProjetos,
+  listarTarefasDoPost,
 } from '@/lib/notion';
 import { getGruposWhatsappDoProjeto, registrarEnvioAvulso } from '@/lib/supabase';
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
@@ -70,7 +71,15 @@ export async function POST(
 
   const apelido = grupo?.apelido?.trim() || null;
   const textos = await lerMensagensEditadas();
+  // Aprovação nova depois de uma alteração (Ordem (1) = 03) → mensagem de reaprovação.
+  const daTarefa = t.postId
+    ? (await listarTarefasDoPost(t.postId).catch(() => [])).find(
+        (x) => x.tarefaId.replace(/-/g, '') === params.tarefaId.replace(/-/g, ''),
+      )
+    : undefined;
+  const reaprovacao = !!daTarefa && daTarefa.ordemUm === '03' && /aprova/i.test(t.tarefaTitulo);
   const lembrete = montarLembrete({
+    forcarEtapa: reaprovacao ? 'reaprovacao' : undefined,
     textos,
     apelido: apelido ?? nomeCliente,
     tarefaTitulo: t.tarefaTitulo,
@@ -88,6 +97,7 @@ export async function POST(
 
   if (body.apenasPrevia) {
     return NextResponse.json({
+      reaprovacao,
       mensagem: mensagemPadrao,
       clienteNome: nomeCliente,
       apelido,
@@ -126,6 +136,7 @@ export async function POST(
   await registrarEnvioAvulso({
     projetoId: t.projetoId,
     postId: t.postId,
+    momento: reaprovacao ? 'reaprovacao' : undefined,
     situacao: lembrete.situacao.codigo,
     texto: mensagem,
     grupoId: grupo.id,

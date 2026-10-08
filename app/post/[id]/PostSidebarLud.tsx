@@ -679,6 +679,7 @@ const MOMENTO_LABEL: Record<string, string> = {
   segunda_tarde: 'Último dia (tarde)',
   terca: 'Prazo vencido',
   avulso: 'Lembrete avulso',
+  reaprovacao: 'Reaprovação enviada (depois da alteração)',
   geral: 'Mensagem geral do projeto',
 };
 

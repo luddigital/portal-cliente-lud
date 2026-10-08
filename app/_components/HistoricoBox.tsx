@@ -6,9 +6,16 @@ export type ComentarioItem = {
   id: string;
   texto: string;
   criadoEm: string;
+  /** Evento do processo (alteração concluída etc.), não um comentário escrito. */
+  evento?: 'ok' | 'voltou';
 };
 
 function fmtDataHora(iso: string): string {
+  // Só a data (sem hora): mostra o dia sem converter fuso.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const dd = String(d.getDate()).padStart(2, '0');
@@ -43,12 +50,30 @@ export function HistoricoBox({ comentarios }: { comentarios: ComentarioItem[] })
       </div>
       <p className="mt-0.5 text-[12px] text-t3">Tudo o que foi conversado sobre esse post, do mais recente pro mais antigo.</p>
       <ul className="mt-4 space-y-4">
-        {lista.map((c) => (
-          <li key={c.id} className="border-l-2 border-[rgba(21,21,33,0.15)] pl-3">
-            <div className="text-[11px] font-medium text-t3">{fmtDataHora(c.criadoEm)}</div>
-            <p className="mt-1 whitespace-pre-line text-[13.5px] leading-[1.55] text-ink">{c.texto}</p>
-          </li>
-        ))}
+        {lista.map((c) =>
+          c.evento ? (
+            <li
+              key={c.id}
+              className={`border-l-2 pl-3 ${
+                c.evento === 'ok' ? 'border-[var(--prazo-em-dia)]' : 'border-[var(--cal-alteracao)]'
+              }`}
+            >
+              <div className="text-[11px] font-medium text-t3">{fmtDataHora(c.criadoEm)}</div>
+              <p
+                className={`mt-0.5 text-[13px] font-semibold ${
+                  c.evento === 'ok' ? 'text-[var(--prazo-em-dia)]' : 'text-[var(--cal-alteracao)]'
+                }`}
+              >
+                {c.texto}
+              </p>
+            </li>
+          ) : (
+            <li key={c.id} className="border-l-2 border-[rgba(21,21,33,0.15)] pl-3">
+              <div className="text-[11px] font-medium text-t3">{fmtDataHora(c.criadoEm)}</div>
+              <p className="mt-1 whitespace-pre-line text-[13.5px] leading-[1.55] text-ink">{c.texto}</p>
+            </li>
+          ),
+        )}
       </ul>
       {ordenados.length > VISIVEIS && (
         <button

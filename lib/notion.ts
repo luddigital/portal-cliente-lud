@@ -1697,6 +1697,8 @@ export type TarefaDoPost = {
   status: string | null;
   prazo: string | null;
   finalizada: string | null;
+  /** "Finalizada em" como veio do Notion (com hora, quando tem). */
+  finalizadaEm: string | null;
   pessoaNome: string | null;
   pessoaAvatar: string | null;
   /** Notion user id do responsável (liga com a página do colaborador). */
@@ -1742,9 +1744,9 @@ async function _listarTarefasDoPostUncached(
       const titulo = txt(titleProp?.title) || '';
       const status =
         getProp(t, env.notion.taskProps.status)?.status?.name ?? null;
-      const finalizada = dataEmSaoPaulo(
-        getProp(t, 'Finalizada em ')?.date?.start ?? getProp(t, 'Finalizada em')?.date?.start,
-      );
+      const finalizadaEm =
+        getProp(t, 'Finalizada em ')?.date?.start ?? getProp(t, 'Finalizada em')?.date?.start ?? null;
+      const finalizada = dataEmSaoPaulo(finalizadaEm);
       // Dia em Brasília: datas com horário em UTC caíam no dia errado e
       // embaralhavam a ordem das tarefas.
       const prazo = dataEmSaoPaulo(
@@ -1760,6 +1762,7 @@ async function _listarTarefasDoPostUncached(
         status,
         prazo,
         finalizada,
+        finalizadaEm,
         pessoaNome: pessoa?.name ?? null,
         pessoaAvatar: pessoa?.avatar_url ?? null,
         pessoaId: pessoa?.id ?? null,
@@ -1791,7 +1794,7 @@ async function _listarTarefasDoPostUncached(
 
 const _listarTarefasDoPostCached = unstable_cache(
   _listarTarefasDoPostUncached,
-  ['listar-tarefas-do-post-v4'],
+  ['listar-tarefas-do-post-v5'],
   { revalidate: 30, tags: [TAG_TAREFAS] },
 );
 
@@ -3500,6 +3503,8 @@ function montarPropsHerdadas(
     pessoaIds?: string[];
     /** Troca a entrega herdada (ex.: "Alteração", "Aprovação de alteração"). */
     entregaId?: string;
+    /** Troca a "Ordem" herdada (a alteração usa a Ordem da aprovação). */
+    ordem?: string | null;
   },
 ): any {
   const props: any = {
@@ -3536,7 +3541,9 @@ function montarPropsHerdadas(
     }
   }
 
-  const ordem = getProp(tarefaOriginal, 'Ordem')?.select;
+  const ordem = overrides.ordem
+    ? { name: overrides.ordem }
+    : getProp(tarefaOriginal, 'Ordem')?.select;
   if (ordem) props['Ordem'] = { select: { name: ordem.name } };
 
   const tipoOrig = getProp(tarefaOriginal, 'tipo original')?.select;
@@ -3692,6 +3699,8 @@ export async function solicitarAlteracaoDoPost(params: {
     const maeId = (producao ?? alteracaoPost ?? modelo).id;
 
     const pessoaAlteracao = producao ? pessoasDe(producao) : [];
+    // No Notion, alteração e nova aprovação ficam na Ordem da aprovação (ex.: Arte 12 → 13).
+    const ordemDoCiclo = aprovacaoAnterior ? getProp(aprovacaoAnterior, 'Ordem')?.select?.name ?? null : null;
     const alteracao = (await comRetry(() =>
       notion.pages.create({
         parent: { database_id: env.notion.tarefasDbId },
@@ -3703,6 +3712,7 @@ export async function solicitarAlteracaoDoPost(params: {
           prazoIso,
           pessoaIds: pessoaAlteracao.length > 0 ? pessoaAlteracao : undefined,
           entregaId: ENTREGA_ALTERACAO,
+          ordem: ordemDoCiclo,
         }),
       }),
     )) as any;
@@ -3740,6 +3750,7 @@ export async function solicitarAlteracaoDoPost(params: {
           prazoIso,
           pessoaIds: pessoaAprovacao.length > 0 ? pessoaAprovacao : undefined,
           entregaId: ENTREGA_APROVACAO_ALTERACAO,
+          ordem: ordemDoCiclo,
         }),
       }),
     )) as any;

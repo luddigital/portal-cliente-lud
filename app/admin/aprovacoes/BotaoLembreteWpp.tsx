@@ -33,6 +33,7 @@ export function BotaoLembreteWpp({
   clienteNome,
   rotulo,
   branco = false,
+  verde = false,
 }: {
   tarefaId: string;
   clienteNome: string;
@@ -40,6 +41,8 @@ export function BotaoLembreteWpp({
   rotulo?: string;
   /** Botão branco (sobre fundo colorido), sem ícone. A cor do texto vem do pai. */
   branco?: boolean;
+  /** Verde do design system: envio de algo pro cliente (ex.: reaprovação). */
+  verde?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [enviado, setEnviado] = useState(false);
@@ -57,7 +60,9 @@ export function BotaoLembreteWpp({
             ? 'bg-white px-5 py-2 text-[14px] text-current hover:bg-white/90'
             : enviado
               ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
-              : rotulo
+              : verde
+                ? 'bg-[var(--prazo-em-dia)] text-white hover:opacity-90'
+                : rotulo
                 ? 'bg-ink text-white hover:opacity-90'
                 : 'bg-bgSoft text-t2 hover:bg-ink hover:text-white'
         }`}
