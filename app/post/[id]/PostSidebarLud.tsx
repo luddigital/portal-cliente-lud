@@ -408,6 +408,7 @@ export function TodasTarefasCard({
   const feita = (t: TarefaDoPost) => !t.aberta || !!t.finalizada;
   const abertas = tarefas.filter((t) => !feita(t) || t.tarefaId in agora).sort(porOrdem);
   const concluidas = tarefas.filter((t) => feita(t) && !(t.tarefaId in agora)).sort(porOrdem);
+  const atualId = abertas.find((t) => !feita(t))?.tarefaId ?? null;
   const total = tarefas.length;
   const nFeitas = tarefas.filter(feita).length;
   const pct = total > 0 ? Math.round((nFeitas / total) * 100) : 0;
@@ -496,6 +497,11 @@ export function TodasTarefasCard({
         >
           {t.titulo}
           {t.status === 'Reprovado' && <span className="ml-1.5 text-[11px] text-t3">(reprovado)</span>}
+          {t.tarefaId === atualId && (
+            <span className="ml-2 rounded-full bg-[var(--prazo-hoje-soft)] px-1.5 py-0.5 align-middle text-[9.5px] font-bold uppercase tracking-[0.06em] text-[var(--prazo-hoje)]">
+              agora
+            </span>
+          )}
         </span>
         <Responsavel
           nome={t.pessoaNome}
@@ -710,20 +716,73 @@ export type ComentarioCliente = {
   trecho: string;
 };
 
-const COMENTARIO_LABEL: Record<ComentarioCliente['tipo'], { icone: string; texto: string }> = {
-  comentou: { icone: '💬', texto: 'Cliente comentou' },
-  aprovou: { icone: '✅', texto: 'Cliente aprovou' },
-  alteracao: { icone: '🔁', texto: 'Cliente pediu alteração' },
-  enviou: { icone: '📎', texto: 'Cliente enviou materiais' },
+/** Item do histórico do post: comentário (cliente ou equipe) ou evento do processo. */
+export type NotaHistorico = {
+  id: string;
+  quando: string;
+  tipo:
+    | 'cliente_comentou'
+    | 'cliente_aprovou'
+    | 'cliente_alteracao'
+    | 'cliente_enviou'
+    | 'equipe'
+    | 'ok'
+    | 'voltou';
+  autor: string | null;
+  titulo: string;
+  corpo: string;
 };
 
+const ICONE_NOTA: Record<NotaHistorico['tipo'], string> = {
+  cliente_comentou: '💬',
+  cliente_aprovou: '✅',
+  cliente_alteracao: '🔁',
+  cliente_enviou: '📎',
+  equipe: '📝',
+  ok: '✓',
+  voltou: '↺',
+};
+
+const DO_CLIENTE = new Set<NotaHistorico['tipo']>([
+  'cliente_comentou',
+  'cliente_aprovou',
+  'cliente_alteracao',
+  'cliente_enviou',
+]);
+
+function quandoCurto(iso: string): string {
+  // Só a data (sem hora): mostra o dia sem converter fuso.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [, m, d] = iso.split('-');
+    return `${d}/${m}`;
+  }
+  return fmtDataHora(iso);
+}
+
+const ms = (iso: string) => Date.parse(iso) || 0;
+
+type LinhaDoTempo = {
+  id: string;
+  quando: string;
+  icone: string;
+  titulo: string;
+  corpo: string;
+  quem: string | null;
+  cor?: string;
+};
+
+/**
+ * Comunicação com o cliente + histórico do post numa linha do tempo só:
+ * comentários (cliente e equipe), aberturas do portal, lembretes enviados e
+ * eventos do processo (alteração concluída, reprovada…).
+ */
 export function ComunicacaoCard({
   historico,
   lembrete,
-  comentarios = [],
+  notas = [],
 }: {
-  /** Comentários do cliente no post (aprovou, pediu alteração, comentou…). */
-  comentarios?: ComentarioCliente[];
+  /** Comentários do post e eventos do processo, já classificados. */
+  notas?: NotaHistorico[];
   /** Tarefa que está com o cliente agora (pra mandar lembrete). */
   lembrete?: { tarefaId: string; titulo: string; clienteNome: string } | null;
   historico: {
@@ -732,33 +791,56 @@ export function ComunicacaoCard({
   };
 }) {
   const [verTudo, setVerTudo] = useState(false);
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const { visualizacoes, envios } = historico;
-  const eventos = [
-    ...envios.map((e) => ({
+  const linhas: LinhaDoTempo[] = [
+    ...envios.map((e, i) => ({
+      id: `envio-${i}-${e.enviadoEm}`,
       quando: e.enviadoEm,
       icone: '📱',
-      texto: [MOMENTO_LABEL[e.momento] ?? e.momento, e.variante ? VARIANTE_LABEL[e.variante] : null]
+      titulo: [MOMENTO_LABEL[e.momento] ?? e.momento, e.variante ? VARIANTE_LABEL[e.variante] : null]
         .filter(Boolean)
         .join(' · '),
+      corpo: '',
       quem: e.enviadoPor ? `por ${e.enviadoPor.split('@')[0]}` : null,
     })),
-    ...visualizacoes.map((v) => ({
+    ...visualizacoes.map((v, i) => ({
+      id: `vista-${i}-${v.vistoEm}`,
       quando: v.vistoEm,
       icone: '👁',
-      texto: 'Cliente abriu o post',
+      titulo: 'Cliente abriu o post',
+      corpo: '',
       quem: v.email,
     })),
-    ...comentarios.map((c) => ({
-      quando: c.quando,
-      icone: COMENTARIO_LABEL[c.tipo].icone,
-      texto: c.trecho ? `${COMENTARIO_LABEL[c.tipo].texto}: “${c.trecho.replace(/\s+/g, ' ')}”` : COMENTARIO_LABEL[c.tipo].texto,
-      quem: c.autor,
+    ...notas.map((n) => ({
+      id: n.id,
+      quando: n.quando,
+      icone: ICONE_NOTA[n.tipo],
+      titulo: n.titulo,
+      corpo: n.corpo,
+      quem: n.autor,
+      cor:
+        n.tipo === 'ok'
+          ? 'var(--prazo-em-dia)'
+          : n.tipo === 'voltou' || n.tipo === 'cliente_alteracao'
+            ? 'var(--cal-alteracao)'
+            : undefined,
     })),
-  ].sort((a, b) => b.quando.localeCompare(a.quando));
-  const ultimoComentario = [...comentarios].sort((a, b) => b.quando.localeCompare(a.quando))[0];
-  const visiveis = verTudo ? eventos : eventos.slice(0, 6);
+  ].sort((a, b) => ms(b.quando) - ms(a.quando));
+
+  const doCliente = notas.filter((n) => DO_CLIENTE.has(n.tipo)).sort((a, b) => ms(b.quando) - ms(a.quando));
+  const visiveis = verTudo ? linhas : linhas.slice(0, 8);
   const ultimaVista = visualizacoes[0]?.vistoEm;
   const ultimoEnvio = envios[0]?.enviadoEm;
+
+  function alternar(id: string) {
+    setAbertos((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
 
   return (
     <div className="card p-5">
@@ -792,39 +874,72 @@ export function ComunicacaoCard({
         <div className="rounded-xl bg-bgSoft/60 px-3 py-2.5">
           <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-t3">Cliente comentou</div>
           <div className="mt-0.5 text-[18px] font-semibold text-ink">
-            {comentarios.length} {comentarios.length === 1 ? 'vez' : 'vezes'}
+            {doCliente.length} {doCliente.length === 1 ? 'vez' : 'vezes'}
           </div>
           <div className="text-[11px] text-t3">
-            {ultimoComentario
-              ? `${COMENTARIO_LABEL[ultimoComentario.tipo].texto.replace('Cliente ', '')} ${fmtDataHora(ultimoComentario.quando)}`
-              : 'nenhum comentário'}
+            {doCliente[0] ? `último ${quandoCurto(doCliente[0].quando)}` : 'nenhum comentário'}
           </div>
         </div>
       </div>
 
-      {eventos.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {visiveis.map((e, i) => (
-            <li key={`${e.quando}-${i}`} className="flex items-baseline gap-2 text-[12px]">
-              <span className="w-[86px] shrink-0 font-mono text-[10.5px] text-t3">{fmtDataHora(e.quando)}</span>
-              <span className="shrink-0">{e.icone}</span>
-              <span className="min-w-0 flex-1 truncate text-t1">{e.texto}</span>
-              {e.quem && <span className="hidden shrink-0 text-[11px] text-t3 sm:inline">{e.quem}</span>}
-            </li>
-          ))}
-        </ul>
+      {linhas.length > 0 && (
+        <>
+          <div className="mt-4 text-[10px] font-bold uppercase tracking-[0.1em] text-t3">Histórico</div>
+          <ul className="mt-1.5 divide-y divide-[rgba(21,21,33,0.05)]">
+            {visiveis.map((l) => {
+              const aberto = abertos.has(l.id);
+              const longo = l.corpo.length > 180 || l.corpo.split('\n').length > 3;
+              return (
+                <li key={l.id} className="flex items-start gap-2.5 py-2 text-[12.5px]">
+                  <span className="w-[86px] shrink-0 pt-px font-mono text-[10.5px] text-t3">{quandoCurto(l.quando)}</span>
+                  <span className="w-4 shrink-0 text-center" style={l.cor ? { color: l.cor } : undefined}>
+                    {l.icone}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                      <span className="font-medium text-t1" style={l.cor ? { color: l.cor } : undefined}>
+                        {l.titulo}
+                      </span>
+                      {l.quem && <span className="text-[11px] text-t3">{l.quem}</span>}
+                    </div>
+                    {l.corpo && (
+                      <div className="mt-1">
+                        <p
+                          className={`whitespace-pre-line rounded-lg bg-bgSoft/70 px-2.5 py-1.5 text-[12.5px] leading-[1.5] text-ink ${
+                            longo && !aberto ? 'line-clamp-3' : ''
+                          }`}
+                        >
+                          {l.corpo}
+                        </p>
+                        {longo && (
+                          <button
+                            type="button"
+                            onClick={() => alternar(l.id)}
+                            className="mt-0.5 text-[11px] font-semibold text-t3 hover:text-ink"
+                          >
+                            {aberto ? 'ver menos' : 'ver tudo'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
-      {eventos.length > 6 && (
+      {linhas.length > 8 && (
         <button
           type="button"
           onClick={() => setVerTudo((v) => !v)}
           className="mt-2 text-[11.5px] font-semibold text-t3 transition hover:text-ink"
         >
-          {verTudo ? 'Ver menos' : `Ver tudo (${eventos.length})`}
+          {verTudo ? 'Ver menos' : `Ver tudo (${linhas.length})`}
         </button>
       )}
       <p className="mt-2 text-[10.5px] text-t3">
-        Visualizações contam desde 06/10. Acessos e comentários da equipe não entram.
+        Visualizações contam desde 06/10. Acessos da equipe não entram.
       </p>
     </div>
   );

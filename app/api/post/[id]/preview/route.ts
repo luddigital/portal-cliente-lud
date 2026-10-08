@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { getPostComDetalhes, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
+import { compararNoFluxo } from '@/lib/etapas-projeto';
 import { extractDriveFileId, extractDriveFolderId, listFolderFiles } from '@/lib/drive';
 
 export const runtime = 'nodejs';
@@ -96,8 +97,12 @@ export async function GET(
     formato:
       post.formato.map((f) => f.name).join(', ') ||
       ({ post: 'Carrossel', reels: 'Reels', story: 'Stories', desconhecido: '' } as const)[post.formatoTipo],
-    // Etapa como no Notion ("Alteração | Arte"); sem ela, o Status do post.
-    status: post.statusGeral ?? post.status,
+    // Etapa como no Notion: primeira tarefa aberta na Ordem ("Alteração | Arte");
+    // sem tarefa aberta, a fórmula Status Geral ou o Status do post.
+    status:
+      tarefas.filter((t) => t.aberta).sort((a, b) => compararNoFluxo(a as any, b as any))[0]?.titulo ??
+      post.statusGeral ??
+      post.status,
     arquivos,
     tarefas,
     colaboradores: colaboradorPorPessoa,

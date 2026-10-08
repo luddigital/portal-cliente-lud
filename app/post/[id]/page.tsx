@@ -39,12 +39,13 @@ import {
   ProgramacaoCard,
   ComunicacaoCard,
   type ComentarioCliente,
+  type NotaHistorico,
 } from './PostSidebarLud';
 import { ComentariosLud } from './ComentariosLud';
 import { SolicitarAlteracao } from './SolicitarAlteracao';
 import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
 import { TarefaForm } from '../../tarefa/[id]/form';
-import { HistoricoBox, type ComentarioItem } from '../../_components/HistoricoBox';
+import { HistoricoBox } from '../../_components/HistoricoBox';
 
 export const dynamic = 'force-dynamic';
 
@@ -126,6 +127,51 @@ function comentariosDoCliente(
       out.push({ quando: c.criadoEm, tipo: 'alteracao', autor: null, trecho: corpo(t) });
     } else if (/— recebida do cliente/.test(t)) {
       out.push({ quando: c.criadoEm, tipo: 'enviou', autor: null, trecho: '' });
+    }
+  }
+  return out;
+}
+
+/**
+ * Comentários do Notion viram itens do histórico: o que veio do cliente pelo
+ * portal (prefixos fixos) e o resto como nota da equipe.
+ */
+function notasDosComentarios(
+  lista: { id: string; texto: string; criadoEm: string }[],
+  equipe: Set<string>,
+): NotaHistorico[] {
+  const out: NotaHistorico[] = [];
+  const corpoDepoisDaPrimeira = (t: string) => t.split(/\n\s*\n/).slice(1).join('\n\n').trim();
+  for (const c of lista) {
+    const t = c.texto.trim();
+    const base = { id: c.id, quando: c.criadoEm };
+    const m = t.match(/^💬\s*(\S+@\S+)\s*\n+([\s\S]*)$/);
+    if (m) {
+      const email = m[1].toLowerCase();
+      const daEquipe = equipe.has(email) || email.endsWith('@lud.digital');
+      out.push({
+        ...base,
+        tipo: daEquipe ? 'equipe' : 'cliente_comentou',
+        titulo: daEquipe ? 'Equipe comentou' : 'Cliente comentou',
+        autor: email,
+        corpo: m[2].trim(),
+      });
+    } else if (/— aprovado pelo cliente/.test(t)) {
+      const etapa = t.split('\n')[0].replace(/^✅\s*/, '').replace(/\s*— aprovado pelo cliente\.?$/, '');
+      out.push({ ...base, tipo: 'cliente_aprovou', titulo: `Cliente aprovou · ${etapa}`, autor: null, corpo: corpoDepoisDaPrimeira(t) });
+    } else if (/— alteração solicitada pelo cliente/.test(t)) {
+      out.push({ ...base, tipo: 'cliente_alteracao', titulo: 'Cliente pediu alteração', autor: null, corpo: corpoDepoisDaPrimeira(t) });
+    } else if (/— recebida do cliente/.test(t)) {
+      out.push({ ...base, tipo: 'cliente_enviou', titulo: 'Cliente enviou materiais', autor: null, corpo: t.split('\n').slice(1).join('\n').trim() });
+    } else {
+      const [primeira, ...resto] = t.split('\n');
+      out.push({
+        ...base,
+        tipo: 'equipe',
+        titulo: primeira.length <= 90 ? primeira : 'Nota da equipe',
+        autor: null,
+        corpo: primeira.length <= 90 ? resto.join('\n').trim() : t,
+      });
     }
   }
   return out;
@@ -673,26 +719,28 @@ export default async function PostDetalhePage({
     !!tarefaCliente &&
     !!tarefaAtual &&
     (ehTarefaDoCliente(tarefaAtual.titulo) || /enviar post/i.test(tarefaAtual.titulo));
-  const statusGeral = post.statusGeral ?? tarefaAtual?.titulo ?? null;
+  // A tarefa atual vem da lista de tarefas (atualiza em segundos); a fórmula
+  // "Status Geral" vem da página do post, que fica em cache por alguns minutos.
+  const statusGeral = tarefaAtual?.titulo ?? post.statusGeral ?? null;
 
   // Ciclo de alteração no histórico: alteração concluída, aprovação interna, reprovação.
-  const eventosAlteracao: ComentarioItem[] = tarefasDoPost.flatMap((t): ComentarioItem[] => {
+  const eventosAlteracao: NotaHistorico[] = tarefasDoPost.flatMap((t): NotaHistorico[] => {
     const titulo = t.titulo.trim();
     if (!t.finalizadaEm) return [];
-    const quem = t.pessoaNome ? ` · ${t.pessoaNome.split(' ')[0]}` : '';
+    const quem = t.pessoaNome ? t.pessoaNome.split(' ')[0] : null;
+    const base = { id: `ev-${t.tarefaId}`, quando: t.finalizadaEm, autor: quem, corpo: '' };
     if (/^altera[çc][ãa]o\s*\|/i.test(titulo) && t.status === 'Concluído') {
-      return [{ id: `ev-${t.tarefaId}`, texto: `✓ ${titulo} concluída${quem}`, criadoEm: t.finalizadaEm, evento: 'ok' }];
+      return [{ ...base, tipo: 'ok', titulo: `${titulo} concluída` }];
     }
     if (t.ordemUm === '03' && /^aprova[çc][ãa]o\s*\|/i.test(titulo)) {
-      if (t.status === 'Concluído') {
-        return [{ id: `ev-${t.tarefaId}`, texto: `✓ ${titulo} da alteração aprovada${quem}`, criadoEm: t.finalizadaEm, evento: 'ok' }];
-      }
+      if (t.status === 'Concluído') return [{ ...base, tipo: 'ok', titulo: `${titulo} da alteração aprovada` }];
       if (t.status === 'Reprovado') {
-        return [{ id: `ev-${t.tarefaId}`, texto: `↺ ${titulo} da alteração reprovada${quem}, voltou pra ajuste`, criadoEm: t.finalizadaEm, evento: 'voltou' }];
+        return [{ ...base, tipo: 'voltou', titulo: `${titulo} da alteração reprovada, voltou pra ajuste` }];
       }
     }
     return [];
   });
+  const notasDoHistorico = [...notasDosComentarios(comentariosDoPost, emailsDaEquipe), ...eventosAlteracao];
 
   // Alteração pronta e a nova aprovação esperando o cliente → reenviar.
   const reaprovacao =
@@ -874,14 +922,12 @@ export default async function PostDetalhePage({
         {!semArte && cardTarefas}
         {!semArte && !pedidoAlteracao && painelAlteracao}
 
-        <HistoricoBox comentarios={[...comentariosDoPost, ...eventosAlteracao]} />
-
         {/* Comentários (2 painéis: Com o cliente + Nota interna) */}
         <ComentariosLud postId={post.id} tarefaId={tarefaId} />
 
         <ComunicacaoCard
           historico={historico}
-          comentarios={comentariosCliente}
+          notas={notasDoHistorico}
           lembrete={
             tarefaCliente
               ? { tarefaId: tarefaCliente.tarefaId, titulo: tarefaCliente.titulo, clienteNome: post.projetoNome }
