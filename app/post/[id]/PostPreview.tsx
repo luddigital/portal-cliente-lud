@@ -83,6 +83,7 @@ export function PostPreview({
   legenda,
   voltarPara = '/',
   aprovacaoColaborativa = false,
+  ladoALado = false,
 }: {
   arquivos: PreviewArquivo[];
   formatoTipo: FormatoTipo;
@@ -92,6 +93,8 @@ export function PostPreview({
   legenda?: string | null;
   voltarPara?: string;
   aprovacaoColaborativa?: boolean;
+  /** Visão Lud.: imagem e legenda lado a lado (como no popup). */
+  ladoALado?: boolean;
 }) {
   const info = FORMATO_INFO[formatoTipo] ?? FORMATO_INFO.desconhecido;
   const router = useRouter();
@@ -486,7 +489,9 @@ export function PostPreview({
       className={
         tarefaId
           ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_clamp(380px,40%,560px)] lg:gap-6 lg:items-start'
-          : ''
+          : ladoALado && legenda
+            ? 'lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:gap-6 lg:items-start'
+            : ''
       }
     >
       <div className="space-y-6">
@@ -500,7 +505,7 @@ export function PostPreview({
         onVideoPlay={() => setPausadoEm(null)}
       />
 
-      {legenda && (
+      {legenda && !(ladoALado && !tarefaId) && (
         <LegendaEditavel postId={postId} legendaInicial={legenda} />
       )}
 
@@ -518,6 +523,12 @@ export function PostPreview({
         </div>
       )}
       </div>
+
+      {legenda && ladoALado && !tarefaId && (
+        <div className="mt-6 lg:sticky lg:top-6 lg:mt-0">
+          <LegendaEditavel postId={postId} legendaInicial={legenda} />
+        </div>
+      )}
 
       {tarefaId && (
         <div className="mt-6 lg:mt-0">
@@ -969,7 +980,7 @@ function Carousel({
   }
 
   return (
-    <div className="space-y-3 lg:mx-auto lg:max-w-[60vh]">
+    <div className="space-y-3 lg:mx-auto lg:w-full lg:max-w-[min(85vh,720px)]">
       <div className="relative">
         <div
           ref={trackRef}
@@ -1037,6 +1048,58 @@ function Carousel({
   );
 }
 
+/**
+ * Botão lupa — abre a imagem em overlay fullscreen com zoom.
+ * Útil pros clientes verem detalhes sem precisar baixar.
+ */
+function AbrirFullscreen({ src, nome }: { src: string; nome: string }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setAberto(true);
+        }}
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 backdrop-blur text-ink shadow-md hover:bg-white transition"
+        title="Ver em tamanho real"
+      >
+        <span className="text-[16px]">🔍</span>
+      </button>
+      {aberto && (
+        <div
+          onClick={() => setAberto(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm cursor-zoom-out"
+        >
+          <img
+            src={src}
+            alt={nome}
+            className="max-h-full max-w-full object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setAberto(false)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-ink shadow-md hover:bg-white transition"
+            aria-label="Fechar"
+          >
+            ✕
+          </button>
+          <a
+            href={src}
+            download={nome}
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-[13px] font-semibold text-ink shadow-md hover:bg-white transition"
+          >
+            ⬇ Baixar em alta
+          </a>
+        </div>
+      )}
+    </>
+  );
+}
+
 function SlidePreview({
   arquivo,
   prioridade,
@@ -1092,13 +1155,31 @@ function SlidePreview({
       );
     }
     return (
-      <img
-        src={proxySrc}
-        alt={arquivo.name}
-        className="absolute inset-0 h-full w-full object-contain"
-        loading={prioridade ? 'eager' : 'lazy'}
-        onError={() => setImgFalhou(true)}
-      />
+      <>
+        <img
+          src={proxySrc}
+          alt={arquivo.name}
+          className="absolute inset-0 h-full w-full object-contain"
+          loading={prioridade ? 'eager' : 'lazy'}
+          onError={() => setImgFalhou(true)}
+        />
+        {/* Controles no canto superior direito do slide:
+            lupa (abre fullscreen) + download (baixa em alta pro Word) */}
+        {isActive && (
+          <div className="absolute right-2 top-2 flex gap-1 z-10">
+            <AbrirFullscreen src={proxySrc} nome={arquivo.name} />
+            <a
+              href={proxySrc}
+              download={arquivo.name}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 backdrop-blur text-ink shadow-md hover:bg-white transition"
+              title="Baixar imagem em alta (pro Word, apresentação, etc)"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="text-[16px]">⬇</span>
+            </a>
+          </div>
+        )}
+      </>
     );
   }
   if (ehAudio) {

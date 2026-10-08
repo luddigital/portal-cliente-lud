@@ -31,9 +31,12 @@ function corDaSituacao(codigo: string): { bg: string; fg: string } {
 export function BotaoLembreteWpp({
   tarefaId,
   clienteNome,
+  rotulo,
 }: {
   tarefaId: string;
   clienteNome: string;
+  /** Texto do botão em versão maior (ex.: "Lembrar cliente: Aprovação | Post"). */
+  rotulo?: string;
 }) {
   const [aberto, setAberto] = useState(false);
   const [enviado, setEnviado] = useState(false);
@@ -44,13 +47,17 @@ export function BotaoLembreteWpp({
         type="button"
         onClick={() => setAberto(true)}
         title={`Enviar lembrete de aprovação no grupo de ${clienteNome}`}
-        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-semibold transition ${
+        className={`inline-flex items-center gap-1.5 rounded-full font-semibold transition ${
+          rotulo ? 'px-3.5 py-1.5 text-[12px]' : 'px-2.5 py-1 text-[10.5px]'
+        } ${
           enviado
             ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
-            : 'bg-bgSoft text-t2 hover:bg-ink hover:text-white'
+            : rotulo
+              ? 'bg-ink text-white hover:opacity-90'
+              : 'bg-bgSoft text-t2 hover:bg-ink hover:text-white'
         }`}
       >
-        {enviado ? '✓ enviado' : '📱 lembrar'}
+        {enviado ? '✓ enviado' : rotulo ? `📱 ${rotulo}` : '📱 lembrar'}
       </button>
       {aberto && (
         <ModalLembrete

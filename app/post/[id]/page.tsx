@@ -20,6 +20,7 @@ import {
   type DriveFileResumido,
 } from '@/lib/drive';
 import { env } from '@/lib/env';
+import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import {
   lerConfigProgramacao,
   lerHistoricoComunicacao,
@@ -620,36 +621,29 @@ export default async function PostDetalhePage({
       </header>
 
       <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6">
-        {/* etapa atual + status (chips trocam o Status Geral no Notion) */}
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cal-aprovacao-soft)] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--cal-aprovacao)]">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-            {etapaLabel}
-          </span>
-          <StatusDoPostChips postId={post.id} status={post.status} />
-        </div>
-
         <h1 className="text-[22px] sm:text-[28px] font-semibold tracking-[-0.03em] text-ink">
           {post.titulo}
         </h1>
 
-        <div
-          className={`grid gap-2 text-[13px] ${
-            prazoLabel ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
-          }`}
-        >
-          <InfoCard label="Data de postagem" value={fmtData(post.data)} />
-          {prazoLabel && (
-            <InfoCard
-              label="Prazo de aprovação"
-              value={prazoLabel}
-              urgent={dias !== null && dias <= 0}
+        {/* datas, formato e status num bloco só */}
+        <div className="space-y-3 rounded-3xl border border-[rgba(21,21,33,0.08)] bg-white p-4">
+          <div className="flex flex-wrap gap-2">
+            <PilulaInfo rotulo="Postagem" valor={fmtData(post.data)} />
+            {prazoLabel && (
+              <PilulaInfo
+                rotulo="Prazo de aprovação"
+                valor={prazoLabel}
+                alerta={dias !== null && dias <= 0}
+              />
+            )}
+            <PilulaInfo
+              rotulo="Formato"
+              valor={formatoResumo(post.formato, formatoTipoDetectado, arquivos.length)}
             />
-          )}
-          <InfoCard
-            label="Formato"
-            value={formatoResumo(post.formato, formatoTipoDetectado, arquivos.length)}
-          />
+          </div>
+          <div className="border-t border-[rgba(21,21,33,0.06)] pt-3">
+            <StatusDoPostChips postId={post.id} status={post.status} alinhar="esquerda" />
+          </div>
         </div>
 
         {(post.funil.length > 0 || post.objetivo.length > 0) && (
@@ -670,10 +664,8 @@ export default async function PostDetalhePage({
               legenda="Matéria-prima pra usar na produção do post. Ainda não é a arte final."
             />
           ) : (
-            <div>
-              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-                Pré-visualização
-              </div>
+            <section>
+              <h2 className="mb-3 text-[15px] font-semibold tracking-[-0.01em] text-ink">Pré-visualização</h2>
               <PostPreview
                 arquivos={arquivos}
                 formatoTipo={formatoTipoDetectado}
@@ -683,15 +675,14 @@ export default async function PostDetalhePage({
                 legenda={post.legenda}
                 voltarPara={voltarPara}
                 aprovacaoColaborativa={post.aprovacaoColaborativa}
+                ladoALado
               />
-            </div>
+            </section>
           )
         ) : (
           post.ideiaDoPost && (
             <div className="card p-5">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-                Ideia do post
-              </div>
+              <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">Ideia do post</h2>
               <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.6] text-ink">
                 {post.ideiaDoPost}
               </p>
@@ -709,23 +700,53 @@ export default async function PostDetalhePage({
 
         <TodasTarefasCard tarefas={tarefasDoPost} />
 
-        <ComunicacaoCard historico={historico} />
+        <Suspense fallback={null}>
+          <HistoricoComentarios postId={post.id} />
+        </Suspense>
+
+        {/* Comentários (2 painéis: Com o cliente + Nota interna) */}
+        <ComentariosLud postId={post.id} tarefaId={tarefaId} />
+
+        <ComunicacaoCard
+          historico={historico}
+          lembrete={(() => {
+            const t = tarefasDoPost
+              .filter((x) => x.aberta && !x.finalizada && ehTarefaDoCliente(x.titulo))
+              .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'))[0];
+            return t ? { tarefaId: t.tarefaId, titulo: t.titulo, clienteNome: post.projetoNome } : null;
+          })()}
+        />
 
         <ProgramacaoCard
           postId={post.id}
           configProgramacao={configProgramacao}
           dataPostagem={post.data}
         />
-
-        {/* Comentários (2 painéis: Com o cliente + Nota interna) */}
-        <ComentariosLud postId={post.id} tarefaId={tarefaId} />
-
-        {/* histórico de comentários do Notion — discreto, no fim */}
-        <Suspense fallback={null}>
-          <HistoricoComentarios postId={post.id} />
-        </Suspense>
       </main>
     </div>
+  );
+}
+
+function PilulaInfo({
+  rotulo,
+  valor,
+  alerta,
+}: {
+  rotulo: string;
+  valor: string;
+  alerta?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12.5px] ${
+        alerta
+          ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
+          : 'bg-bgSoft text-ink'
+      }`}
+    >
+      <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] opacity-70">{rotulo}</span>
+      <span className="font-semibold">{valor}</span>
+    </span>
   );
 }
 

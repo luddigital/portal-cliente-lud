@@ -28,18 +28,15 @@ export function GaleriaMateriais({
   }
 
   return (
-    <section>
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-          {titulo}
-        </div>
-        <span className="text-[10px] text-t3">
+    <section className="card p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">{titulo}</h2>
+        <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[11px] font-semibold text-t2">
           {arquivos.length} {arquivos.length === 1 ? 'arquivo' : 'arquivos'}
         </span>
       </div>
-      {legenda && (
-        <p className="mb-3 text-[12px] leading-[1.5] text-t2">{legenda}</p>
-      )}
+      {legenda && <p className="mb-4 mt-0.5 text-[12px] leading-[1.5] text-t3">{legenda}</p>}
+      {!legenda && <div className="mb-4" />}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
         {arquivos.map((a) => (
           <ItemGaleria key={a.id} a={a} />
