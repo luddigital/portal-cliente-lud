@@ -58,7 +58,25 @@ async function Conteudo({ id }: { id: string }) {
   const entrega = await getEntregaCompleta(id);
   if (!entrega) notFound();
 
-  const tarefas = entrega.tarefasRelacionadas;
+  // Um post por entrega: quando o cliente pede alteração, a "Aprovação | Post"
+  // antiga fica Reprovado e nasce outra. Fica a aberta; se todas fecharam, a mais recente.
+  const fechada = (s: string | null) => ['Concluído', 'Cancelado', 'Reprovado', 'Excluída'].includes(s ?? '');
+  const porPost = new Map<string, (typeof entrega.tarefasRelacionadas)[number]>();
+  const semPost: typeof entrega.tarefasRelacionadas = [];
+  for (const t of entrega.tarefasRelacionadas) {
+    if (!t.postId) {
+      semPost.push(t);
+      continue;
+    }
+    const atual = porPost.get(t.postId);
+    const ganha =
+      !atual ||
+      (fechada(atual.status) !== fechada(t.status)
+        ? !fechada(t.status)
+        : (t.prazo ?? '') > (atual.prazo ?? ''));
+    if (ganha) porPost.set(t.postId, t);
+  }
+  const tarefas = [...porPost.values(), ...semPost];
   const postIds = [...new Set(tarefas.map((t) => t.postId).filter((x): x is string => !!x))];
   const projetoIds = [...new Set(tarefas.map((t) => t.projetoId).filter((x): x is string => !!x))];
 
@@ -102,7 +120,8 @@ async function Conteudo({ id }: { id: string }) {
       postTitulo: t.postTitulo,
       postData: null,
     };
-    const st = statusRealDoPost(abertas.length ? abertas : [base], t.titulo);
+    // Post sem nenhuma tarefa aberta = concluído (não volta a tarefa fechada da entrega).
+    const st = statusRealDoPost(abertas.length || t.postId || fechada(t.status) ? abertas : [base], t.titulo);
     const aprovacao = abertas.find((x) => /aprova[çc][ãa]o\s*\|\s*post/i.test(x.titulo));
     const v = t.postId ? vistas[t.postId] : undefined;
     g.itens.push({
@@ -122,7 +141,7 @@ async function Conteudo({ id }: { id: string }) {
       prazoCliente: aprovacao?.prazo ?? null,
       visto: v ? { ultima: v.ultima, total: v.total } : null,
       // Feito nessa entrega: tarefa concluída ou o post já passou dessa etapa.
-      enviado: t.status === 'Concluído' || st.relacao === 'depois' || st.relacao === 'concluido',
+      enviado: (t.status === 'Concluído' && st.relacao !== 'antes') || st.relacao === 'depois' || st.relacao === 'concluido',
       // Horário exato quando o envio saiu pelo portal; senão, só a data da conclusão no Notion.
       enviadoEm: (t.postId && enviosPortal[t.postId]) || (t.finalizada ? t.finalizada.slice(0, 10) : null),
     });
