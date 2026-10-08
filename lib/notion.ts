@@ -1417,7 +1417,8 @@ async function _getEntregaDetalheUncached(
                     formula: { checkbox: { equals: true } },
                   },
                 ]),
-            ...STATUS_TAREFA_FECHADOS.map((s) => ({
+            // `todas` mantém as concluídas (aparecem em "Enviados"); some só cancelada/excluída.
+            ...(todas ? ['Cancelado', 'Excluída'] : STATUS_TAREFA_FECHADOS).map((s) => ({
               property: env.notion.taskProps.status,
               status: { does_not_equal: s },
             })),
@@ -1534,7 +1535,7 @@ const _getEntregaDetalheCached = unstable_cache(
 
 const _getEntregaCompletaCached = unstable_cache(
   (entregaId: string) => _getEntregaDetalheUncached(entregaId, true),
-  ['get-entrega-completa-v1'],
+  ['get-entrega-completa-v2'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
 );
 
@@ -1677,14 +1678,14 @@ async function _listarTarefasDoPostUncached(
       const titulo = txt(titleProp?.title) || '';
       const status =
         getProp(t, env.notion.taskProps.status)?.status?.name ?? null;
-      const finalizada =
-        getProp(t, 'Finalizada em ')?.date?.start ??
-        getProp(t, 'Finalizada em')?.date?.start ??
-        null;
-      const prazo =
-        getProp(t, 'Data Entrega')?.date?.start ??
-        getProp(t, 'Data Inicial')?.date?.start ??
-        null;
+      const finalizada = dataEmSaoPaulo(
+        getProp(t, 'Finalizada em ')?.date?.start ?? getProp(t, 'Finalizada em')?.date?.start,
+      );
+      // Dia em Brasília: datas com horário em UTC caíam no dia errado e
+      // embaralhavam a ordem das tarefas.
+      const prazo = dataEmSaoPaulo(
+        getProp(t, 'Data Entrega')?.date?.start ?? getProp(t, 'Data Inicial')?.date?.start,
+      );
       const pessoa = getProp(t, 'Pessoa')?.people?.[0] ?? null;
       const ordemUm = getProp(t, 'Ordem (1)')?.select?.name ?? null;
       const aberta = !STATUS_TAREFA_FECHADOS.includes(status ?? '') && !finalizada;
@@ -1723,7 +1724,7 @@ async function _listarTarefasDoPostUncached(
 
 const _listarTarefasDoPostCached = unstable_cache(
   _listarTarefasDoPostUncached,
-  ['listar-tarefas-do-post-v1'],
+  ['listar-tarefas-do-post-v2'],
   { revalidate: 30, tags: [TAG_TAREFAS] },
 );
 

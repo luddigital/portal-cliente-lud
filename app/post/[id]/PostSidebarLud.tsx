@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TarefaDoPost } from '@/lib/notion';
-import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
+import { compararNoFluxo, ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
 import type { ProgramacaoConfig } from '@/lib/supabase';
 
@@ -191,7 +191,7 @@ function TagTipo({ doCliente }: { doCliente: boolean }) {
 }
 
 const porPrazo = (a: TarefaDoPost, b: TarefaDoPost) =>
-  (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999');
+  (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999') || compararNoFluxo(a as any, b as any);
 
 export function TodasTarefasCard({ tarefas: iniciais }: { tarefas: TarefaDoPost[] }) {
   const [tarefas, setTarefas] = useState(iniciais);

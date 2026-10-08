@@ -32,6 +32,9 @@ export type ItemEntrega = {
   aprovacaoTarefaId: string | null;
   prazoCliente: string | null;
   visto: { ultima: string; total: number } | null;
+  /** Já feito nessa entrega (enviado ao cliente, no caso do envio de quinta). */
+  enviado: boolean;
+  enviadoEm: string | null;
 };
 
 export type GrupoEntrega = {
@@ -108,6 +111,18 @@ function ChipStatus({ item, tipo }: { item: ItemEntrega; tipo: TipoEntrega }) {
   );
 }
 
+function PilulaVisto({ visto }: { visto: boolean }) {
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+        visto ? 'bg-[var(--cal-conferir-soft)] text-[var(--cal-conferir)]' : 'bg-bgSoft text-t3'
+      }`}
+    >
+      {visto ? '👁 visto' : 'não visto'}
+    </span>
+  );
+}
+
 /** Responsável (inicial) + prazo da etapa atual, vermelho se atrasado. */
 function MetaAtual({ item, hoje }: { item: ItemEntrega; hoje: string }) {
   if (!item.atualPrazo && !item.responsavel) return null;
@@ -162,9 +177,19 @@ export function EntregaPorCliente({
     const k = semanaDe(prazo);
     return k !== 'sem-data' && k < semanaAtual ? semanaAtual : k;
   };
+  // Enviados ficam na semana do envio; envios de semanas passadas saem de cena.
+  const abaDoItem = (i: ItemEntrega): string | null => {
+    if (!i.enviado) return abaDe(i.prazo);
+    const k = semanaDe(i.enviadoEm ?? i.prazo);
+    return k !== 'sem-data' && k < semanaAtual ? null : k;
+  };
   const semanas = useMemo(() => {
     const set = new Set<string>();
-    for (const g of grupos) for (const i of g.itens) set.add(abaDe(i.prazo));
+    for (const g of grupos)
+      for (const i of g.itens) {
+        const k = abaDoItem(i);
+        if (k) set.add(k);
+      }
     return [...set].sort();
   }, [grupos]);
   const [semana, setSemana] = useState<string>(() =>
@@ -172,15 +197,18 @@ export function EntregaPorCliente({
       ? semanaAtual
       : semanas.find((k) => k !== 'sem-data' && k > semanaAtual) ?? semanas[semanas.length - 1] ?? '',
   );
-  const gruposDaSemana = grupos
-    .map((g) => ({ ...g, itens: g.itens.filter((i) => abaDe(i.prazo) === semana) }))
-    .filter((g) => g.itens.length > 0);
+  const daSemana = (filtro: (i: ItemEntrega) => boolean) =>
+    grupos
+      .map((g) => ({ ...g, itens: g.itens.filter((i) => abaDoItem(i) === semana && filtro(i)) }))
+      .filter((g) => g.itens.length > 0);
+  const gruposDaSemana = daSemana((i) => !i.enviado);
+  const enviadosDaSemana = daSemana((i) => i.enviado);
   const contar = (k: string) => {
     let total = 0;
     let atrasados = 0;
     for (const g of grupos)
       for (const i of g.itens) {
-        if (abaDe(i.prazo) !== k) continue;
+        if (i.enviado || abaDoItem(i) !== k) continue;
         total++;
         if (i.prazo && diasEntre(hojeIso, i.prazo) < 0) atrasados++;
       }
@@ -189,6 +217,8 @@ export function EntregaPorCliente({
   const itensSemana = gruposDaSemana.flatMap((g) => g.itens);
   const nProntos = itensSemana.filter((i) => i.relacao === 'aqui').length;
   const nAtrasados = itensSemana.filter((i) => i.prazo && diasEntre(hojeIso, i.prazo) < 0).length;
+  const nEnviados = enviadosDaSemana.reduce((n, g) => n + g.itens.length, 0);
+  const rotuloFeitos = tipo === 'envio' ? 'Enviados' : 'Concluídos';
 
   useEffect(() => {
     if (!aviso) return;
@@ -247,12 +277,24 @@ export function EntregaPorCliente({
             <b className="text-[var(--prazo-atrasado)]">{nAtrasados}</b> atrasados
           </span>
         )}
+        {nEnviados > 0 && (
+          <span>
+            <b className="text-ink">{nEnviados}</b> {rotuloFeitos.toLowerCase()}
+          </span>
+        )}
       </div>
+
+      {gruposDaSemana.length === 0 && (
+        <p className="rounded-2xl border border-dashed border-[rgba(21,21,33,0.12)] px-4 py-6 text-center text-[12.5px] text-t3">
+          {nEnviados > 0 ? `Tudo dessa semana já foi ${tipo === 'envio' ? 'enviado' : 'concluído'} ✨` : 'Nada nessa semana.'}
+        </p>
+      )}
 
       {gruposDaSemana.map((g) => {
         const prontos = g.itens.filter((i) => i.relacao === 'aqui');
         const travados = g.itens.filter((i) => i.relacao === 'antes');
         const atrasados = g.itens.filter((i) => i.prazo && diasEntre(hojeIso, i.prazo) < 0).length;
+        const temCliente = g.itens.some((i) => i.comCliente);
         return (
           <section
             key={g.projetoId || g.nome}
@@ -324,17 +366,18 @@ export function EntregaPorCliente({
                   >
                     <ChipData prazo={i.prazo} hoje={hojeIso} className="w-[56px]" />
                     <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.postTitulo}</span>
-                    <ChipStatus item={i} tipo={tipo} />
-                    {i.relacao !== 'aqui' && <MetaAtual item={i} hoje={hojeIso} />}
-                    {i.comCliente && (
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
-                          i.visto ? 'bg-[var(--cal-conferir-soft)] text-[var(--cal-conferir)]' : 'bg-bgSoft text-t3'
-                        }`}
-                      >
-                        {i.visto ? '👁 visto' : 'não visto'}
+                    {/* colunas fixas: a tag de status fica sempre alinhada na direita */}
+                    <span className="hidden w-[132px] shrink-0 justify-end sm:flex">
+                      {i.relacao !== 'aqui' && <MetaAtual item={i} hoje={hojeIso} />}
+                    </span>
+                    {temCliente && (
+                      <span className="hidden w-[68px] shrink-0 justify-end sm:flex">
+                        {i.comCliente && <PilulaVisto visto={!!i.visto} />}
                       </span>
                     )}
+                    <span className="flex w-full justify-end sm:w-[210px] sm:shrink-0">
+                      <ChipStatus item={i} tipo={tipo} />
+                    </span>
                   </button>
                 </li>
               ))}
@@ -342,6 +385,44 @@ export function EntregaPorCliente({
           </section>
         );
       })}
+
+      {enviadosDaSemana.length > 0 && (
+        <section className="space-y-2 pt-2">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
+            {rotuloFeitos} <span className="ml-1 rounded-full bg-bgSoft px-2 py-0.5 text-[11px] font-semibold text-t2">{nEnviados}</span>
+          </h2>
+          <div className="overflow-hidden rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white">
+            {enviadosDaSemana.map((g) => (
+              <div key={g.projetoId || g.nome} className="border-b border-[rgba(21,21,33,0.06)] last:border-b-0">
+                <div className="px-5 pb-1 pt-3 text-[12px] font-semibold text-t2">{g.nome}</div>
+                <ul>
+                  {g.itens.map((i) => (
+                    <li key={i.tarefaId}>
+                      <button
+                        type="button"
+                        onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
+                        disabled={!i.postId}
+                        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
+                      >
+                        <span className="w-[86px] shrink-0 text-[11px] text-t3">
+                          {i.enviadoEm ? `${tipo === 'envio' ? 'enviado' : 'feito'} ${i.enviadoEm.slice(8, 10)}/${i.enviadoEm.slice(5, 7)}` : '—'}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] text-t1">{i.postTitulo}</span>
+                        <span className="hidden w-[68px] shrink-0 justify-end sm:flex">
+                          {i.comCliente && <PilulaVisto visto={!!i.visto} />}
+                        </span>
+                        <span className="flex w-full justify-end sm:w-[210px] sm:shrink-0">
+                          <ChipStatus item={i} tipo={tipo} />
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {previa && (
         <PreviaPostModal postId={previa.postId} tarefaId={previa.tarefaId} fechar={() => setPrevia(null)} />

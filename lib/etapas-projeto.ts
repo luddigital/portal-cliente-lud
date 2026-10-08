@@ -90,6 +90,39 @@ const ORDEM: EtapaProjeto[] = [
   'programacao',
 ];
 
+/**
+ * Ordem dentro da mesma etapa, igual ao processo do Notion: produção →
+ * alteração → aprovação (e, na aprovação do post: geral → envio → alteração →
+ * aprovação do cliente). A data só desempata.
+ */
+function subOrdem(titulo: string): number {
+  const t = titulo.toLowerCase();
+  if (/aprova[çc][ãa]o\s*\|\s*geral/.test(t)) return 0;
+  if (/enviar post/.test(t)) return 1;
+  if (/altera[çc][ãa]o\s*\|\s*post/.test(t)) return 2;
+  if (/aprova[çc][ãa]o\s*\|\s*post/.test(t)) return 3;
+  if (/programar/.test(t)) return 0;
+  if (/conferir/.test(t)) return 1;
+  if (/produzir post/.test(t)) return 3;
+  if (/aprova[çc][ãa]o\s*\|\s*pauta/.test(t)) return 2;
+  if (/aprova[çc][ãa]o\s*\|\s*cria/.test(t)) return 1;
+  if (/altera/.test(t)) return 1;
+  if (/aprova/.test(t)) return 2;
+  return 0;
+}
+
+export function compararNoFluxo(a: TarefaDoProjeto, b: TarefaDoProjeto): number {
+  const ea = etapaDaTarefa(a.titulo);
+  const eb = etapaDaTarefa(b.titulo);
+  const oa = ea ? ORDEM.indexOf(ea) : 99;
+  const ob = eb ? ORDEM.indexOf(eb) : 99;
+  return (
+    oa - ob ||
+    subOrdem(a.titulo) - subOrdem(b.titulo) ||
+    (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999')
+  );
+}
+
 export function resumirEtapas(tarefas: TarefaDoProjeto[], hoje: string): ResumoEtapa[] {
   const porPost = new Map<string, TarefaDoProjeto[]>();
   for (const t of tarefas) {
@@ -101,11 +134,7 @@ export function resumirEtapas(tarefas: TarefaDoProjeto[], hoje: string): ResumoE
 
   const atuais: (PostNaEtapa & { etapa: EtapaProjeto })[] = [];
   for (const [postId, ts] of porPost) {
-    const ordenadas = [...ts].sort(
-      (a, b) =>
-        ORDEM.indexOf(etapaDaTarefa(a.titulo)!) - ORDEM.indexOf(etapaDaTarefa(b.titulo)!) ||
-        (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'),
-    );
+    const ordenadas = [...ts].sort(compararNoFluxo);
     const tarefa = ordenadas[0];
     atuais.push({
       postId,
@@ -187,13 +216,7 @@ function chaveTitulo(t: string): string {
 
 /** Onde o post está de verdade, comparado com a entrega `tituloEntrega`. */
 export function statusRealDoPost(abertas: TarefaDoProjeto[], tituloEntrega: string): StatusReal {
-  const ordem = (t: TarefaDoProjeto) => {
-    const e = etapaDaTarefa(t.titulo);
-    return e ? ORDEM.indexOf(e) : 99;
-  };
-  const ordenadas = [...abertas].sort(
-    (a, b) => ordem(a) - ordem(b) || (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'),
-  );
+  const ordenadas = [...abertas].sort(compararNoFluxo);
   const atual = ordenadas[0] ?? null;
   if (!atual) return { atual: null, rotulo: 'Concluído', relacao: 'concluido', comCliente: false };
 

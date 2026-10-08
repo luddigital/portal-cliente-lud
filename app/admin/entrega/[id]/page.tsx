@@ -120,6 +120,9 @@ async function Conteudo({ id }: { id: string }) {
       aprovacaoTarefaId: aprovacao?.id ?? null,
       prazoCliente: aprovacao?.prazo ?? null,
       visto: v ? { ultima: v.ultima, total: v.total } : null,
+      // Feito nessa entrega: tarefa concluída ou o post já passou dessa etapa.
+      enviado: t.status === 'Concluído' || st.relacao === 'depois' || st.relacao === 'concluido',
+      enviadoEm: t.finalizada ? t.finalizada.slice(0, 10) : null,
     });
   }
   const lista = [...grupos.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
