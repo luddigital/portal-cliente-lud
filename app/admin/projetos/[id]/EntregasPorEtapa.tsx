@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ddmm, textoProxima, type ResumoEtapa } from '@/lib/etapas-projeto';
 import { ModalMensagem, type GrupoWpp, type ItemPendenciaUi } from './PendenciasCliente';
 import { PreviaPostModal } from '../../aprovacoes/PreviaPostModal';
+import { ChipData } from '@/app/_components/ChipData';
 
 function diasAte(hoje: string, iso: string): number {
   const d = (s: string) => {
@@ -11,27 +12,6 @@ function diasAte(hoje: string, iso: string): number {
     return Date.UTC(y, m - 1, dd);
   };
   return Math.round((d(iso) - d(hoje)) / 86_400_000);
-}
-
-function PrazoChip({ prazo, hoje }: { prazo: string | null; hoje: string }) {
-  if (!prazo) return <span className="shrink-0 text-[10.5px] text-t3">sem prazo</span>;
-  const dias = diasAte(hoje, prazo);
-  if (dias < 0) {
-    return (
-      <span className="shrink-0 rounded-full bg-[var(--prazo-atrasado-soft)] px-2 py-0.5 text-[10.5px] font-semibold text-[var(--prazo-atrasado)]">
-        venceu {ddmm(prazo)}
-      </span>
-    );
-  }
-  return (
-    <span
-      className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
-        dias <= 1 ? 'bg-[var(--prazo-hoje-soft)] text-[var(--prazo-hoje)]' : 'bg-bgSoft text-t2'
-      }`}
-    >
-      {dias === 0 ? 'hoje' : dias === 1 ? 'amanhã' : ddmm(prazo)}
-    </span>
-  );
 }
 
 /**
@@ -175,7 +155,7 @@ export function EntregasPorEtapa({
                           {v ? '👁 visto' : 'não visto'}
                         </span>
                       )}
-                      <PrazoChip prazo={p.tarefa.prazo} hoje={hojeIso} />
+                      <ChipData prazo={p.tarefa.prazo} hoje={hojeIso} />
                     </button>
                   </li>
                 );

@@ -189,6 +189,23 @@ Se clicável, adiciona `transition-colors hover:bg-[rgba(55,53,47,0.05)] hover:b
 
 Ver a tabela em **Superfícies "fantasma"** — quatro variantes: `sólido`, `médio`, `claro`, `outline`. Sempre `rounded px-1.5 py-[1px] text-[10px] font-medium`.
 
+### Chip de data / prazo
+
+**Exceção à regra P&B, aprovada pela Luiza em 08/10/2026.** Toda data com prazo (entrega, aprovação, tarefa) usa o mesmo chip: **sólido, texto branco, negrito, arredondado** — o mesmo visual do selo "SÓ A EQUIPE". A cor é a urgência:
+
+| Classe                    | Quando                  | Fundo                    |
+| ------------------------- | ----------------------- | ------------------------ |
+| `chip-data atrasado`      | já venceu               | `var(--prazo-atrasado)`  |
+| `chip-data hoje`          | vence hoje              | `var(--prazo-hoje)`      |
+| `chip-data chegando`      | em 1–2 dias             | `var(--prazo-chegando)`  |
+| `chip-data em-dia`        | em 3–7 dias             | `var(--prazo-em-dia)`    |
+| `chip-data tranquilo`     | mais de 7 dias          | `var(--prazo-tranquilo)` |
+| `chip-data sem-prazo`     | sem data                | transparente, contorno   |
+
+- Em React, use `<ChipData prazo hoje />` (`app/_components/ChipData.tsx`): ele calcula a urgência, mostra `dd/mm` e põe o "vence em N dias" no tooltip. `texto` troca o rótulo quando a tela precisa de "hoje", "atrasado 3 dias" etc. — o visual continua o mesmo.
+- Não crie chip de data com fundo claro / texto colorido: isso era o padrão antigo.
+- Classes definidas em `app/globals.css` (`.chip-data`).
+
 ### Input
 
 ```html

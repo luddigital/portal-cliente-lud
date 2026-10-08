@@ -5,6 +5,12 @@ import type { TarefaDaEntrega } from '@/lib/notion';
 import type { Visualizacao } from '@/lib/supabase';
 import { BotaoLembreteWpp } from './BotaoLembreteWpp';
 import { PreviaPostModal } from './PreviaPostModal';
+import { ChipData } from '@/app/_components/ChipData';
+
+function hojeLocal(): string {
+  const h = new Date();
+  return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`;
+}
 
 /** Formata o prazo em algo humano. */
 function fmtPrazo(
@@ -32,19 +38,6 @@ function fmtPrazo(
   if (dias <= 7) return { texto: `em ${dias} dias`, tone: 'proximo' };
   return { texto: dataCurta, tone: 'futuro' };
 }
-
-const PRAZO_TONE_COR: Record<
-  'atrasado' | 'hoje' | 'proximo' | 'futuro',
-  { bg: string; fg: string }
-> = {
-  atrasado: {
-    bg: 'var(--prazo-atrasado-soft)',
-    fg: 'var(--prazo-atrasado)',
-  },
-  hoje: { bg: 'var(--prazo-hoje-soft)', fg: 'var(--prazo-hoje)' },
-  proximo: { bg: 'var(--cal-agendado-soft)', fg: 'var(--cal-agendado)' },
-  futuro: { bg: 'rgba(21,21,33,0.05)', fg: 'var(--t3)' },
-};
 
 /**
  * Row da tabela de aprovações. Clicar NÃO navega direto — abre primeiro um
@@ -76,7 +69,6 @@ export function TarefaRow({
 }) {
   const [modalAberto, setModalAberto] = useState(false);
   const prazo = fmtPrazo(t.prazo);
-  const corPrazo = prazo ? PRAZO_TONE_COR[prazo.tone] : null;
 
   // Se não existe postId (ex.: tarefa avulsa sem post vinculado), cai direto
   // na navegação pra página da tarefa, sem modal.
@@ -107,19 +99,7 @@ export function TarefaRow({
           {visto ? `👁 ${textoVisto(visto)}` : 'não visto'}
         </span>
       )}
-      {prazo && corPrazo ? (
-        <span
-          className="shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
-          style={{ background: corPrazo.bg, color: corPrazo.fg }}
-          title={t.prazo ?? undefined}
-        >
-          {prazo.texto}
-        </span>
-      ) : (
-        <span className="shrink-0 rounded bg-bgSoft px-2 py-0.5 text-[10px] font-semibold text-t3">
-          sem prazo
-        </span>
-      )}
+      <ChipData prazo={t.prazo ? t.prazo.slice(0, 10) : null} hoje={hojeLocal()} texto={prazo?.texto} />
       <span className="shrink-0 text-[16px] text-t3">
         {temPreview ? '👁' : '›'}
       </span>

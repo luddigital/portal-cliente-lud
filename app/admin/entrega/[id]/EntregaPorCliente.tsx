@@ -10,6 +10,7 @@ import {
 } from '@/app/admin/projetos/[id]/PendenciasCliente';
 import { grupoDaTarefa } from '@/lib/pendencias-cliente';
 import { montarMensagemRegua } from '@/lib/regua-mensagens';
+import { ChipData } from '@/app/_components/ChipData';
 
 export type TipoEntrega = 'envio' | 'cliente' | 'interna';
 
@@ -75,25 +76,6 @@ function rotuloSemana(chave: string, atual: string): { titulo: string; datas: st
   const titulo =
     dif === 0 ? 'Esta semana' : dif === 1 ? 'Próxima semana' : dif === -1 ? 'Semana passada' : datas;
   return { titulo, datas: dif >= -1 && dif <= 1 ? datas : '' };
-}
-
-function ChipPrazo({ prazo, hoje }: { prazo: string | null; hoje: string }) {
-  if (!prazo) return <span className="w-[54px] shrink-0 text-center text-[11px] text-t3">—</span>;
-  const dias = diasEntre(hoje, prazo);
-  const cls =
-    dias < 0
-      ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
-      : dias <= 1
-        ? 'bg-[var(--prazo-hoje-soft)] text-[var(--prazo-hoje)]'
-        : 'bg-bgSoft text-t2';
-  return (
-    <span
-      className={`w-[54px] shrink-0 rounded-full py-0.5 text-center font-mono text-[11px] font-semibold ${cls}`}
-      title={dias < 0 ? `atrasada ${Math.abs(dias)} dias` : dias === 0 ? 'vence hoje' : `vence em ${dias} dias`}
-    >
-      {ddmm(prazo)}
-    </span>
-  );
 }
 
 /** Cor semântica do design system (mesmas do calendário) pelo que está acontecendo com o post. */
@@ -340,7 +322,7 @@ export function EntregaPorCliente({
                     disabled={!i.postId}
                     className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
                   >
-                    <ChipPrazo prazo={i.prazo} hoje={hojeIso} />
+                    <ChipData prazo={i.prazo} hoje={hojeIso} className="w-[56px]" />
                     <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.postTitulo}</span>
                     <ChipStatus item={i} tipo={tipo} />
                     {i.relacao !== 'aqui' && <MetaAtual item={i} hoje={hojeIso} />}

@@ -226,6 +226,18 @@
   .prazo-pill.chegando { background: var(--prazo-chegando-soft); color: var(--prazo-chegando); }
   .prazo-pill.em-dia { background: var(--prazo-em-dia-soft); color: var(--prazo-em-dia); }
   .prazo-pill.tranquilo { background: var(--prazo-tranquilo-soft); color: var(--prazo-tranquilo); }
+
+  /* Chip de data/prazo — padrão do portal pra qualquer data com prazo.
+     Sólido + texto branco (mesmo visual do "SÓ A EQUIPE"); a cor é a urgência. */
+  .chip-data {
+    @apply inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-bold uppercase leading-[1.4] tracking-[0.04em] text-white;
+  }
+  .chip-data.atrasado { background: var(--prazo-atrasado); }
+  .chip-data.hoje { background: var(--prazo-hoje); }
+  .chip-data.chegando { background: var(--prazo-chegando); }
+  .chip-data.em-dia { background: var(--prazo-em-dia); }
+  .chip-data.tranquilo { background: var(--prazo-tranquilo); }
+  .chip-data.sem-prazo { background: transparent; color: var(--t3); box-shadow: inset 0 0 0 1px rgba(21, 21, 33, 0.14); }
 }
 
 /* Barra de progresso da Esteira — animação enche até 95% em 60s */

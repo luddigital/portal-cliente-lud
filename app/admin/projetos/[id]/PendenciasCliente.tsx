@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { ChipData } from '@/app/_components/ChipData';
 import {
   GRUPOS_PENDENCIA,
   montarMensagemPendencias,
@@ -185,9 +186,7 @@ export function PendenciasCliente({
                   >
                     {i.visto ? textoVisto(i.visto, hojeIso) : 'não visto'}
                   </span>
-                  <span className={`${CHIP} ${chip.cls}`} title={i.prazo ?? undefined}>
-                    {chip.texto}
-                  </span>
+                  <ChipData prazo={i.prazo} hoje={hojeIso} texto={chip.texto} />
                 </li>
               );
             })}
@@ -430,7 +429,7 @@ export function ModalMensagem({
                             <span className="min-w-0 flex-1 truncate text-[13px] text-[#37352F]">
                               {i.postTitulo}
                             </span>
-                            <span className={`${CHIP} ${chip.cls}`}>{chip.texto}</span>
+                            <ChipData prazo={i.prazo} hoje={hojeIso} texto={chip.texto} />
                           </label>
                         </li>
                       );
