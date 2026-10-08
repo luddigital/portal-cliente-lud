@@ -111,6 +111,280 @@ function ChipStatus({ item, tipo }: { item: ItemEntrega; tipo: TipoEntrega }) {
   );
 }
 
+type Ordem = 'az' | 'za' | 'atrasados' | 'prazo' | 'prontos' | 'posts';
+type Filtros = {
+  ordem: Ordem;
+  situacao: 'todas' | 'prontas' | 'nao';
+  clientes: string[];
+  soAtrasados: boolean;
+};
+const FILTROS_PADRAO: Filtros = { ordem: 'az', situacao: 'todas', clientes: [], soAtrasados: false };
+const CHAVE_FILTROS = 'entrega-filtros';
+
+const ORDENS: { id: Ordem; rotulo: string; curto: string }[] = [
+  { id: 'az', rotulo: 'Projeto A → Z', curto: 'Projeto A → Z' },
+  { id: 'za', rotulo: 'Projeto Z → A', curto: 'Projeto Z → A' },
+  { id: 'atrasados', rotulo: 'Mais atrasados primeiro', curto: 'Mais atrasados' },
+  { id: 'prazo', rotulo: 'Prazo mais próximo', curto: 'Prazo mais próximo' },
+  { id: 'prontos', rotulo: 'Prontos primeiro', curto: 'Prontos primeiro' },
+  { id: 'posts', rotulo: 'Mais posts primeiro', curto: 'Mais posts' },
+];
+
+function contarAtrasados(g: GrupoEntrega, hoje: string): number {
+  return g.itens.filter((i) => i.prazo && diasEntre(hoje, i.prazo) < 0).length;
+}
+
+function aplicarFiltros(grupos: GrupoEntrega[], f: Filtros, hoje: string): GrupoEntrega[] {
+  const menorPrazo = (g: GrupoEntrega) =>
+    g.itens.map((i) => i.prazo).filter((x): x is string => !!x).sort()[0] ?? '9999';
+  return grupos
+    .filter((g) => (f.situacao === 'todas' ? true : f.situacao === 'prontas' ? clientePronto(g.itens) : !clientePronto(g.itens)))
+    .filter((g) => f.clientes.length === 0 || f.clientes.includes(g.projetoId || g.nome))
+    .filter((g) => !f.soAtrasados || contarAtrasados(g, hoje) > 0)
+    .sort((a, b) => {
+      const nome = a.nome.localeCompare(b.nome, 'pt-BR');
+      switch (f.ordem) {
+        case 'za':
+          return -nome;
+        case 'atrasados':
+          return contarAtrasados(b, hoje) - contarAtrasados(a, hoje) || menorPrazo(a).localeCompare(menorPrazo(b)) || nome;
+        case 'prazo':
+          return menorPrazo(a).localeCompare(menorPrazo(b)) || nome;
+        case 'prontos':
+          return Number(clientePronto(b.itens)) - Number(clientePronto(a.itens)) || nome;
+        case 'posts':
+          return b.itens.length - a.itens.length || nome;
+        default:
+          return nome;
+      }
+    });
+}
+
+const CHIP_BASE =
+  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] transition';
+const CHIP_ATIVO = 'border-transparent bg-[var(--cal-agendado-soft)] font-semibold text-[var(--cal-agendado)]';
+const CHIP_INATIVO = 'border-[rgba(21,21,33,0.1)] bg-white text-t2 hover:bg-bgSoft hover:text-ink';
+
+function Seta() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function Pop({ children, fechar, largura = 'w-60' }: { children: React.ReactNode; fechar: () => void; largura?: string }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-20" onClick={fechar} />
+      <div className={`absolute left-0 top-full z-30 mt-1.5 ${largura} rounded-xl border border-[rgba(21,21,33,0.1)] bg-white p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)]`}>
+        {children}
+      </div>
+    </>
+  );
+}
+
+function OpcaoMenu({
+  ativa,
+  onClick,
+  children,
+  extra,
+  marcador = 'radio',
+}: {
+  ativa: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  extra?: React.ReactNode;
+  marcador?: 'radio' | 'check';
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition hover:bg-bgSoft ${
+        ativa ? 'font-semibold text-ink' : 'text-t2'
+      }`}
+    >
+      <span
+        className={`flex h-4 w-4 shrink-0 items-center justify-center border text-[10px] ${
+          marcador === 'radio' ? 'rounded-full' : 'rounded-[4px]'
+        } ${ativa ? 'border-ink bg-ink text-white' : 'border-[rgba(21,21,33,0.25)] text-transparent'}`}
+      >
+        ✓
+      </span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {extra}
+    </button>
+  );
+}
+
+/** Barra de filtros e ordenação no estilo Notion: chips que abrem menus. */
+function BarraFiltros({
+  filtros,
+  mudar,
+  menu,
+  setMenu,
+  tipo,
+  grupos,
+  hojeIso,
+}: {
+  filtros: Filtros;
+  mudar: (p: Partial<Filtros>) => void;
+  menu: 'ordem' | 'situacao' | 'clientes' | null;
+  setMenu: (m: 'ordem' | 'situacao' | 'clientes' | null) => void;
+  tipo: TipoEntrega;
+  grupos: GrupoEntrega[];
+  hojeIso: string;
+}) {
+  const nProntos = grupos.filter((g) => clientePronto(g.itens)).length;
+  const situacoes = [
+    { id: 'todas' as const, rotulo: 'Todas', n: grupos.length },
+    { id: 'prontas' as const, rotulo: tipo === 'envio' ? 'Prontas pra enviar' : 'Prontas', n: nProntos },
+    { id: 'nao' as const, rotulo: 'Não prontas', n: grupos.length - nProntos },
+  ];
+  const situacaoAtual = situacoes.find((x) => x.id === filtros.situacao)!;
+  const ordemAtual = ORDENS.find((o) => o.id === filtros.ordem) ?? ORDENS[0];
+  const temFiltro = filtros.situacao !== 'todas' || filtros.clientes.length > 0 || filtros.soAtrasados;
+  const nomesClientes = grupos.filter((g) => filtros.clientes.includes(g.projetoId || g.nome)).map((g) => g.nome);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {/* ordenação */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setMenu(menu === 'ordem' ? null : 'ordem')}
+          className={`${CHIP_BASE} ${filtros.ordem !== 'az' ? CHIP_ATIVO : CHIP_INATIVO}`}
+          title="Ordenar"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4" />
+          </svg>
+          {ordemAtual.curto}
+          <Seta />
+        </button>
+        {menu === 'ordem' && (
+          <Pop fechar={() => setMenu(null)}>
+            <div className="px-2.5 pb-1 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-t3">Ordenar por</div>
+            {ORDENS.map((o) => (
+              <OpcaoMenu
+                key={o.id}
+                ativa={filtros.ordem === o.id}
+                onClick={() => {
+                  mudar({ ordem: o.id });
+                  setMenu(null);
+                }}
+              >
+                {o.rotulo}
+              </OpcaoMenu>
+            ))}
+          </Pop>
+        )}
+      </div>
+
+      <span className="mx-1 h-5 w-px bg-[rgba(21,21,33,0.12)]" />
+
+      {/* situação */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setMenu(menu === 'situacao' ? null : 'situacao')}
+          className={`${CHIP_BASE} ${filtros.situacao !== 'todas' ? CHIP_ATIVO : CHIP_INATIVO}`}
+        >
+          Situação: {situacaoAtual.rotulo}
+          <Seta />
+        </button>
+        {menu === 'situacao' && (
+          <Pop fechar={() => setMenu(null)}>
+            {situacoes.map((x) => (
+              <OpcaoMenu
+                key={x.id}
+                ativa={filtros.situacao === x.id}
+                onClick={() => {
+                  mudar({ situacao: x.id });
+                  setMenu(null);
+                }}
+                extra={<span className="text-[11px] text-t3">{x.n}</span>}
+              >
+                {x.rotulo}
+              </OpcaoMenu>
+            ))}
+          </Pop>
+        )}
+      </div>
+
+      {/* clientes */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setMenu(menu === 'clientes' ? null : 'clientes')}
+          className={`${CHIP_BASE} ${filtros.clientes.length > 0 ? CHIP_ATIVO : CHIP_INATIVO}`}
+        >
+          Cliente
+          {filtros.clientes.length > 0 &&
+            `: ${nomesClientes.length === 1 ? nomesClientes[0] : `${filtros.clientes.length} selecionados`}`}
+          <Seta />
+        </button>
+        {menu === 'clientes' && (
+          <Pop fechar={() => setMenu(null)} largura="w-72">
+            <div className="max-h-[280px] overflow-y-auto">
+              {grupos.map((g) => {
+                const id = g.projetoId || g.nome;
+                const ativa = filtros.clientes.includes(id);
+                return (
+                  <OpcaoMenu
+                    key={id}
+                    marcador="check"
+                    ativa={ativa}
+                    onClick={() =>
+                      mudar({
+                        clientes: ativa ? filtros.clientes.filter((c) => c !== id) : [...filtros.clientes, id],
+                      })
+                    }
+                    extra={<span className="text-[11px] text-t3">{g.itens.length}</span>}
+                  >
+                    {g.nome}
+                  </OpcaoMenu>
+                );
+              })}
+            </div>
+            {filtros.clientes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => mudar({ clientes: [] })}
+                className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-left text-[12px] text-t3 underline hover:text-ink"
+              >
+                Limpar seleção
+              </button>
+            )}
+          </Pop>
+        )}
+      </div>
+
+      {/* só com atraso */}
+      <button
+        type="button"
+        onClick={() => mudar({ soAtrasados: !filtros.soAtrasados })}
+        className={`${CHIP_BASE} ${filtros.soAtrasados ? CHIP_ATIVO : CHIP_INATIVO}`}
+      >
+        {filtros.soAtrasados && <span aria-hidden>✓</span>}
+        Só com atraso
+        <span className="text-[11px] opacity-70">{grupos.filter((g) => contarAtrasados(g, hojeIso) > 0).length}</span>
+      </button>
+
+      {temFiltro && (
+        <button
+          type="button"
+          onClick={() => mudar({ situacao: 'todas', clientes: [], soAtrasados: false })}
+          className="px-2 text-[12px] text-t3 underline transition hover:text-ink"
+        >
+          Limpar filtros
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Cliente pronto: todos os posts pendentes da semana já estão nessa etapa. */
 function clientePronto(itens: ItemEntrega[]): boolean {
   const pendentes = itens.filter((i) => !i.enviado);
@@ -175,7 +449,25 @@ export function EntregaPorCliente({
   const [envio, setEnvio] = useState<GrupoEntrega | null>(null);
   const [mensagem, setMensagem] = useState<GrupoEntrega | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [filtro, setFiltro] = useState<'todas' | 'prontas' | 'nao'>('todas');
+  const [filtros, setFiltros] = useState<Filtros>(FILTROS_PADRAO);
+  const [menu, setMenu] = useState<'ordem' | 'situacao' | 'clientes' | null>(null);
+  useEffect(() => {
+    try {
+      const salvo = JSON.parse(localStorage.getItem(CHAVE_FILTROS) ?? 'null');
+      if (salvo && typeof salvo === 'object') setFiltros({ ...FILTROS_PADRAO, ...salvo, clientes: [] });
+    } catch {
+      /* sem storage: padrão */
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      const { clientes: _c, ...resto } = filtros;
+      localStorage.setItem(CHAVE_FILTROS, JSON.stringify(resto));
+    } catch {
+      /* sem storage */
+    }
+  }, [filtros]);
+  const mudar = (parcial: Partial<Filtros>) => setFiltros((f) => ({ ...f, ...parcial }));
 
   // Uma aba por semana de envio (pela data da tarefa da entrega).
   const semanaAtual = semanaDe(hojeIso);
@@ -292,29 +584,15 @@ export function EntregaPorCliente({
       </div>
 
       {gruposDaSemana.length > 0 && (
-        <div className="inline-flex rounded-full border border-[rgba(21,21,33,0.08)] bg-bgSoft p-[3px]">
-          {(
-            [
-              ['todas', 'Todas', gruposDaSemana.length],
-              ['prontas', tipo === 'envio' ? 'Prontas pra enviar' : 'Prontas', gruposDaSemana.filter((g) => clientePronto(g.itens)).length],
-              ['nao', 'Não prontas', gruposDaSemana.filter((g) => !clientePronto(g.itens)).length],
-            ] as const
-          ).map(([id, rotulo, n]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setFiltro(id)}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition ${
-                filtro === id ? 'bg-ink text-white' : 'text-t2 hover:text-ink'
-              }`}
-            >
-              {rotulo}
-              <span className={`rounded-full px-1.5 text-[10px] font-bold ${filtro === id ? 'bg-white/25' : 'bg-white text-t2'}`}>
-                {n}
-              </span>
-            </button>
-          ))}
-        </div>
+        <BarraFiltros
+          filtros={filtros}
+          mudar={mudar}
+          menu={menu}
+          setMenu={setMenu}
+          tipo={tipo}
+          grupos={gruposDaSemana}
+          hojeIso={hojeIso}
+        />
       )}
 
       {gruposDaSemana.length === 0 && (
@@ -323,9 +601,16 @@ export function EntregaPorCliente({
         </p>
       )}
 
-      {gruposDaSemana
-        .filter((g) => (filtro === 'todas' ? true : filtro === 'prontas' ? clientePronto(g.itens) : !clientePronto(g.itens)))
-        .map((g) => {
+      {aplicarFiltros(gruposDaSemana, filtros, hojeIso).length === 0 && gruposDaSemana.length > 0 && (
+        <p className="rounded-2xl border border-dashed border-[rgba(21,21,33,0.12)] px-4 py-6 text-center text-[12.5px] text-t3">
+          Nenhum cliente com esses filtros.{' '}
+          <button type="button" onClick={() => setFiltros({ ...FILTROS_PADRAO, ordem: filtros.ordem })} className="font-semibold underline hover:text-ink">
+            Limpar filtros
+          </button>
+        </p>
+      )}
+
+      {aplicarFiltros(gruposDaSemana, filtros, hojeIso).map((g) => {
         const prontos = g.itens.filter((i) => i.relacao === 'aqui');
         const travados = g.itens.filter((i) => i.relacao === 'antes');
         const atrasados = g.itens.filter((i) => i.prazo && diasEntre(hojeIso, i.prazo) < 0).length;
@@ -401,39 +686,62 @@ export function EntregaPorCliente({
       })}
 
       {enviadosDaSemana.length > 0 && (
-        <section className="space-y-2 pt-2">
-          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
-            {rotuloFeitos} <span className="ml-1 rounded-full bg-bgSoft px-2 py-0.5 text-[11px] font-semibold text-t2">{nEnviados}</span>
-          </h2>
+        <section className="space-y-2 pt-4">
+          <div>
+            <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em] text-ink">
+              {rotuloFeitos}
+              <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[11px] font-semibold text-t2">{nEnviados}</span>
+            </h2>
+            <p className="mt-0.5 text-[12px] text-t3">
+              {tipo === 'envio'
+                ? 'Já foram pro cliente nessa semana. A última coluna mostra onde cada post está agora.'
+                : 'Já passaram dessa etapa nessa semana.'}
+            </p>
+          </div>
           <div className="overflow-hidden rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white">
-            {enviadosDaSemana.map((g) => (
-              <div key={g.projetoId || g.nome} className="border-b border-[rgba(21,21,33,0.06)] last:border-b-0">
-                <div className="px-5 pb-1 pt-3 text-[12px] font-semibold text-t2">{g.nome}</div>
-                <ul>
-                  {g.itens.map((i) => (
-                    <li key={i.tarefaId}>
-                      <button
-                        type="button"
-                        onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
-                        disabled={!i.postId}
-                        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
-                      >
-                        <span className="w-[86px] shrink-0 text-[11px] text-t3">
-                          {i.enviadoEm ? `${tipo === 'envio' ? 'enviado' : 'feito'} ${i.enviadoEm.slice(8, 10)}/${i.enviadoEm.slice(5, 7)}` : '—'}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-[13px] text-t1">{i.postTitulo}</span>
-                        <span className="hidden w-[68px] shrink-0 justify-end sm:flex">
-                          {i.comCliente && <PilulaVisto visto={!!i.visto} />}
-                        </span>
-                        <span className="flex w-full justify-end sm:w-[210px] sm:shrink-0">
-                          <ChipStatus item={i} tipo={tipo} />
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            <div className="hidden items-center gap-3 border-b border-[rgba(21,21,33,0.08)] px-5 py-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-t3 sm:flex">
+              <span className="min-w-0 flex-1">Post</span>
+              <span className="w-[72px] shrink-0">{tipo === 'envio' ? 'Enviado' : 'Feito'}</span>
+              <span className="w-[84px] shrink-0">Cliente viu</span>
+              <span className="w-[210px] shrink-0 text-right">Onde está agora</span>
+            </div>
+            {enviadosDaSemana.map((g) => {
+              const vistos = g.itens.filter((i) => i.visto).length;
+              return (
+                <div key={g.projetoId || g.nome}>
+                  <div className="flex items-baseline justify-between gap-2 bg-[rgba(55,53,47,0.03)] px-5 py-1.5">
+                    <span className="truncate text-[12px] font-semibold text-ink">{g.nome}</span>
+                    <span className="shrink-0 text-[11px] text-t3">
+                      {g.itens.length} {g.itens.length === 1 ? 'post' : 'posts'}
+                      {g.itens.some((i) => i.comCliente) && ` · ${vistos} ${vistos === 1 ? 'visto' : 'vistos'}`}
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-[rgba(21,21,33,0.05)]">
+                    {g.itens.map((i) => (
+                      <li key={i.tarefaId}>
+                        <button
+                          type="button"
+                          onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
+                          disabled={!i.postId}
+                          className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.postTitulo}</span>
+                          <span className="w-[72px] shrink-0 font-mono text-[11.5px] text-t2">
+                            {i.enviadoEm ? `${i.enviadoEm.slice(8, 10)}/${i.enviadoEm.slice(5, 7)}` : '—'}
+                          </span>
+                          <span className="w-[84px] shrink-0">
+                            {i.comCliente ? <PilulaVisto visto={!!i.visto} /> : <span className="text-[11px] text-t3">—</span>}
+                          </span>
+                          <span className="flex w-full justify-end sm:w-[210px] sm:shrink-0">
+                            <ChipStatus item={i} tipo={tipo} />
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
