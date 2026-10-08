@@ -7,7 +7,7 @@ import {
   listarTarefasAbertasDosPosts,
   type TarefaDoProjeto,
 } from '@/lib/notion';
-import { getGruposWhatsappDoProjeto, lerVisualizacoes } from '@/lib/supabase';
+import { getGruposWhatsappDoProjeto, lerEnviosParaAprovacao, lerVisualizacoes } from '@/lib/supabase';
 import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
 import { hojeEmSaoPaulo } from '@/lib/lembrete-aprovacao';
 import { ehTarefaDoCliente, statusRealDoPost } from '@/lib/etapas-projeto';
@@ -62,13 +62,14 @@ async function Conteudo({ id }: { id: string }) {
   const postIds = [...new Set(tarefas.map((t) => t.postId).filter((x): x is string => !!x))];
   const projetoIds = [...new Set(tarefas.map((t) => t.projetoId).filter((x): x is string => !!x))];
 
-  const [abertasPorPost, vistas, textos, gruposPorProjeto] = await Promise.all([
+  const [abertasPorPost, vistas, textos, gruposPorProjeto, enviosPortal] = await Promise.all([
     listarTarefasAbertasDosPosts(postIds).catch(() => new Map<string, TarefaDoProjeto[]>()),
     lerVisualizacoes(postIds).catch(() => ({}) as Awaited<ReturnType<typeof lerVisualizacoes>>),
     lerMensagensEditadas().catch(() => ({}) as Record<string, string>),
     Promise.all(
       projetoIds.map(async (pid) => [pid, await getGruposWhatsappDoProjeto(pid).catch(() => [])] as const),
     ),
+    lerEnviosParaAprovacao(postIds).catch(() => ({}) as Record<string, string>),
   ]);
   const gruposWpp = new Map(gruposPorProjeto);
 
@@ -122,7 +123,8 @@ async function Conteudo({ id }: { id: string }) {
       visto: v ? { ultima: v.ultima, total: v.total } : null,
       // Feito nessa entrega: tarefa concluída ou o post já passou dessa etapa.
       enviado: t.status === 'Concluído' || st.relacao === 'depois' || st.relacao === 'concluido',
-      enviadoEm: t.finalizada ? t.finalizada.slice(0, 10) : null,
+      // Horário exato quando o envio saiu pelo portal; senão, só a data da conclusão no Notion.
+      enviadoEm: (t.postId && enviosPortal[t.postId]) || (t.finalizada ? t.finalizada.slice(0, 10) : null),
     });
   }
   const lista = [...grupos.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));

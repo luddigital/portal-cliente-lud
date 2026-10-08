@@ -96,21 +96,6 @@ function corDoStatus(item: ItemEntrega, tipo: TipoEntrega): { bg: string; fg: st
   return par('cal-agendado');
 }
 
-function ChipStatus({ item, tipo }: { item: ItemEntrega; tipo: TipoEntrega }) {
-  const cor = corDoStatus(item, tipo);
-  const texto = item.relacao === 'aqui' && tipo === 'envio' ? 'Pronto pra enviar' : item.rotulo;
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-      style={{ background: cor.bg, color: cor.fg }}
-      title={item.atualTitulo ?? undefined}
-    >
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-      {texto}
-    </span>
-  );
-}
-
 type Ordem = 'az' | 'za' | 'atrasados' | 'prazo' | 'prontos' | 'posts';
 type Filtros = {
   ordem: Ordem;
@@ -403,27 +388,66 @@ function PilulaVisto({ visto }: { visto: boolean }) {
   );
 }
 
-/** Responsável (inicial) + prazo da etapa atual, vermelho se atrasado. */
-function MetaAtual({ item, hoje }: { item: ItemEntrega; hoje: string }) {
-  if (!item.atualPrazo && !item.responsavel) return null;
+/**
+ * Tarefa atual do post numa peça só: status + responsável + prazo dela.
+ * Deixa claro que essa data é da tarefa vigente, não da entrega.
+ */
+function PilulaTarefaAtual({ item, tipo, hoje }: { item: ItemEntrega; tipo: TipoEntrega; hoje: string }) {
+  const cor = corDoStatus(item, tipo);
+  const texto = item.relacao === 'aqui' && tipo === 'envio' ? 'Pronto pra enviar' : item.rotulo;
+  const comPrazo = item.relacao !== 'aqui' && (item.atualPrazo || item.responsavel);
   const atrasada = item.atualPrazo ? diasEntre(hoje, item.atualPrazo) < 0 : false;
   return (
-    <span className="flex shrink-0 items-center gap-1.5 text-[11px]">
-      {item.responsavel && (
-        <span
-          title={item.responsavel}
-          className="flex h-5 w-5 items-center justify-center rounded-full bg-[#E9E9E7] text-[9.5px] font-semibold text-ink"
-        >
-          {item.responsavel.trim()[0]?.toUpperCase()}
-        </span>
-      )}
-      {item.atualPrazo && (
-        <span className={atrasada ? 'font-semibold text-[var(--prazo-atrasado)]' : 'text-t3'}>
-          {atrasada ? `atrasada · ${ddmm(item.atualPrazo)}` : `até ${ddmm(item.atualPrazo)}`}
+    <span
+      className="inline-flex max-w-full items-stretch overflow-hidden rounded-full text-[11px] font-semibold"
+      style={{ background: cor.bg, color: cor.fg }}
+      title={item.atualTitulo ?? undefined}
+    >
+      <span className="flex items-center gap-1.5 px-2.5 py-1">
+        <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+        <span className="truncate">{texto}</span>
+      </span>
+      {comPrazo && (
+        <span className="flex items-center gap-1.5 bg-white/55 py-1 pl-1.5 pr-2.5">
+          {item.responsavel && (
+            <span
+              title={item.responsavel}
+              className="flex h-4 w-4 items-center justify-center rounded-full bg-white text-[9px] font-bold text-ink"
+            >
+              {item.responsavel.trim()[0]?.toUpperCase()}
+            </span>
+          )}
+          {item.atualPrazo && (
+            <span className={atrasada ? 'text-[var(--prazo-atrasado)]' : 'text-ink/70'}>
+              {atrasada ? `atrasada desde ${ddmm(item.atualPrazo)}` : `até ${ddmm(item.atualPrazo)}`}
+            </span>
+          )}
         </span>
       )}
     </span>
   );
+}
+
+/** "08/10 às 10:32" (horário de Brasília) quando há hora; senão só a data. */
+function fmtEnvio(iso: string, comHora = true): string {
+  if (iso.length <= 10) return ddmm(iso);
+  const d = new Date(iso);
+  const data = d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
+  if (!comHora) return data;
+  const hora = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+  return `${data} às ${hora}`;
+}
+
+/** Dias entre o prazo oficial e o envio: > 0 = atraso. */
+function pontualidade(i: ItemEntrega): { dias: number; texto: string } | null {
+  if (!i.enviadoEm || !i.prazo) return null;
+  const enviadoDia =
+    i.enviadoEm.length <= 10
+      ? i.enviadoEm
+      : new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(i.enviadoEm));
+  const dias = diasEntre(i.prazo, enviadoDia);
+  if (dias <= 0) return { dias, texto: 'no prazo' };
+  return { dias, texto: `${dias} ${dias === 1 ? 'dia' : 'dias'} de atraso` };
 }
 
 /**
@@ -449,6 +473,7 @@ export function EntregaPorCliente({
   const [envio, setEnvio] = useState<GrupoEntrega | null>(null);
   const [mensagem, setMensagem] = useState<GrupoEntrega | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [enviadosAbertos, setEnviadosAbertos] = useState<Set<string>>(new Set());
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_PADRAO);
   const [menu, setMenu] = useState<'ordem' | 'situacao' | 'clientes' | null>(null);
   useEffect(() => {
@@ -614,13 +639,10 @@ export function EntregaPorCliente({
         const prontos = g.itens.filter((i) => i.relacao === 'aqui');
         const travados = g.itens.filter((i) => i.relacao === 'antes');
         const atrasados = g.itens.filter((i) => i.prazo && diasEntre(hojeIso, i.prazo) < 0).length;
-        const temCliente = g.itens.some((i) => i.comCliente);
         return (
           <section
             key={g.projetoId || g.nome}
-            className={`overflow-hidden rounded-2xl border bg-white ${
-              atrasados > 0 ? 'border-[rgba(110,42,44,0.25)]' : 'border-[rgba(21,21,33,0.08)]'
-            }`}
+            className="overflow-hidden rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white"
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(21,21,33,0.06)] px-5 py-3.5">
               <div className="min-w-0">
@@ -654,6 +676,11 @@ export function EntregaPorCliente({
                 </button>
               )}
             </div>
+            <div className="hidden items-center gap-3 px-5 pb-0.5 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-t3 sm:flex">
+              <span className="w-[66px] shrink-0">{tipo === 'envio' ? 'Envio' : 'Prazo'}</span>
+              <span className="min-w-0 flex-1">Post</span>
+              <span className="shrink-0">Tarefa atual do post</span>
+            </div>
             <ul className="divide-y divide-[rgba(21,21,33,0.05)]">
               {g.itens.map((i) => (
                 <li key={i.tarefaId}>
@@ -661,21 +688,15 @@ export function EntregaPorCliente({
                     type="button"
                     onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
                     disabled={!i.postId}
-                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
+                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
                   >
                     <ChipData prazo={i.prazo} hoje={hojeIso} className="w-[66px]" />
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.postTitulo}</span>
-                    {/* colunas fixas: a tag de status fica sempre alinhada na direita */}
-                    <span className="hidden w-[132px] shrink-0 justify-end sm:flex">
-                      {i.relacao !== 'aqui' && <MetaAtual item={i} hoje={hojeIso} />}
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="min-w-0 truncate text-[13px] text-ink">{i.postTitulo}</span>
+                      {i.comCliente && <PilulaVisto visto={!!i.visto} />}
                     </span>
-                    {temCliente && (
-                      <span className="hidden w-[68px] shrink-0 justify-end sm:flex">
-                        {i.comCliente && <PilulaVisto visto={!!i.visto} />}
-                      </span>
-                    )}
-                    <span className="flex w-full justify-end sm:w-[210px] sm:shrink-0">
-                      <ChipStatus item={i} tipo={tipo} />
+                    <span className="flex w-full justify-end sm:w-auto sm:shrink-0">
+                      <PilulaTarefaAtual item={i} tipo={tipo} hoje={hojeIso} />
                     </span>
                   </button>
                 </li>
@@ -693,52 +714,98 @@ export function EntregaPorCliente({
               <span className="rounded-full bg-bgSoft px-2 py-0.5 text-[11px] font-semibold text-t2">{nEnviados}</span>
             </h2>
             <p className="mt-0.5 text-[12px] text-t3">
-              {tipo === 'envio'
-                ? 'Já foram pro cliente nessa semana. A última coluna mostra onde cada post está agora.'
-                : 'Já passaram dessa etapa nessa semana.'}
+              {tipo === 'envio' ? 'Quando cada post foi enviado e se saiu no prazo.' : 'Quando cada post passou dessa etapa.'}
             </p>
           </div>
-          <div className="overflow-hidden rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white">
-            <div className="hidden items-center gap-3 border-b border-[rgba(21,21,33,0.08)] px-5 py-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-t3 sm:flex">
-              <span className="min-w-0 flex-1">Post</span>
-              <span className="w-[72px] shrink-0">{tipo === 'envio' ? 'Enviado' : 'Feito'}</span>
-              <span className="w-[84px] shrink-0">Cliente viu</span>
-              <span className="w-[210px] shrink-0 text-right">Onde está agora</span>
-            </div>
+          <div className="divide-y divide-[rgba(21,21,33,0.06)] overflow-hidden rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white">
             {enviadosDaSemana.map((g) => {
-              const vistos = g.itens.filter((i) => i.visto).length;
+              const chave = g.projetoId || g.nome;
+              const aberto = enviadosAbertos.has(chave);
+              const datas = g.itens.map((i) => i.enviadoEm).filter((x): x is string => !!x).sort();
+              const atrasos = g.itens.filter((i) => (pontualidade(i)?.dias ?? 0) > 0).length;
+              const resumoEnvio =
+                datas.length === 0
+                  ? 'sem registro de envio'
+                  : datas[0].slice(0, 10) === datas[datas.length - 1].slice(0, 10)
+                    ? `${tipo === 'envio' ? 'enviado' : 'feito'} ${fmtEnvio(datas[datas.length - 1])}`
+                    : `${tipo === 'envio' ? 'enviados' : 'feitos'} de ${fmtEnvio(datas[0], false)} a ${fmtEnvio(datas[datas.length - 1], false)}`;
               return (
-                <div key={g.projetoId || g.nome}>
-                  <div className="flex items-baseline justify-between gap-2 bg-[rgba(55,53,47,0.03)] px-5 py-1.5">
-                    <span className="truncate text-[12px] font-semibold text-ink">{g.nome}</span>
-                    <span className="shrink-0 text-[11px] text-t3">
-                      {g.itens.length} {g.itens.length === 1 ? 'post' : 'posts'}
-                      {g.itens.some((i) => i.comCliente) && ` · ${vistos} ${vistos === 1 ? 'visto' : 'vistos'}`}
+                <div key={chave}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEnviadosAbertos((s) => {
+                        const n = new Set(s);
+                        if (n.has(chave)) n.delete(chave);
+                        else n.add(chave);
+                        return n;
+                      })
+                    }
+                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-left transition hover:bg-bgSoft/60"
+                  >
+                    <span className="w-3 shrink-0 text-[11px] text-t3">{aberto ? '▾' : '▸'}</span>
+                    <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">{g.nome}</span>
+                    <span className="shrink-0 text-[12px] text-t2">
+                      {g.itens.length} {g.itens.length === 1 ? 'post' : 'posts'} · {resumoEnvio}
                     </span>
-                  </div>
-                  <ul className="divide-y divide-[rgba(21,21,33,0.05)]">
-                    {g.itens.map((i) => (
-                      <li key={i.tarefaId}>
-                        <button
-                          type="button"
-                          onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
-                          disabled={!i.postId}
-                          className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
-                        >
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.postTitulo}</span>
-                          <span className="w-[72px] shrink-0 font-mono text-[11.5px] text-t2">
-                            {i.enviadoEm ? `${i.enviadoEm.slice(8, 10)}/${i.enviadoEm.slice(5, 7)}` : '—'}
-                          </span>
-                          <span className="w-[84px] shrink-0">
-                            {i.comCliente ? <PilulaVisto visto={!!i.visto} /> : <span className="text-[11px] text-t3">—</span>}
-                          </span>
-                          <span className="flex w-full justify-end sm:w-[210px] sm:shrink-0">
-                            <ChipStatus item={i} tipo={tipo} />
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        atrasos > 0
+                          ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
+                          : 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
+                      }`}
+                    >
+                      {atrasos > 0 ? `${atrasos} com atraso` : 'no prazo'}
+                    </span>
+                  </button>
+                  {aberto && (
+                    <div className="pb-2">
+                      <div className="hidden items-center gap-3 px-5 py-1.5 pl-11 text-[10px] font-semibold uppercase tracking-[0.06em] text-t3 sm:flex">
+                        <span className="min-w-0 flex-1">Post</span>
+                        <span className="w-[120px] shrink-0">{tipo === 'envio' ? 'Enviado em' : 'Feito em'}</span>
+                        <span className="w-[64px] shrink-0">Prazo</span>
+                        <span className="w-[120px] shrink-0 text-right">Pontualidade</span>
+                      </div>
+                      <ul>
+                        {g.itens.map((i) => {
+                          const pt = pontualidade(i);
+                          return (
+                            <li key={i.tarefaId}>
+                              <button
+                                type="button"
+                                onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
+                                disabled={!i.postId}
+                                className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2 pl-11 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
+                              >
+                                <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{i.postTitulo}</span>
+                                <span className="w-[120px] shrink-0 text-[12px] text-ink">
+                                  {i.enviadoEm ? fmtEnvio(i.enviadoEm) : <span className="text-t3">—</span>}
+                                </span>
+                                <span className="w-[64px] shrink-0 font-mono text-[11.5px] text-t2">
+                                  {i.prazo ? ddmm(i.prazo) : '—'}
+                                </span>
+                                <span className="flex w-[120px] shrink-0 justify-end">
+                                  {pt ? (
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                        pt.dias > 0
+                                          ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
+                                          : 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
+                                      }`}
+                                    >
+                                      {pt.texto}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-t3">—</span>
+                                  )}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               );
             })}

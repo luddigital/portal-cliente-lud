@@ -698,3 +698,28 @@ export async function lerHistoricoComunicacao(postId: string): Promise<Historico
     })),
   };
 }
+
+/** Envios pra aprovação (lote de quinta) dos últimos dias: post → quando foi enviado. */
+export async function lerEnviosParaAprovacao(postIds: string[], dias = 70): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (postIds.length === 0) return out;
+  const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('regua_envios')
+    .select('post_ids, enviado_em')
+    .eq('momento', 'quinta')
+    .gte('enviado_em', desde)
+    .order('enviado_em', { ascending: true });
+  if (error) {
+    console.warn('[regua_envios]', error.message);
+    return out;
+  }
+  const alvo = new Set(postIds);
+  for (const r of data ?? []) {
+    for (const id of (r.post_ids as string[]) ?? []) {
+      if (alvo.has(id)) out[id] = r.enviado_em; // fica o envio mais recente
+    }
+  }
+  return out;
+}
