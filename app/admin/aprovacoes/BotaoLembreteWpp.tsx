@@ -32,11 +32,14 @@ export function BotaoLembreteWpp({
   tarefaId,
   clienteNome,
   rotulo,
+  branco = false,
 }: {
   tarefaId: string;
   clienteNome: string;
   /** Texto do botão em versão maior (ex.: "Lembrar cliente: Aprovação | Post"). */
   rotulo?: string;
+  /** Botão branco (sobre fundo colorido), sem ícone. A cor do texto vem do pai. */
+  branco?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [enviado, setEnviado] = useState(false);
@@ -50,14 +53,16 @@ export function BotaoLembreteWpp({
         className={`inline-flex items-center gap-1.5 rounded-full font-semibold transition ${
           rotulo ? 'px-3.5 py-1.5 text-[12px]' : 'px-2.5 py-1 text-[10.5px]'
         } ${
-          enviado
-            ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
-            : rotulo
-              ? 'bg-ink text-white hover:opacity-90'
-              : 'bg-bgSoft text-t2 hover:bg-ink hover:text-white'
+          branco
+            ? 'bg-white px-5 py-2 text-[14px] text-current hover:bg-white/90'
+            : enviado
+              ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
+              : rotulo
+                ? 'bg-ink text-white hover:opacity-90'
+                : 'bg-bgSoft text-t2 hover:bg-ink hover:text-white'
         }`}
       >
-        {enviado ? '✓ enviado' : rotulo ? `📱 ${rotulo}` : '📱 lembrar'}
+        {enviado ? '✓ enviado' : branco && rotulo ? rotulo : rotulo ? `📱 ${rotulo}` : '📱 lembrar'}
       </button>
       {aberto && (
         <ModalLembrete

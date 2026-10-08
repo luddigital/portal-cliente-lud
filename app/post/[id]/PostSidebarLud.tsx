@@ -52,10 +52,13 @@ export function StatusDoPostChips({
   postId,
   status,
   alinhar = 'direita',
+  grande = false,
 }: {
   postId: string;
   status: string | null;
   alinhar?: 'esquerda' | 'direita';
+  /** Cabeçalho do post: chips maiores, sem borda. */
+  grande?: boolean;
 }) {
   const router = useRouter();
   const atual = bucketDoStatus(status);
@@ -85,7 +88,11 @@ export function StatusDoPostChips({
   return (
     <div className={`flex flex-col gap-1 ${alinhar === 'esquerda' ? 'items-start' : 'items-end'}`}>
       <div className={`flex flex-wrap items-center gap-1.5 ${alinhar === 'esquerda' ? 'justify-start' : 'justify-end'}`}>
-        <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+        <span
+          className={`mr-1 font-semibold uppercase text-t3 ${
+            grande ? 'mr-3 text-[11px] tracking-[0.12em]' : 'text-[10px] tracking-[0.1em]'
+          }`}
+        >
           Status
         </span>
         {STATUS_OPCOES.map((opt) => {
@@ -97,10 +104,14 @@ export function StatusDoPostChips({
               type="button"
               onClick={() => trocar(opt)}
               disabled={loading !== null || selecionado}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed ${
+              className={`rounded-full border font-semibold transition disabled:cursor-not-allowed ${
+                grande ? 'px-4 py-1.5 text-[13.5px]' : 'px-2.5 py-1 text-[11px]'
+              } ${
                 selecionado
                   ? 'text-white'
-                  : 'border-[rgba(21,21,33,0.13)] bg-white text-t2 hover:border-[rgba(21,21,33,0.25)] hover:text-ink disabled:opacity-40'
+                  : grande
+                    ? 'border-transparent bg-bgSoft text-t2 hover:text-ink disabled:opacity-40'
+                    : 'border-[rgba(21,21,33,0.13)] bg-white text-t2 hover:border-[rgba(21,21,33,0.25)] hover:text-ink disabled:opacity-40'
               }`}
               style={
                 selecionado

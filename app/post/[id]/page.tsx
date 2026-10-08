@@ -37,6 +37,7 @@ import {
   ComunicacaoCard,
 } from './PostSidebarLud';
 import { ComentariosLud } from './ComentariosLud';
+import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
 import { TarefaForm } from '../../tarefa/[id]/form';
 import { HistoricoBox } from '../../_components/HistoricoBox';
 
@@ -589,6 +590,11 @@ export default async function PostDetalhePage({
   // internos empilhados no fluxo: Status + Programar / Tarefas / Comentários.
   // Nada de grid 2 col ou sidebar sticky — parte do layout do cliente.
   // ==========================================================================
+  const tarefaCliente =
+    tarefasDoPost
+      .filter((x) => x.aberta && !x.finalizada && ehTarefaDoCliente(x.titulo))
+      .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'))[0] ?? null;
+
   return (
     <div className="min-h-screen pb-32">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
@@ -625,24 +631,33 @@ export default async function PostDetalhePage({
           {post.titulo}
         </h1>
 
-        {/* datas, formato e status num bloco só */}
-        <div className="space-y-3 rounded-3xl border border-[rgba(21,21,33,0.08)] bg-white p-4">
-          <div className="flex flex-wrap gap-2">
-            <PilulaInfo rotulo="Postagem" valor={fmtData(post.data)} />
-            {prazoLabel && (
-              <PilulaInfo
-                rotulo="Prazo de aprovação"
-                valor={prazoLabel}
-                alerta={dias !== null && dias <= 0}
-              />
-            )}
-            <PilulaInfo
-              rotulo="Formato"
-              valor={formatoResumo(post.formato, formatoTipoDetectado, arquivos.length)}
+        {/* cabeçalho: prazo em destaque + postagem, formato e status */}
+        <div className={`grid gap-4 ${tarefaPrazo ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2.6fr)]' : ''}`}>
+          {tarefaPrazo && (
+            <CardPrazo
+              dias={dias}
+              prazo={tarefaPrazo}
+              botao={
+                tarefaCliente ? (
+                  <BotaoLembreteWpp
+                    tarefaId={tarefaCliente.tarefaId}
+                    clienteNome={post.projetoNome}
+                    rotulo={/aprova/i.test(tarefaCliente.titulo) ? 'Enviar para aprovação' : 'Lembrar cliente'}
+                    branco
+                  />
+                ) : null
+              }
             />
-          </div>
-          <div className="border-t border-[rgba(21,21,33,0.06)] pt-3">
-            <StatusDoPostChips postId={post.id} status={post.status} alinhar="esquerda" />
+          )}
+          <div className="flex flex-col justify-between gap-6 rounded-[28px] bg-white px-7 py-6">
+            <div className="flex flex-wrap gap-x-12 gap-y-4">
+              <DadoCabecalho rotulo="Postagem" valor={fmtData(post.data)} />
+              <DadoCabecalho
+                rotulo="Formato"
+                valor={formatoResumo(post.formato, formatoTipoDetectado, arquivos.length)}
+              />
+            </div>
+            <StatusDoPostChips postId={post.id} status={post.status} alinhar="esquerda" grande />
           </div>
         </div>
 
@@ -709,12 +724,11 @@ export default async function PostDetalhePage({
 
         <ComunicacaoCard
           historico={historico}
-          lembrete={(() => {
-            const t = tarefasDoPost
-              .filter((x) => x.aberta && !x.finalizada && ehTarefaDoCliente(x.titulo))
-              .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'))[0];
-            return t ? { tarefaId: t.tarefaId, titulo: t.titulo, clienteNome: post.projetoNome } : null;
-          })()}
+          lembrete={
+            tarefaCliente
+              ? { tarefaId: tarefaCliente.tarefaId, titulo: tarefaCliente.titulo, clienteNome: post.projetoNome }
+              : null
+          }
         />
 
         <ProgramacaoCard
@@ -727,26 +741,58 @@ export default async function PostDetalhePage({
   );
 }
 
-function PilulaInfo({
-  rotulo,
-  valor,
-  alerta,
-}: {
-  rotulo: string;
-  valor: string;
-  alerta?: boolean;
-}) {
+function DadoCabecalho({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12.5px] ${
-        alerta
-          ? 'bg-[var(--prazo-atrasado-soft)] text-[var(--prazo-atrasado)]'
-          : 'bg-bgSoft text-ink'
-      }`}
-    >
-      <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] opacity-70">{rotulo}</span>
-      <span className="font-semibold">{valor}</span>
-    </span>
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-t3">{rotulo}</div>
+      <div className="mt-1 text-[22px] font-semibold tracking-[-0.02em] text-ink">{valor}</div>
+    </div>
+  );
+}
+
+/** Prazo de aprovação em destaque: vermelho (hoje/atrasado), laranja (1–2 dias), escuro (folga). */
+function CardPrazo({
+  dias,
+  prazo,
+  botao,
+}: {
+  dias: number | null;
+  prazo: string;
+  botao: React.ReactNode;
+}) {
+  const fundo =
+    dias === null ? '#37352F' : dias <= 0 ? '#B0001E' : dias <= 2 ? 'var(--prazo-hoje)' : '#37352F';
+  const grande =
+    dias === null
+      ? fmtData(prazo)
+      : dias < 0
+        ? 'Atrasado'
+        : dias === 0
+          ? 'Hoje'
+          : dias === 1
+            ? 'Amanhã'
+            : `Em ${dias} dias`;
+  const detalhe =
+    dias !== null && dias < 0
+      ? `venceu ${fmtData(prazo)} · há ${Math.abs(dias)} ${Math.abs(dias) === 1 ? 'dia' : 'dias'}`
+      : dias !== null && dias > 1
+        ? `até ${fmtData(prazo)}`
+        : null;
+  return (
+    <div className="flex flex-col justify-between gap-4 rounded-[28px] px-7 py-6 text-white" style={{ background: fundo, color: '#fff' }}>
+      <div>
+        <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.12em]">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+          Prazo de aprovação
+        </div>
+        <div className="mt-2 text-[40px] font-bold leading-none tracking-[-0.03em]">{grande}</div>
+        {detalhe && <div className="mt-1.5 text-[12.5px] opacity-85">{detalhe}</div>}
+      </div>
+      {botao && <div style={{ color: fundo }}>{botao}</div>}
+    </div>
   );
 }
 
