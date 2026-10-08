@@ -772,7 +772,7 @@ type LinhaDoTempo = {
 };
 
 /**
- * Comunicação com o cliente + histórico do post numa linha do tempo só:
+ * Histórico do post: comunicação com o cliente numa linha do tempo só:
  * comentários (cliente e equipe), aberturas do portal, lembretes enviados e
  * eventos do processo (alteração concluída, reprovada…).
  */
@@ -845,7 +845,7 @@ export function ComunicacaoCard({
   return (
     <div className="card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">Comunicação com o cliente</h2>
+        <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">Histórico do post</h2>
         {lembrete && (
           <BotaoLembreteWpp
             tarefaId={lembrete.tarefaId}
