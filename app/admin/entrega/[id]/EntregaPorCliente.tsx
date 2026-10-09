@@ -102,8 +102,24 @@ type Filtros = {
   situacao: 'todas' | 'prontas' | 'nao';
   clientes: string[];
   soAtrasados: boolean;
+  /** Agrupar os posts por cliente (com o envio em lote) ou por data. */
+  visao: 'cliente' | 'data';
 };
-const FILTROS_PADRAO: Filtros = { ordem: 'az', situacao: 'todas', clientes: [], soAtrasados: false };
+const FILTROS_PADRAO: Filtros = { ordem: 'az', situacao: 'todas', clientes: [], soAtrasados: false, visao: 'cliente' };
+
+const DIA_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+/** "Hoje · qui, 09/10", "Amanhã · sex, 10/10", "Atrasado · ter, 06/10". */
+function rotuloDoDia(iso: string, hoje: string): { titulo: string; atrasado: boolean } {
+  if (iso === 'sem-data') return { titulo: 'Sem data', atrasado: false };
+  const dia = DIA_CURTO[new Date(`${iso}T12:00:00Z`).getUTCDay()];
+  const base = `${dia}, ${ddmm(iso)}`;
+  const d = diasEntre(hoje, iso);
+  if (d === 0) return { titulo: `Hoje · ${base}`, atrasado: false };
+  if (d === 1) return { titulo: `Amanhã · ${base}`, atrasado: false };
+  if (d < 0) return { titulo: `Atrasado · ${base}`, atrasado: true };
+  return { titulo: base.charAt(0).toUpperCase() + base.slice(1), atrasado: false };
+}
 const CHAVE_FILTROS = 'entrega-filtros';
 
 const ORDENS: { id: Ordem; rotulo: string; curto: string }[] = [
@@ -588,6 +604,7 @@ export function EntregaPorCliente({
         })}
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-t2">
         <span>
           <b className="text-ink">{itensSemana.length}</b> posts
@@ -606,6 +623,27 @@ export function EntregaPorCliente({
             <b className="text-ink">{nEnviados}</b> {rotuloFeitos.toLowerCase()}
           </span>
         )}
+      </div>
+        <div className="flex items-center gap-1 rounded-full bg-white p-1" role="group" aria-label="Ver por">
+          {(
+            [
+              ['cliente', 'Por cliente'],
+              ['data', 'Por data'],
+            ] as const
+          ).map(([id, rotulo]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => mudar({ visao: id })}
+              aria-pressed={filtros.visao === id}
+              className={`rounded-full px-3 py-1 text-[11.5px] font-semibold transition ${
+                filtros.visao === id ? 'bg-ink text-white' : 'text-t2 hover:text-ink'
+              }`}
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
       </div>
 
       {gruposDaSemana.length > 0 && (
@@ -629,13 +667,80 @@ export function EntregaPorCliente({
       {aplicarFiltros(gruposDaSemana, filtros, hojeIso).length === 0 && gruposDaSemana.length > 0 && (
         <p className="rounded-2xl border border-dashed border-[rgba(21,21,33,0.12)] px-4 py-6 text-center text-[12.5px] text-t3">
           Nenhum cliente com esses filtros.{' '}
-          <button type="button" onClick={() => setFiltros({ ...FILTROS_PADRAO, ordem: filtros.ordem })} className="font-semibold underline hover:text-ink">
+          <button type="button" onClick={() => setFiltros({ ...FILTROS_PADRAO, ordem: filtros.ordem, visao: filtros.visao })} className="font-semibold underline hover:text-ink">
             Limpar filtros
           </button>
         </p>
       )}
 
-      {aplicarFiltros(gruposDaSemana, filtros, hojeIso).map((g) => {
+      {filtros.visao === 'data' && (() => {
+        const porDia = new Map<string, { item: ItemEntrega; cliente: string }[]>();
+        for (const g of aplicarFiltros(gruposDaSemana, filtros, hojeIso))
+          for (const i of g.itens) {
+            const k = i.prazo ?? 'sem-data';
+            const lista = porDia.get(k) ?? [];
+            lista.push({ item: i, cliente: g.nome });
+            porDia.set(k, lista);
+          }
+        const dias = [...porDia.keys()].sort((a, b) => (a === 'sem-data' ? 1 : b === 'sem-data' ? -1 : a.localeCompare(b)));
+        return (
+          <>
+            {(tipo === 'envio' || tipo === 'cliente') && dias.length > 0 && (
+              <p className="text-[11.5px] text-t3">
+                O envio pro cliente sai em lote por cliente: troque pra &quot;Por cliente&quot; pra enviar.
+              </p>
+            )}
+            {dias.map((k) => {
+              const r = rotuloDoDia(k, hojeIso);
+              const linhas = porDia.get(k)!.sort((a, b) => a.cliente.localeCompare(b.cliente, 'pt-BR'));
+              return (
+                <section key={k} className="overflow-hidden rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white">
+                  <div className="flex items-center justify-between gap-3 border-b border-[rgba(21,21,33,0.06)] px-5 py-3">
+                    <h2
+                      className={`text-[15px] font-semibold tracking-[-0.01em] ${
+                        r.atrasado ? 'text-[var(--prazo-atrasado)]' : 'text-ink'
+                      }`}
+                    >
+                      {r.titulo}
+                    </h2>
+                    <span className="text-[11.5px] text-t3">
+                      {linhas.length} {linhas.length === 1 ? 'post' : 'posts'}
+                    </span>
+                  </div>
+                  <div className="hidden items-center gap-3 px-5 pb-0.5 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-t3 sm:flex">
+                    <span className="w-[170px] shrink-0">Cliente</span>
+                    <span className="min-w-0 flex-1">Post</span>
+                    <span className="shrink-0">Tarefa atual do post</span>
+                  </div>
+                  <ul className="divide-y divide-[rgba(21,21,33,0.05)]">
+                    {linhas.map(({ item: i, cliente }) => (
+                      <li key={i.tarefaId}>
+                        <button
+                          type="button"
+                          onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
+                          disabled={!i.postId}
+                          className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
+                        >
+                          <span className="w-full truncate text-[12px] font-semibold text-t2 sm:w-[170px] sm:shrink-0">{cliente}</span>
+                          <span className="flex min-w-0 flex-1 items-center gap-2">
+                            <span className="min-w-0 truncate text-[13px] text-ink">{i.postTitulo}</span>
+                            {i.comCliente && <PilulaVisto visto={!!i.visto} />}
+                          </span>
+                          <span className="flex w-full justify-end sm:w-auto sm:shrink-0">
+                            <PilulaTarefaAtual item={i} tipo={tipo} hoje={hojeIso} />
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+          </>
+        );
+      })()}
+
+      {filtros.visao === 'cliente' && aplicarFiltros(gruposDaSemana, filtros, hojeIso).map((g) => {
         const prontos = g.itens.filter((i) => i.relacao === 'aqui');
         const travados = g.itens.filter((i) => i.relacao === 'antes');
         const atrasados = g.itens.filter((i) => i.prazo && diasEntre(hojeIso, i.prazo) < 0).length;
