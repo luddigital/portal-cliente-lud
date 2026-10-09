@@ -2108,6 +2108,8 @@ export async function getResumoTarefasCliente(
 
 export type EtapaPost =
   | 'publicado'
+  /** Programado, esperando a data de postagem (Conferir Postagem com data futura). */
+  | 'agendado'
   | 'producao'
   | 'aprovacao'
   | 'alteracao'
@@ -2135,6 +2137,7 @@ export type PostCalendario = {
 
 export const ETAPA_INFO: Record<EtapaPost, { label: string; cor: PostCalendario['cor'] }> = {
   publicado: { label: 'Publicado', cor: 'publicado' },
+  agendado: { label: 'Agendado', cor: 'agendado' },
   producao: { label: 'Em produção', cor: 'agendado' },
   aprovacao: { label: 'Aprovação', cor: 'aprovacao' },
   alteracao: { label: 'Em alteração', cor: 'alteracao' },
@@ -2144,6 +2147,7 @@ export const ETAPA_INFO: Record<EtapaPost, { label: string; cor: PostCalendario[
 
 function tituloParaEtapa(titulo: string): EtapaPost {
   const t = titulo.trim();
+  if (t.startsWith('Conferir Postagem')) return 'agendado';
   if (t.startsWith('Aprovação |')) return 'aprovacao';
   if (t.startsWith('Alteração |')) return 'alteracao';
   if (t === 'Materiais para Produção') return 'aguardando';
@@ -2157,9 +2161,16 @@ const PRIORIDADE_ETAPA: Record<EtapaPost, number> = {
   aguardando: 4,
   alteracao: 3,
   producao: 2,
+  agendado: 1.5,
   rascunho: 1,
   publicado: 0,
 };
+
+/** "Conferir Postagem" só é publicado a partir da data do post; antes disso é agendado. */
+function ajustarAgendado(p: { etapa: EtapaPost; data: string }): void {
+  const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  if (p.etapa === 'agendado' && p.data && p.data.slice(0, 10) <= hoje) p.etapa = 'publicado';
+}
 
 /**
  * Pra cada postId, busca a tarefa atualmente "Pronta" (fórmula ` Pronto` = true)
@@ -2264,7 +2275,7 @@ async function getFormatoMap(): Promise<Map<string, { name: string; tipo: 'post'
 
 const _listPostsDoMesCached = unstable_cache(
   listPostsDoMesUncached,
-  ['posts-do-mes-v3'],
+  ['posts-do-mes-v4-agendado'],
   { revalidate: 300, tags: [TAG_POSTS] },
 );
 
@@ -2444,7 +2455,11 @@ async function listPostsDoMesUncached(
     // Casos típicos: "Postado", "✅ Postado", "Conferir Postagem",
     // "🕐 Conferir Postagem"
     if (sg.includes('postado')) return true;
-    if (sg.includes('conferir postagem')) return true;
+    // Conferir Postagem com data futura ainda não foi ao ar: é agendado.
+    if (sg.includes('conferir postagem')) {
+      const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+      return !p.data || p.data.slice(0, 10) <= hoje;
+    }
     return false;
   }
 
@@ -2460,6 +2475,7 @@ async function listPostsDoMesUncached(
       const ativa = etapaPorPost.get(p.id);
       p.etapa = ativa?.etapa ?? 'rascunho';
       p.tarefaAtualTitulo = ativa?.titulo ?? null;
+      ajustarAgendado(p);
     }
     const info = ETAPA_INFO[p.etapa];
     p.cor = info.cor;
@@ -2584,6 +2600,7 @@ async function listPostsNoIntervaloUncached(
       const ativa = etapaPorPost.get(p.id);
       p.etapa = ativa?.etapa ?? 'rascunho';
       p.tarefaAtualTitulo = ativa?.titulo ?? null;
+      ajustarAgendado(p);
     }
     const info = ETAPA_INFO[p.etapa];
     p.cor = info.cor;
@@ -2595,7 +2612,7 @@ async function listPostsNoIntervaloUncached(
 
 const _listPostsNoIntervaloCached = unstable_cache(
   listPostsNoIntervaloUncached,
-  ['posts-intervalo-v2'],
+  ['posts-intervalo-v3-agendado'],
   { revalidate: 300, tags: [TAG_POSTS] },
 );
 

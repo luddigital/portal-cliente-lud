@@ -195,7 +195,15 @@ export function textoProxima(dias: number | null): string {
 }
 
 /** Nome amigável do que está acontecendo com o post, pela tarefa aberta atual. */
-export function rotuloDaTarefaAtual(titulo: string): string {
+function hojeSp(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+
+/**
+ * Rótulo de onde o post está. `prazo` (YYYY-MM-DD) da tarefa ajusta o que
+ * depende do dia: "Conferir Postagem" com data futura ainda é agendado.
+ */
+export function rotuloDaTarefaAtual(titulo: string, prazo?: string | null, hoje: string = hojeSp()): string {
   const t = titulo.toLowerCase().trim();
   if (t === 'arte') return 'Arte em produção';
   if (/aprova[çc][ãa]o\s*\|\s*arte/.test(t)) return 'Aguardando aprovação de arte';
@@ -205,7 +213,12 @@ export function rotuloDaTarefaAtual(titulo: string): string {
   if (/aprova[çc][ãa]o\s*\|\s*post/.test(t)) return 'Com o cliente pra aprovar';
   if (/altera[çc][ãa]o\s*\|\s*post/.test(t)) return 'Alteração pedida pelo cliente';
   if (/programar/.test(t)) return 'Aprovado · falta programar';
-  if (/conferir postagem/.test(t)) return 'Publicado · conferir postagem';
+  if (/conferir postagem/.test(t)) {
+    const dia = prazo ? prazo.slice(0, 10) : null;
+    if (dia && dia > hoje) return `Agendado · posta ${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
+    if (dia && dia === hoje) return 'Posta hoje · conferir';
+    return 'Publicado · conferir postagem';
+  }
   if (/aprova[çc][ãa]o\s*\|\s*materia/.test(t)) return 'Conferir materiais recebidos';
   if (/materia/.test(t)) return 'Esperando materiais do cliente';
   if (/pr[ée]vi|conte[úu]do/.test(t)) return 'Esperando informações prévias';
@@ -231,7 +244,11 @@ function chaveTitulo(t: string): string {
 }
 
 /** Onde o post está de verdade, comparado com a entrega `tituloEntrega`. */
-export function statusRealDoPost(abertas: TarefaDoProjeto[], tituloEntrega: string): StatusReal {
+export function statusRealDoPost(
+  abertas: TarefaDoProjeto[],
+  tituloEntrega: string,
+  hoje: string = hojeSp(),
+): StatusReal {
   const ordenadas = [...abertas].sort(compararNoFluxo);
   const atual = ordenadas[0] ?? null;
   if (!atual) return { atual: null, rotulo: 'Concluído', relacao: 'concluido', comCliente: false };
@@ -244,7 +261,7 @@ export function statusRealDoPost(abertas: TarefaDoProjeto[], tituloEntrega: stri
 
   return {
     atual,
-    rotulo: rotuloDaTarefaAtual(atual.titulo),
+    rotulo: rotuloDaTarefaAtual(atual.titulo, atual.prazo, hoje),
     relacao,
     comCliente: ehTarefaDoCliente(atual.titulo),
   };

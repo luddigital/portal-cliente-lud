@@ -14,6 +14,9 @@ export function corDoStatus(p: PostCalendario): CorStatus {
   const sg = (p.statusGeral ?? '').trim().toLowerCase();
 
   if (sg.includes('conferir postagem')) {
+    // Data futura: programado, ainda não foi ao ar.
+    const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    if (p.data && p.data.slice(0, 10) > hoje) return { bg: 'var(--cal-agendado-soft)', fg: 'var(--cal-agendado)' };
     return { bg: 'var(--cal-conferir-soft)', fg: 'var(--cal-conferir)' };
   }
   if (sg.includes('postado')) {

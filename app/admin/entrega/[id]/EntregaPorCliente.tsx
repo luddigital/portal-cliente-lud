@@ -90,7 +90,7 @@ function corDoStatus(item: ItemEntrega, tipo: TipoEntrega): { bg: string; fg: st
   if (/altera/.test(t)) return par('cal-alteracao');
   if (/enviar post/.test(t)) return par('prazo-em-dia');
   if (/programar/.test(t)) return par('cal-programar');
-  if (/conferir/.test(t)) return par('cal-conferir');
+  if (/conferir/.test(t)) return par(/^agendado/i.test(item.rotulo) ? 'cal-agendado' : 'cal-conferir');
   if (/aprova/.test(t)) return par('cal-aprovacao');
   if (item.comCliente) return par('cal-aguardando');
   return par('cal-agendado');

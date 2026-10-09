@@ -79,7 +79,11 @@ function balde(p: PostCalendario): Bucket {
 
   // 1. Status Geral do Notion tem precedência
   if (sg.includes('postado')) return 'publicado';
-  if (sg.includes('conferir postagem')) return 'publicado';
+  if (sg.includes('conferir postagem')) {
+    // Data futura: programado, ainda não foi ao ar.
+    const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    return p.data && p.data.slice(0, 10) > hoje ? 'programado' : 'publicado';
+  }
   if (sg === 'programar' || t.includes('programar')) return 'pronto';
   if (sg.includes('altera')) return 'ajuste';
 
