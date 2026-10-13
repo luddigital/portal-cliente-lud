@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { PostCalendario } from '@/lib/notion';
-import { corDoStatus } from '@/lib/statusCor';
+import { PostCardSemana } from './PostCardSemana';
 
 export type DiaSemana = {
   iso: string;
@@ -9,31 +9,6 @@ export type DiaSemana = {
   hoje: boolean;
   posts: PostCalendario[];
 };
-
-function PostCard({ p }: { p: PostCalendario }) {
-  const label = p.statusGeral ?? p.etapaLabel;
-  const cores = corDoStatus(p);
-  return (
-    <Link
-      href={`/post/${p.id}`}
-      title={`${p.projetoNome} — ${p.titulo} · ${label}`}
-      className="block rounded-md border border-[rgba(21,21,33,0.1)] bg-white px-1.5 py-1 sm:px-2 sm:py-1.5 transition hover:border-navy/40 hover:shadow-sm"
-    >
-      <div className="truncate text-[9px] font-semibold uppercase tracking-[0.06em] text-t3">
-        {p.projetoNome}
-      </div>
-      <div className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-tight text-ink">
-        {p.titulo}
-      </div>
-      <span
-        className="mt-1 inline-block max-w-full truncate rounded px-1.5 py-0.5 text-[9.5px] font-semibold"
-        style={{ background: cores.bg, color: cores.fg }}
-      >
-        {label}
-      </span>
-    </Link>
-  );
-}
 
 export function CalendarSemana({
   dias,
@@ -57,12 +32,14 @@ export function CalendarSemana({
         <div className="flex items-center gap-1.5">
           <Link
             href={hojeHref}
+            scroll={false}
             className="rounded-full bg-bgSoft px-2.5 py-1 text-[11px] font-medium text-t2 transition hover:text-ink"
           >
             Hoje
           </Link>
           <Link
             href={prevHref}
+            scroll={false}
             aria-label="Semana anterior"
             className="rounded-full bg-bgSoft px-2.5 py-1 text-[13px] text-t2 transition hover:text-ink"
           >
@@ -70,6 +47,7 @@ export function CalendarSemana({
           </Link>
           <Link
             href={nextHref}
+            scroll={false}
             aria-label="Próxima semana"
             className="rounded-full bg-bgSoft px-2.5 py-1 text-[13px] text-t2 transition hover:text-ink"
           >
@@ -102,7 +80,7 @@ export function CalendarSemana({
             </div>
             <div className="space-y-1.5">
               {d.posts.map((p) => (
-                <PostCard key={p.id} p={p} />
+                <PostCardSemana key={p.id} p={p} />
               ))}
             </div>
           </div>
