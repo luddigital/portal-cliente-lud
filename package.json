@@ -9,7 +9,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "deploy:preview": "vercel deploy --yes",
-    "deploy:prod": "vercel deploy --prod --yes"
+    "publicar": "bash scripts/publicar.sh",
+    "deploy:prod": "bash scripts/publicar.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
