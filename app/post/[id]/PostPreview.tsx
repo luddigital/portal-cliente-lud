@@ -941,6 +941,47 @@ function Carousel({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const totalIndicadoresVisiveis = Math.min(arquivos.length, 12);
 
+  // Arrastar com o MOUSE pra passar de arte (overflow nativo só deixa arrastar
+  // no touch/trackpad; no desktop com mouse não dá — aqui habilitamos isso).
+  const arrasto = useRef({ ativo: false, startX: 0, startScroll: 0, moveu: false });
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType !== 'mouse') return; // touch/trackpad já rolam nativo
+    const el = trackRef.current;
+    if (!el) return;
+    const alvo = e.target as HTMLElement;
+    // Não sequestra o clique dos controles (vídeo, áudio, botões, links, iframe).
+    if (alvo.closest('video,audio,iframe,button,a,input,textarea')) return;
+    arrasto.current = {
+      ativo: true,
+      startX: e.clientX,
+      startScroll: el.scrollLeft,
+      moveu: false,
+    };
+    el.style.scrollBehavior = 'auto'; // sem smooth enquanto arrasta
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!arrasto.current.ativo) return;
+    const el = trackRef.current;
+    if (!el) return;
+    const dx = e.clientX - arrasto.current.startX;
+    if (Math.abs(dx) > 3) arrasto.current.moveu = true;
+    el.scrollLeft = arrasto.current.startScroll - dx;
+  }
+
+  function finalizarArrasto() {
+    const el = trackRef.current;
+    if (!arrasto.current.ativo || !el) return;
+    arrasto.current.ativo = false;
+    el.style.scrollBehavior = '';
+    const w = el.clientWidth;
+    if (w > 0) {
+      const idx = Math.round(el.scrollLeft / w);
+      setAtivo(Math.max(0, Math.min(arquivos.length - 1, idx)));
+    }
+  }
+
   // Mantém o slide ativo sincronizado com o scroll horizontal (drag/swipe).
   useEffect(() => {
     const el = trackRef.current;
@@ -984,7 +1025,14 @@ function Carousel({
       <div className="relative">
         <div
           ref={trackRef}
-          className={`flex snap-x snap-mandatory overflow-x-auto rounded-2xl border border-[rgba(21,21,33,0.08)] ${bg} [scroll-behavior:smooth] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={finalizarArrasto}
+          onPointerLeave={finalizarArrasto}
+          onDragStart={(e) => e.preventDefault()}
+          className={`flex snap-x snap-mandatory overflow-x-auto rounded-2xl border border-[rgba(21,21,33,0.08)] ${bg} [scroll-behavior:smooth] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+            arquivos.length > 1 ? 'cursor-grab active:cursor-grabbing select-none' : ''
+          }`}
         >
           {arquivos.map((a, idx) => (
             <div
@@ -1009,7 +1057,7 @@ function Carousel({
               onClick={() => ir(-1)}
               disabled={ativo === 0}
               aria-label="Anterior"
-              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 px-3 py-1.5 text-[14px] shadow-sm transition hover:bg-white disabled:opacity-30"
+              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 rounded-full bg-white/90 px-3 py-1.5 text-[14px] shadow-sm transition hover:bg-white disabled:opacity-30"
             >
               ‹
             </button>
@@ -1018,7 +1066,7 @@ function Carousel({
               onClick={() => ir(1)}
               disabled={ativo === arquivos.length - 1}
               aria-label="Próximo"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 px-3 py-1.5 text-[14px] shadow-sm transition hover:bg-white disabled:opacity-30"
+              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 rounded-full bg-white/90 px-3 py-1.5 text-[14px] shadow-sm transition hover:bg-white disabled:opacity-30"
             >
               ›
             </button>

@@ -7,7 +7,7 @@ const MAGIC_COOKIE = 'lud_magic';
 const ADMIN_ORIGEM_COOKIE = 'lud_admin_origem';
 const PROJETO_ATIVO_COOKIE = 'lud_projeto_ativo';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 ano — login fica lembrado
-const ADMIN_ORIGEM_MAX_AGE = 60 * 60 * 8; // 8h — tempo razoável pra sessão "como cliente"
+const ADMIN_ORIGEM_MAX_AGE = 60 * 60 * 24 * 30; // 30 dias — não força relogin ao "Voltar pra central"
 
 const secret = () => new TextEncoder().encode(env.auth.secret);
 

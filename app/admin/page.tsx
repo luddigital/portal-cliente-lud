@@ -66,7 +66,7 @@ export default async function AdminPage({
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-4xl lg:max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-4xl lg:max-w-none items-center justify-between px-6 lg:px-8 py-4">
           <div>
             <div className="text-[20px] font-bold tracking-[-0.02em] text-ink">
               Portal da Lud<span className="font-light text-mauve">.</span>
@@ -104,7 +104,7 @@ export default async function AdminPage({
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-4xl lg:max-w-7xl px-6 py-10 space-y-10">
+      <main className="mx-auto max-w-4xl lg:max-w-none px-6 lg:px-8 py-10 space-y-10">
         <Suspense
           fallback={
             <div className="h-[120px] rounded-2xl bg-bgSoft animate-pulse" />

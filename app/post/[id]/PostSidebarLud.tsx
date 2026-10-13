@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TarefaDoPost } from '@/lib/notion';
+import { MiniCalendario } from '@/app/_components/MiniCalendario';
+import { statusPrazo } from '@/lib/prazoStatus';
 import { compararNoFluxo, ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
 import type { MudancaPrazo, ProgramacaoConfig } from '@/lib/supabase';
@@ -272,19 +274,46 @@ function PrazoEditavel({
   onSalvar: (novo: string) => Promise<void>;
 }) {
   const [editando, setEditando] = useState(false);
+  const [calAberto, setCalAberto] = useState(false);
   const [valor, setValor] = useState('');
   const [salvando, setSalvando] = useState(false);
   const ultima = mudancas[0];
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
+
+  // Fecha ao clicar fora / Esc.
+  useEffect(() => {
+    if (!editando) return;
+    function onDoc(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setEditando(false);
+        setCalAberto(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setEditando(false);
+        setCalAberto(false);
+      }
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [editando]);
 
   async function salvar() {
     if (!valor || valor === prazo) {
       setEditando(false);
+      setCalAberto(false);
       return;
     }
     setSalvando(true);
     try {
       await onSalvar(valor);
       setEditando(false);
+      setCalAberto(false);
     } catch {
       /* erro aparece no card */
     } finally {
@@ -292,20 +321,23 @@ function PrazoEditavel({
     }
   }
 
+  const fmtChip = (iso: string) =>
+    iso ? iso.split('-').reverse().join('/') : 'escolher data';
+
   if (editando) {
     return (
-      <span className="flex shrink-0 items-center gap-1">
-        <input
-          type="date"
-          autoFocus
-          value={valor}
-          onChange={(e) => setValor(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') salvar();
-            if (e.key === 'Escape') setEditando(false);
-          }}
-          className="h-7 rounded-md border border-[rgba(21,21,33,0.2)] bg-white px-1.5 font-mono text-[11px] text-ink outline-none focus:border-ink"
-        />
+      <span ref={wrapRef} className="relative flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setCalAberto((v) => !v)}
+          className="flex h-7 items-center gap-1.5 rounded-md border border-ink bg-white px-2 font-mono text-[11px] text-ink outline-none"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4M8 2v4M3 10h18" />
+          </svg>
+          {fmtChip(valor)}
+        </button>
         <button
           type="button"
           onClick={salvar}
@@ -316,12 +348,27 @@ function PrazoEditavel({
         </button>
         <button
           type="button"
-          onClick={() => setEditando(false)}
+          onClick={() => {
+            setEditando(false);
+            setCalAberto(false);
+          }}
           aria-label="Cancelar"
           className="h-7 px-1 text-[14px] text-t3 hover:text-ink"
         >
           ×
         </button>
+
+        {calAberto && (
+          <div className="absolute left-0 top-8 z-50">
+            <MiniCalendario
+              value={valor || null}
+              onPick={(iso) => {
+                setValor(iso);
+                setCalAberto(false);
+              }}
+            />
+          </div>
+        )}
       </span>
     );
   }
@@ -332,19 +379,20 @@ function PrazoEditavel({
       onClick={() => {
         setValor(prazo ?? hojeLocal());
         setEditando(true);
+        setCalAberto(true);
       }}
       title={
         ultima
           ? `Prazo mudou ${mudancas.length}x · última: ${ddmmCurto(ultima.de)} → ${ddmmCurto(ultima.para)} (${ultima.por}, ${fmtQuando(ultima.em)}). Clique pra mudar.`
           : 'Clique pra mudar o prazo'
       }
-      className="group -mx-1 flex w-[54px] shrink-0 items-center gap-1 rounded px-1 py-0.5 font-mono text-[11px] text-t2 transition hover:bg-bgSoft hover:text-ink"
+      className="group -mx-1 flex w-[54px] shrink-0 items-center gap-1 rounded border border-dashed border-[rgba(21,21,33,0.2)] px-1 py-0.5 font-mono text-[11px] text-t2 transition hover:border-ink/40 hover:bg-bgSoft hover:text-ink"
     >
       {ddmmCurto(prazo)}
       {mudancas.length > 0 ? (
         <span className="text-[9px] text-[var(--cal-agendado)]">↺</span>
       ) : (
-        <span className="text-[9px] text-t3 opacity-0 transition group-hover:opacity-100">✎</span>
+        <span className="text-[9px] text-t3 opacity-60 transition group-hover:opacity-100">✎</span>
       )}
     </button>
   );
@@ -412,6 +460,8 @@ export function TodasTarefasCard({
   const [agora, setAgora] = useState<Record<string, string | null>>({});
   const [salvando, setSalvando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Tarefa expandida: mostra o histórico dela + link pra tarefa completa.
+  const [expandido, setExpandido] = useState<string | null>(null);
 
   const feita = (t: TarefaDoPost) => !t.aberta || !!t.finalizada;
   const abertas = tarefas.filter((t) => !feita(t) || t.tarefaId in agora).sort(porOrdem);
@@ -477,48 +527,70 @@ export function TodasTarefasCard({
 
   // Função (não componente) pra não remontar a linha a cada render.
   const linha = (t: TarefaDoPost, concluida: boolean) => {
-    const p = prazoRelativo(t.prazo);
     const marcada = feita(t);
     const podeMexer = !concluida;
     const doTarefa = mudancas.filter((m) => m.tarefaId === t.tarefaId);
+    const aberto = expandido === t.tarefaId;
+    const sp = statusPrazo({
+      dataEntrega: t.prazo,
+      status: t.status,
+      finalizadaEm: t.finalizada,
+      concluido: concluida || marcada,
+    });
     return (
-      <li key={t.tarefaId} className="flex items-center gap-2.5 py-2">
+      <li key={t.tarefaId} className="py-1">
+        <div className="flex items-center gap-2.5 py-1">
         {podeEditarPrazo && !concluida && !marcada ? (
           <PrazoEditavel prazo={t.prazo} mudancas={doTarefa} onSalvar={(novo) => mudarPrazo(t, novo)} />
         ) : (
           <span className="w-[54px] shrink-0 font-mono text-[11px] text-t2">{ddmmCurto(t.prazo)}</span>
         )}
         <span
-          className={`w-[84px] shrink-0 text-[11px] ${
-            concluida || marcada
-              ? 'text-t3'
-              : p.atrasada
-                ? 'font-semibold text-[var(--prazo-atrasado)]'
-                : 'text-t2'
-          }`}
+          className="flex w-[124px] shrink-0 items-center gap-1 truncate text-[11px] font-semibold"
+          style={{ color: sp.cor }}
+          title={
+            sp.concluido && t.finalizada
+              ? `${sp.label} · ${ddmmCurto(t.finalizada)}`
+              : sp.label
+          }
         >
-          {concluida || marcada
-            ? `concluída ${ddmmCurto(t.finalizada ?? null)}`
-            : p.texto}
+          <span aria-hidden>{sp.emoji}</span>
+          <span className="truncate">{sp.texto}</span>
         </span>
-        <span
-          className={`min-w-0 flex-1 truncate text-[13px] ${marcada ? 'text-t3 line-through' : 'text-ink'}`}
-          title={t.titulo}
+        <button
+          type="button"
+          onClick={() => setExpandido((id) => (id === t.tarefaId ? null : t.tarefaId))}
+          title="Ver histórico da tarefa"
+          className={`group/t flex min-w-0 flex-1 items-center gap-1.5 text-left text-[13px] ${marcada ? 'text-t3 line-through' : 'text-ink'}`}
         >
-          {t.titulo}
-          {t.status === 'Reprovado' && <span className="ml-1.5 text-[11px] text-t3">(reprovado)</span>}
+          <span
+            className={`shrink-0 text-[8px] text-t3 transition-transform ${aberto ? 'rotate-90' : ''}`}
+            aria-hidden
+          >
+            ▶
+          </span>
+          <span className="min-w-0 truncate group-hover/t:underline">{t.titulo}</span>
+          {t.status === 'Reprovado' && <span className="shrink-0 text-[11px] text-t3">(reprovado)</span>}
           {t.tarefaId === atualId && (
-            <span className="ml-2 rounded-full bg-[var(--prazo-hoje-soft)] px-1.5 py-0.5 align-middle text-[9.5px] font-bold uppercase tracking-[0.06em] text-[var(--prazo-hoje)]">
+            <span className="shrink-0 rounded-full bg-[var(--prazo-hoje-soft)] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.06em] text-[var(--prazo-hoje)]">
               agora
             </span>
           )}
-        </span>
+        </button>
         <Responsavel
           nome={t.pessoaNome}
           url={t.pessoaAvatar}
           colaboradorId={t.pessoaId ? colaboradores[t.pessoaId] ?? null : null}
         />
         <TagTipo doCliente={ehTarefaDoCliente(t.titulo)} />
+        <Link
+          href={`/tarefa/${t.tarefaId}`}
+          title="Abrir tarefa completa"
+          aria-label="Abrir tarefa completa"
+          className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded text-[13px] text-t3 transition hover:bg-bgSoft hover:text-ink"
+        >
+          ↗
+        </Link>
         <button
           type="button"
           onClick={() => podeMexer && alternar(t)}
@@ -533,6 +605,40 @@ export function TodasTarefasCard({
         >
           {salvando === t.tarefaId ? '…' : '✓'}
         </button>
+        </div>
+
+        {aberto && (
+          <div className="mb-1 ml-[70px] rounded-lg border border-[rgba(21,21,33,0.08)] bg-bgSoft/60 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-t3">
+                Histórico da tarefa
+              </span>
+              <Link
+                href={`/tarefa/${t.tarefaId}`}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-navy transition hover:underline"
+              >
+                Abrir tarefa completa →
+              </Link>
+            </div>
+            <ul className="mt-2 space-y-1 text-[11.5px] text-t2">
+              {t.finalizada && <li>✓ Concluída em {ddmmCurto(t.finalizada)}</li>}
+              {t.status && <li>Status atual: <b className="text-ink">{t.status}</b></li>}
+              {doTarefa.length > 0 ? (
+                doTarefa.map((m, i) => (
+                  <li key={i}>
+                    Prazo: {ddmmCurto(m.de)} →{' '}
+                    <b className="text-ink">{ddmmCurto(m.para)}</b>
+                    {m.por ? ` · ${m.por}` : ''} · {fmtQuando(m.em)}
+                  </li>
+                ))
+              ) : (
+                <li className="text-t3">
+                  Prazo nunca mudou{t.prazo ? ` (${ddmmCurto(t.prazo)})` : ''}.
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
       </li>
     );
   };
@@ -563,10 +669,11 @@ export function TodasTarefasCard({
             <>
               <div className="mt-3 flex items-center gap-2.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-t3">
                 <span className="w-[54px] shrink-0">Prazo</span>
-                <span className="w-[84px] shrink-0" />
+                <span className="w-[124px] shrink-0">Status</span>
                 <span className="min-w-0 flex-1">Tarefa</span>
                 <span className="w-[96px] shrink-0">Responsável</span>
                 <span className="w-[58px] shrink-0" />
+                <span className="w-[18px] shrink-0" />
                 <span className="w-[18px] shrink-0" />
               </div>
               <ul className="mt-0.5 divide-y divide-[rgba(21,21,33,0.05)]">

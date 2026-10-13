@@ -25,6 +25,8 @@ const PURCHASE_TYPES = [
 
 type InsightsRow = {
   adset_name?: string;
+  campaign_name?: string;
+  campaign_id?: string;
   spend?: string;
   impressions?: string;
   reach?: string;
@@ -91,7 +93,7 @@ function timeRange(inicioMs: number, fimMs: number): string {
 async function buscarInsights(
   node: string,
   range: string,
-  level?: 'account' | 'adset',
+  level?: 'account' | 'adset' | 'campaign',
 ): Promise<InsightsRow[] | null> {
   const token = env.instagram.graphToken;
   if (!token) return null;
@@ -107,6 +109,7 @@ async function buscarInsights(
     'actions',
     'action_values',
     ...(level === 'adset' ? ['adset_name'] : []),
+    ...(level === 'campaign' ? ['campaign_name', 'campaign_id'] : []),
   ].join(',');
 
   const url =
@@ -305,6 +308,92 @@ export async function getMetaAdsCampanhas(
     );
   } catch (err) {
     console.error('[metaAds] erro ao buscar campanhas:', err);
+    return null;
+  }
+}
+
+/** Objetivo de cada campanha da conta (id -> objective), pra rotular os cards. */
+async function objetivosDaConta(actId: string): Promise<Map<string, string>> {
+  const token = env.instagram.graphToken;
+  const mapa = new Map<string, string>();
+  if (!token) return mapa;
+  try {
+    const url =
+      `${BASE}/${env.instagram.graphVersion}/${actId}/campaigns` +
+      `?fields=id,objective&limit=500&access_token=${token}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return mapa;
+    const data = (await res.json()) as {
+      data?: { id: string; objective?: string }[];
+    };
+    for (const c of data.data ?? []) if (c.objective) mapa.set(c.id, c.objective);
+  } catch {
+    /* rótulo é opcional */
+  }
+  return mapa;
+}
+
+/**
+ * Tráfego pago ao vivo da CONTA INTEIRA de um projeto: total + uma entrada por
+ * campanha que veiculou no período (descobertas automaticamente via level=campaign,
+ * sem precisar mapear cada campanha à mão). Devolve null se o projeto não tem
+ * conta mapeada em META_ADS_ACCOUNTS, sem token, ou se a API falhar.
+ */
+export async function getMetaAdsContaCampanhas(
+  projetoId: string,
+  inicioMs: number,
+  fimMs: number,
+): Promise<{ total: RelatorioAds | null; campanhas: CampanhaAds[] } | null> {
+  const actId = env.metaAds.accounts[projetoId];
+  if (!actId || !env.instagram.graphToken) return null;
+  const range = timeRange(inicioMs, fimMs);
+
+  try {
+    const [totalRows, campRows, adsetRows, objetivos] = await Promise.all([
+      buscarInsights(actId, range, 'account'),
+      buscarInsights(actId, range, 'campaign'),
+      buscarInsights(actId, range, 'adset'),
+      objetivosDaConta(actId),
+    ]);
+
+    const conta = totalRows?.[0];
+    const total = conta ? montarRelatorio(conta, adsetRows, inicioMs, fimMs) : null;
+
+    const campanhas: CampanhaAds[] = (campRows ?? [])
+      .map((row): CampanhaAds => {
+        const relatorio = montarRelatorio(row, null, inicioMs, fimMs);
+        const investimento = relatorio.totais.investimento;
+        const linkClicks = somaActions(row.actions, ['link_click']);
+        const conversas = somaActions(row.actions, CONVERSA_TYPES);
+        const id = row.campaign_id ?? row.campaign_name ?? '';
+        return {
+          id,
+          nome: row.campaign_name ?? `Campanha ${id}`,
+          objetivo: objetivos.get(id) ?? '',
+          semDados: false,
+          relatorio,
+          resultado: {
+            linkClicks,
+            custoPorLinkClick:
+              linkClicks && linkClicks > 0 ? investimento / linkClicks : null,
+            conversas,
+            custoPorConversa:
+              conversas && conversas > 0 ? investimento / conversas : null,
+          },
+        };
+      })
+      // só campanhas que realmente gastaram no período, da maior pra menor
+      .filter((c) => (c.relatorio?.totais.investimento ?? 0) > 0)
+      .sort(
+        (a, b) =>
+          (b.relatorio?.totais.investimento ?? 0) -
+          (a.relatorio?.totais.investimento ?? 0),
+      );
+
+    if (!total && campanhas.length === 0) return null;
+    return { total, campanhas };
+  } catch (err) {
+    console.error('[metaAds] erro ao buscar conta/campanhas:', err);
     return null;
   }
 }

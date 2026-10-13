@@ -22,6 +22,7 @@ import {
 } from '@/lib/drive';
 import { env } from '@/lib/env';
 import { compararNoFluxo, ehTarefaDoCliente } from '@/lib/etapas-projeto';
+import { statusPrazo } from '@/lib/prazoStatus';
 import {
   lerConfigProgramacao,
   lerHistoricoComunicacao,
@@ -405,18 +406,8 @@ export default async function PostDetalhePage({
   ) : null;
 
   const dias = diffDias(tarefaPrazo);
-  const prazoLabel =
-    !tarefaPrazo
-      ? null
-      : dias === null
-      ? fmtData(tarefaPrazo)
-      : dias < 0
-      ? `Era pra ${fmtData(tarefaPrazo)}`
-      : dias === 0
-      ? 'Hoje'
-      : dias === 1
-      ? 'Amanhã'
-      : `Em ${dias} dias`;
+  const spPrazo = tarefaPrazo ? statusPrazo({ dataEntrega: tarefaPrazo }) : null;
+  const prazoLabel = spPrazo ? spPrazo.label : null;
 
   // ==========================================================================
   // VISÃO CLIENTE — layout ORIGINAL preservado. Não mudar.
@@ -510,6 +501,30 @@ export default async function PostDetalhePage({
                   </p>
                 </div>
               )
+            )}
+
+            {/* Não é a vez do cliente nesse post: sem tarefa aberta pra ele,
+                a caixa de aprovação/comentário não aparece. Em vez de ficar
+                mudo, explica que não precisa enviar nada agora. */}
+            {!tarefaId && modo !== 'material' && (
+              <div className="card border-l-4 border-l-[var(--cal-aprovacao)] p-5">
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
+                    ⏳
+                  </span>
+                  <div>
+                    <div className="text-[14px] font-semibold leading-snug text-ink">
+                      Nada pra aprovar aqui por enquanto
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-[1.6] text-t2">
+                      Este post ainda não está numa etapa de aprovação de vocês.
+                      Não precisa enviar nada agora — quando for a sua vez de
+                      aprovar ou pedir ajuste, os botões aparecem aqui
+                      automaticamente. 🙌
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Etapa PAUTA: mostra info + materiais que a gente vai precisar
@@ -1017,18 +1032,9 @@ function CardPrazo({
   rotulo?: string;
   detalheExtra?: string | null;
 }) {
-  const fundo =
-    dias === null ? '#37352F' : dias <= 0 ? '#B0001E' : dias <= 2 ? 'var(--prazo-hoje)' : '#37352F';
-  const grande =
-    dias === null
-      ? fmtData(prazo)
-      : dias < 0
-        ? 'Atrasado'
-        : dias === 0
-          ? 'Hoje'
-          : dias === 1
-            ? 'Amanhã'
-            : `Em ${dias} dias`;
+  const sp = statusPrazo({ dataEntrega: prazo });
+  const fundo = sp.cor;
+  const grande = `${sp.emoji} ${sp.texto}`;
   const detalhe =
     dias !== null && dias < 0
       ? `venceu ${fmtData(prazo)} · há ${Math.abs(dias)} ${Math.abs(dias) === 1 ? 'dia' : 'dias'}`
@@ -1048,7 +1054,7 @@ function CardPrazo({
           </svg>
           <span className="truncate">{rotulo}</span>
         </div>
-        <div className="mt-2 text-[40px] font-bold leading-none tracking-[-0.03em] lg:mt-1 lg:text-[24px]">{grande}</div>
+        <div className="mt-2 text-[26px] font-bold leading-tight tracking-[-0.03em] lg:mt-1 lg:text-[20px]">{grande}</div>
         {(detalhe || detalheExtra) && (
           <div className="mt-1.5 text-[12.5px] opacity-85 lg:mt-1 lg:text-[11.5px]">
             {[detalhe, detalheExtra].filter(Boolean).join(' · ')}

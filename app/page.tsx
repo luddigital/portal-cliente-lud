@@ -25,6 +25,13 @@ import { SincronizarNotion } from './_components/SincronizarNotion';
 import { EnviarMateriais } from './_components/EnviarMateriais';
 import Link from 'next/link';
 import { listarGruposDoUsuario } from '@/lib/supabase';
+import {
+  getMetaAdsRelatorio,
+  getMetaAdsCampanhas,
+  getMetaAdsContaCampanhas,
+  type CampanhaAds,
+} from '@/lib/metaAds';
+import type { RelatorioAds } from '@/lib/csvAds';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,9 +42,14 @@ const MESES_PT = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ];
 
-export default async function Dashboard() {
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const session = await getSession();
   if (!session) redirect('/login');
+  const debugAds = searchParams?.debugads === '1';
 
   // Admin sem projetos vinculados não tem o que ver na área do cliente — manda pro admin.
   const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
@@ -139,6 +151,10 @@ export default async function Dashboard() {
             <TarefasCards projetoIds={projetoIdsAtivos} />
           </Suspense>
         </section>
+
+        <Suspense fallback={null}>
+          <TrafegoPagoSection projetoId={projetoAtivoId} debug={debugAds} />
+        </Suspense>
 
         <section className="space-y-6">
           <div className="mb-3 flex items-end justify-between">
@@ -287,4 +303,259 @@ async function Sino({ projetoIds }: { projetoIds: string[] }) {
     }
   }
   return <NotificacoesBell items={items} />;
+}
+
+// === TRÁFEGO PAGO (Meta) — visão do cliente, ao vivo ===
+
+const fmtBRL = (n: number) =>
+  n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtNum = (n: number) =>
+  n.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+const fmtDec = (n: number, d = 2) =>
+  n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const OBJETIVO_LABEL: Record<string, string> = {
+  OUTCOME_TRAFFIC: 'Tráfego',
+  OUTCOME_SALES: 'Vendas',
+  OUTCOME_ENGAGEMENT: 'Engajamento',
+  OUTCOME_AWARENESS: 'Reconhecimento',
+  OUTCOME_LEADS: 'Leads',
+  OUTCOME_APP_PROMOTION: 'App',
+};
+
+function AdMetrica({
+  label,
+  valor,
+  tom,
+}: {
+  label: string;
+  valor: string;
+  tom?: 'destaque' | 'sucesso';
+}) {
+  const cor =
+    tom === 'destaque'
+      ? { bg: 'var(--prazo-hoje-soft)', txt: 'var(--prazo-hoje)' }
+      : tom === 'sucesso'
+        ? { bg: 'var(--prazo-em-dia-soft)', txt: 'var(--prazo-em-dia)' }
+        : null;
+  return (
+    <div
+      className="rounded-xl border border-[rgba(21,21,33,0.08)] p-4"
+      style={cor ? { background: cor.bg } : { background: 'var(--bgSoft)' }}
+    >
+      <div
+        className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+        style={{ color: cor?.txt ?? 'var(--t3)' }}
+      >
+        {label}
+      </div>
+      <div
+        className="mt-2 text-[20px] font-semibold tracking-[-0.02em]"
+        style={{ color: cor?.txt ?? 'var(--ink)' }}
+      >
+        {valor}
+      </div>
+    </div>
+  );
+}
+
+/** KPIs da conta inteira (projeto sem campanhas mapeadas separadamente). */
+function AdsResumoConta({ relatorio }: { relatorio: RelatorioAds }) {
+  const t = relatorio.totais;
+  return (
+    <div className="card p-6">
+      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+        <AdMetrica label="Investimento" valor={fmtBRL(t.investimento)} tom="destaque" />
+        {t.receita != null && (
+          <AdMetrica label="Receita" valor={fmtBRL(t.receita)} tom="sucesso" />
+        )}
+        {t.roas != null && (
+          <AdMetrica label="Retorno (ROAS)" valor={`${fmtDec(t.roas)}x`} tom="sucesso" />
+        )}
+        {t.compras != null && <AdMetrica label="Compras" valor={fmtNum(t.compras)} />}
+        {t.custoPorCompra != null && (
+          <AdMetrica label="Custo por compra" valor={fmtBRL(t.custoPorCompra)} />
+        )}
+        <AdMetrica label="Pessoas alcançadas" valor={fmtNum(t.alcance)} />
+        {t.cliques != null && <AdMetrica label="Cliques" valor={fmtNum(t.cliques)} />}
+        <AdMetrica label="Custo por mil (CPM)" valor={fmtBRL(t.cpm)} />
+      </div>
+    </div>
+  );
+}
+
+/** Card de uma campanha, orientado ao resultado dela. */
+function AdsCampanhaCard({ c }: { c: CampanhaAds }) {
+  const t = c.relatorio?.totais;
+  const r = c.resultado;
+  const objLabel = OBJETIVO_LABEL[c.objetivo] ?? c.objetivo;
+  return (
+    <div className="rounded-xl border border-[rgba(21,21,33,0.08)] bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[14px] font-semibold tracking-[-0.01em] text-ink">
+          {c.nome}
+        </h3>
+        {objLabel && (
+          <span className="rounded-full bg-bgSoft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-t2">
+            {objLabel}
+          </span>
+        )}
+      </div>
+
+      {c.semDados || !t ? (
+        <p className="mt-3 text-[12px] text-t3">
+          Ainda sem veiculação nos últimos 30 dias.
+        </p>
+      ) : (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+          <AdMetrica label="Investimento" valor={fmtBRL(t.investimento)} tom="destaque" />
+          {r.conversas != null && (
+            <AdMetrica label="Conversas no WhatsApp" valor={fmtNum(r.conversas)} tom="sucesso" />
+          )}
+          {r.custoPorConversa != null && (
+            <AdMetrica label="Custo por conversa" valor={fmtBRL(r.custoPorConversa)} />
+          )}
+          {r.linkClicks != null && (
+            <AdMetrica label="Cliques no link" valor={fmtNum(r.linkClicks)} />
+          )}
+          {r.custoPorLinkClick != null && (
+            <AdMetrica label="Custo por clique" valor={fmtBRL(r.custoPorLinkClick)} />
+          )}
+          {t.ctr != null && <AdMetrica label="CTR" valor={`${fmtDec(t.ctr, 2)}%`} />}
+          <AdMetrica label="Pessoas alcançadas" valor={fmtNum(t.alcance)} />
+          <AdMetrica label="Custo por mil (CPM)" valor={fmtBRL(t.cpm)} />
+          {t.compras != null && <AdMetrica label="Compras" valor={fmtNum(t.compras)} />}
+          {t.roas != null && (
+            <AdMetrica label="Retorno (ROAS)" valor={`${fmtDec(t.roas)}x`} tom="sucesso" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Soma os principais resultados de todas as campanhas pro cabeçalho. */
+function AdsResumoCampanhas({ campanhas }: { campanhas: CampanhaAds[] }) {
+  let investimento = 0;
+  let conversas = 0;
+  let compras = 0;
+  let alcance = 0;
+  let temConversas = false;
+  let temCompras = false;
+  for (const c of campanhas) {
+    const t = c.relatorio?.totais;
+    if (t) {
+      investimento += t.investimento;
+      alcance += t.alcance;
+      if (t.compras != null) {
+        compras += t.compras;
+        temCompras = true;
+      }
+    }
+    if (c.resultado.conversas != null) {
+      conversas += c.resultado.conversas;
+      temConversas = true;
+    }
+  }
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+      <AdMetrica label="Investimento total" valor={fmtBRL(investimento)} tom="destaque" />
+      {temConversas && (
+        <AdMetrica label="Conversas no WhatsApp" valor={fmtNum(conversas)} tom="sucesso" />
+      )}
+      {temCompras && <AdMetrica label="Compras" valor={fmtNum(compras)} tom="sucesso" />}
+      <AdMetrica label="Pessoas alcançadas" valor={fmtNum(alcance)} />
+    </div>
+  );
+}
+
+async function TrafegoPagoSection({
+  projetoId,
+  debug,
+}: {
+  projetoId: string;
+  debug?: boolean;
+}) {
+  if (!projetoId) return null;
+  const DIA = 24 * 60 * 60 * 1000;
+  const fimMs = Date.now();
+  const inicioMs = fimMs - 30 * DIA;
+
+  // 1ª opção: conta inteira (todas as campanhas que veicularam — ao vivo).
+  // Fallback: campanhas mapeadas à mão, ou o total da conta sem detalhe.
+  let total: RelatorioAds | null = null;
+  let campanhas: CampanhaAds[] = [];
+  let fonte: 'conta' | 'campanhas-mapeadas' | 'conta-total' | 'nenhuma' = 'nenhuma';
+  try {
+    const conta = await getMetaAdsContaCampanhas(projetoId, inicioMs, fimMs);
+    if (conta && (conta.total || conta.campanhas.length > 0)) {
+      total = conta.total;
+      campanhas = conta.campanhas;
+      fonte = 'conta';
+    } else {
+      const [rel, camps] = await Promise.all([
+        getMetaAdsRelatorio(projetoId, inicioMs, fimMs),
+        getMetaAdsCampanhas(projetoId, inicioMs, fimMs),
+      ]);
+      if (camps && camps.length > 0) {
+        campanhas = camps;
+        fonte = 'campanhas-mapeadas';
+      } else if (rel) {
+        total = rel;
+        fonte = 'conta-total';
+      }
+    }
+  } catch {
+    /* segue com estado vazio */
+  }
+
+  const temAlgo = !!total || campanhas.length > 0;
+  // Sem tráfego — não mostra nada (home limpa), a menos que ?debugads=1.
+  if (!temAlgo && !debug) return null;
+
+  return (
+    <section className="space-y-4">
+      <div className="mb-1 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="hub-section-title">Tráfego pago</h2>
+          <p className="hub-section-sub">
+            Resultados dos seus anúncios no Meta, ao vivo nos últimos 30 dias.
+          </p>
+        </div>
+        <span className="rounded-full bg-bgSoft px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-t2">
+          últimos 30 dias
+        </span>
+      </div>
+
+      {debug && (
+        <div className="rounded-lg border border-dashed border-[rgba(21,21,33,0.2)] bg-bgSoft px-3 py-2 font-mono text-[11px] leading-relaxed text-t2">
+          <div className="font-semibold">🔧 Diagnóstico Meta Ads</div>
+          <div>projetoId: {projetoId}</div>
+          <div>fonte: {fonte}</div>
+          <div>
+            conta (total): {total ? 'sim' : 'não'} · campanhas com gasto:{' '}
+            {campanhas.length}
+          </div>
+          {fonte === 'nenhuma' && (
+            <div>
+              → sem conta mapeada em META_ADS_ACCOUNTS e sem veiculação nas
+              campanhas mapeadas. Mapeie este projetoId → act_&lt;id&gt; em
+              META_ADS_ACCOUNTS.
+            </div>
+          )}
+        </div>
+      )}
+
+      {total && <AdsResumoConta relatorio={total} />}
+
+      {campanhas.length > 0 && (
+        <div className="space-y-3">
+          {!total && <AdsResumoCampanhas campanhas={campanhas} />}
+          {campanhas.map((c) => (
+            <AdsCampanhaCard key={c.id} c={c} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
