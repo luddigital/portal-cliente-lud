@@ -1,3 +1,7 @@
+'use client';
+
+import { useState } from 'react';
+
 /**
  * Avatares e sinais iguais em todas as tabelas internas.
  *
@@ -72,24 +76,61 @@ const COR_SINAL = {
   atr: { bg: 'var(--prazo-atrasado-soft)', fg: 'var(--prazo-atrasado)', linha: '#F2B8B0' },
   off: { bg: '#F0F0F1', fg: '#8A8A90', linha: '#E2E2E5' },
 };
-export type Bolinha = { icone: string; dica: string; st: keyof typeof COR_SINAL };
+/** dica = título da linha no detalhe; linhas = o que aconteceu (datas, quem, quantas vezes). */
+export type Bolinha = { icone: string; dica: string; st: keyof typeof COR_SINAL; linhas?: string[] };
 
-/** Bolinhas do sinal, ligadas por um traço curto. */
+/**
+ * Bolinhas do sinal, ligadas por um traço curto. Ao passar o mouse abre um cartão com o
+ * detalhe de cada bolinha (posição fixa, pra não ser cortado pela tabela com rolagem).
+ */
 export function Sinal({ itens }: { itens: Bolinha[] }) {
+  const [pos, setPos] = useState<{ x: number; y: number; baixo: boolean } | null>(null);
   if (!itens.length) return null;
+  const abrir = (e: React.MouseEvent<HTMLSpanElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const baixo = r.bottom + 220 < window.innerHeight;
+    setPos({ x: Math.min(r.left, window.innerWidth - 300), y: baixo ? r.bottom + 6 : r.top - 6, baixo });
+  };
   return (
-    <span className="flex items-center">
+    <span className="relative flex w-fit cursor-default items-center" onMouseEnter={abrir} onMouseLeave={() => setPos(null)}>
       {itens.map((b, k) => {
         const c = COR_SINAL[b.st];
         return (
           <span key={k} className="flex items-center">
             {k > 0 && <span className="h-[2px] w-3 shrink-0" style={{ background: c.linha }} />}
-            <span title={b.dica} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold" style={{ background: c.bg, color: c.fg }}>
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold" style={{ background: c.bg, color: c.fg }}>
               {b.icone}
             </span>
           </span>
         );
       })}
+      {pos && (
+        <span
+          className="fixed z-50 flex w-[280px] flex-col gap-2.5 rounded-[12px] border border-[#E9E9EB] bg-white p-3 text-left shadow-[0_8px_24px_rgba(17,17,19,0.14)]"
+          style={{ left: pos.x, top: pos.y, transform: pos.baixo ? undefined : 'translateY(-100%)' }}
+        >
+          {itens.map((b, k) => {
+            const c = COR_SINAL[b.st];
+            return (
+              <span key={k} className="flex items-start gap-2.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px]" style={{ background: c.bg, color: c.fg }}>
+                  {b.icone}
+                </span>
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <b className="text-[12.5px] font-bold" style={{ color: b.st === 'atr' ? 'var(--prazo-atrasado)' : '#111113' }}>
+                    {b.dica}
+                  </b>
+                  {(b.linhas ?? []).map((l, j) => (
+                    <span key={j} className="text-[12px] leading-[1.4] text-[#636369]">
+                      {l}
+                    </span>
+                  ))}
+                </span>
+              </span>
+            );
+          })}
+        </span>
+      )}
     </span>
   );
 }

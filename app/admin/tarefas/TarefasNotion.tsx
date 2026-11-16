@@ -407,13 +407,30 @@ function FotoPessoa({ nome, foto }: { nome: string; foto: string | null }) {
  * com o cliente → 📤 enviado no grupo (verde) ou não (vermelho) · 👁 viu (verde) ou não (cinza).
  */
 function sinalDaTarefa(t: LinhaTarefa, hoje: string): import('../_ui/Avatares').Bolinha[] {
-  if (t.antes) return t.antes.prazo && t.antes.prazo < hoje ? [{ icone: '🚨', dica: `Atrasada desde ${ddmm(t.antes.prazo)}`, st: 'atr' }] : [];
+  if (t.antes) {
+    if (!t.antes.prazo || t.antes.prazo >= hoje) return [];
+    const n = Math.round((Date.parse(`${hoje}T12:00:00Z`) - Date.parse(`${t.antes.prazo.slice(0, 10)}T12:00:00Z`)) / 86_400_000);
+    return [
+      {
+        icone: '🚨',
+        dica: `Atrasada desde ${ddmm(t.antes.prazo)}`,
+        st: 'atr',
+        linhas: [`${t.antes.titulo}${t.antes.pessoa ? ` com ${t.antes.pessoa}` : ''}`, `${n} ${n === 1 ? 'dia' : 'dias'} de atraso`],
+      },
+    ];
+  }
   if (!t.wpp) return [];
   const b: import('../_ui/Avatares').Bolinha[] = [
     t.wpp.n
-      ? { icone: '📤', dica: `Enviado no grupo${t.wpp.n > 1 ? ` (${t.wpp.n}×)` : ''}${t.wpp.ultimo ? ` · ${quandoMsg(t.wpp.ultimo)}` : ''}`, st: 'ok' }
-      : { icone: '📤', dica: 'Não enviado no grupo', st: 'atr' },
+      ? {
+          icone: '📤',
+          dica: `Enviado no grupo${t.wpp.n > 1 ? ` · ${t.wpp.n} mensagens` : ''}`,
+          st: 'ok',
+          linhas: t.wpp.ultimo ? [`Última: ${quandoMsg(t.wpp.ultimo)}`] : [],
+        }
+      : { icone: '📤', dica: 'Ainda não foi pro grupo', st: 'atr' },
   ];
-  if (/aprova/i.test(t.titulo)) b.push(t.visto ? { icone: '👁', dica: `Viu ${quandoMsg(t.visto)}`, st: 'ok' } : { icone: '👁', dica: 'Ainda não viu', st: 'off' });
+  if (/aprova/i.test(t.titulo))
+    b.push(t.visto ? { icone: '👁', dica: 'Cliente viu o post', st: 'ok', linhas: [`Última vez ${quandoMsg(t.visto)}`] } : { icone: '👁', dica: 'Cliente ainda não abriu o post', st: 'off' });
   return b;
 }

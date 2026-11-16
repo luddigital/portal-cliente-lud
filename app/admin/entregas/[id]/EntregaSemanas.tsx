@@ -97,6 +97,15 @@ function Selo({ handle, href, foto }: { handle: string; href: string; foto?: str
 }
 
 const BTN = 'inline-flex min-w-[136px] items-center justify-center whitespace-nowrap rounded-full border border-[#D6D6D9] bg-white px-3 py-[5px] text-[12px] font-extrabold hover:bg-[#F4F4F5]';
+/** Que mensagem foi: o envio de quinta, o avulso, a reaprovação ou um lembrete. */
+function rotuloMomento(m: string): string {
+  if (m === 'quinta') return 'Envio de quinta';
+  if (m === 'separado') return 'Envio avulso';
+  if (m === 'reaprovacao') return 'Reaprovação';
+  if (m.startsWith('auto_') || m.startsWith('envio_auto')) return 'Lembrete automático';
+  if (['sexta', 'segunda_manha', 'segunda_tarde', 'terca'].includes(m)) return 'Lembrete';
+  return 'Mensagem';
+}
 const diaSpIso = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(iso));
 
 /** DL do post à esquerda do título: só a data, compacta, na cor do prazo. */
@@ -990,17 +999,46 @@ function TabelaEntrega({
   const comCliente = (i: ItemEntrega) => i.relacao !== 'antes' && comOCliente(i);
   const sinal = (i: ItemEntrega): Bolinha[] => {
     if (comCliente(i)) {
-      const msgs = i.mensagens ?? [];
-      const ult = [...msgs].sort((a, b) => b.enviadoEm.localeCompare(a.enviadoEm))[0];
+      const msgs = [...(i.mensagens ?? [])].sort((a, b) => b.enviadoEm.localeCompare(a.enviadoEm));
       const b: Bolinha[] = [
         msgs.length
-          ? { icone: '📤', dica: `Enviado no grupo${msgs.length > 1 ? ` (${msgs.length}×)` : ''} · último ${ddmm(diaSpIso(ult.enviadoEm))}`, st: 'ok' }
-          : { icone: '📤', dica: ENTREGA_DE_MATERIAIS ? 'Ninguém cobrou no grupo ainda' : 'Não enviado no grupo', st: 'atr' },
+          ? {
+              icone: '📤',
+              dica: `Enviado no grupo${msgs.length > 1 ? ` · ${msgs.length} mensagens` : ''}`,
+              st: 'ok',
+              linhas: msgs.slice(0, 5).map((m) => `${rotuloMomento(m.momento)} · ${quandoFoi(m.enviadoEm, hojeIso)}`),
+            }
+          : {
+              icone: '📤',
+              dica: ENTREGA_DE_MATERIAIS ? 'Ninguém cobrou no grupo ainda' : 'Ainda não foi pro grupo',
+              st: 'atr',
+              linhas: i.prazoCliente ? [`Prazo do cliente: ${curta(i.prazoCliente.slice(0, 10))}`] : [],
+            },
       ];
-      if (!ENTREGA_DE_MATERIAIS) b.push(i.visto ? { icone: '👁', dica: `Viu ${ddmm(diaSpIso(i.visto.ultima))}`, st: 'ok' } : { icone: '👁', dica: 'Ainda não viu', st: 'off' });
+      if (!ENTREGA_DE_MATERIAIS)
+        b.push(
+          i.visto
+            ? {
+                icone: '👁',
+                dica: 'Cliente viu o post',
+                st: 'ok',
+                linhas: [`Última vez ${quandoFoi(i.visto.ultima, hojeIso)}`, `${i.visto.total} ${i.visto.total === 1 ? 'visualização' : 'visualizações'}`],
+              }
+            : { icone: '👁', dica: 'Cliente ainda não abriu o post', st: 'off' },
+        );
       return b;
     }
-    if (i.atualPrazo && i.atualPrazo.slice(0, 10) < hojeIso) return [{ icone: '🚨', dica: `Atrasada desde ${ddmm(i.atualPrazo)}`, st: 'atr' }];
+    if (i.atualPrazo && i.atualPrazo.slice(0, 10) < hojeIso) {
+      const n = -dias(hojeIso, i.atualPrazo.slice(0, 10));
+      return [
+        {
+          icone: '🚨',
+          dica: `Atrasada desde ${curta(i.atualPrazo.slice(0, 10))}`,
+          st: 'atr',
+          linhas: [`${i.atualTitulo ?? i.rotulo}${i.responsavel ? ` com ${i.responsavel}` : ''}`, `${n} ${n === 1 ? 'dia' : 'dias'} de atraso`],
+        },
+      ];
+    }
     return [];
   };
   const tituloStatus = (i: ItemEntrega) => (i.relacao === 'antes' ? i.atualTitulo ?? i.rotulo : nomeDaTag(i));
