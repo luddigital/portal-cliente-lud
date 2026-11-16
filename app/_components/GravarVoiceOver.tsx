@@ -62,13 +62,13 @@ export function GravarVoiceOver({
     // Pré-check: MediaRecorder suportado?
     if (typeof MediaRecorder === 'undefined') {
       setErro(
-        'Seu navegador não suporta gravação de áudio. Tenta no Chrome/Safari atualizado, ou grave no celular e envie o arquivo manualmente abaixo.',
+        'Esse navegador não grava áudio. Tenta pelo Chrome ou Safari atualizado, ou grava no celular e manda o arquivo aqui embaixo.',
       );
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
       setErro(
-        'Seu navegador não permite acessar o microfone. Verifique se está em HTTPS e tente de novo.',
+        'Esse navegador não deixou usar o microfone. Atualiza a página e tenta de novo.',
       );
       return;
     }
@@ -107,7 +107,7 @@ export function GravarVoiceOver({
         // não presta e o cliente ia enviar lixo. Avisa pra regravar.
         if (blob.size < 1024) {
           setErro(
-            'A gravação saiu vazia. Verifique se o microfone está captando (ícone de permissão no browser) e tente de novo.',
+            'A gravação saiu vazia. Confere se o microfone está liberado e tenta de novo.',
           );
           streamRef.current?.getTracks().forEach((t) => t.stop());
           streamRef.current = null;
@@ -137,9 +137,9 @@ export function GravarVoiceOver({
     } catch (e: any) {
       setErro(
         e?.name === 'NotAllowedError'
-          ? 'Permissão de microfone negada. Clique no cadeado da barra de URL, autorize o microfone e tente de novo.'
+          ? 'O microfone está bloqueado. Clica no cadeado ao lado do endereço do site, libera o microfone e tenta de novo.'
           : e?.name === 'NotFoundError'
-            ? 'Não achei nenhum microfone conectado. Verifica se o microfone do laptop/celular está disponível.'
+            ? 'Não achei nenhum microfone. Confere se o do computador ou do celular está funcionando.'
             : (e?.message ?? 'Não consegui acessar o microfone.'),
       );
     }
@@ -302,10 +302,10 @@ export function GravarVoiceOver({
         )}
         <p className="text-[11px] text-t3">
           {gravando
-            ? 'Falando… avance as frases conforme for lendo.'
+            ? 'Gravando… passa pra próxima frase conforme for lendo.'
             : previewUrl
-              ? 'Pronto! A gravação já está anexada ao envio abaixo. Se quiser refazer, clique em ↻ Regravar.'
-              : 'Clique em Gravar pra começar. O áudio fica anexado ao envio automaticamente.'}
+              ? 'Pronto! A gravação já vai junto no envio. Se quiser refazer, clica em ↻ Regravar.'
+              : 'Clica em Gravar pra começar. O áudio já vai junto no envio.'}
         </p>
       </div>
     </div>

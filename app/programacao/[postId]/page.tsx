@@ -72,34 +72,26 @@ export default async function ProgramarPostPage({
   const horarioBase = parseHorario(timeProjeto) ?? '10:00';
   const horarioDefault = menosMinutos(horarioBase, 5);
 
-  // Todos os arquivos do Drive (pra mostrar o post inteiro no preview,
-  // igual o cliente vê na aprovação)
-  const arquivos: PreviewArquivo[] = [];
-  for (const link of post.driveLinks ?? []) {
-    const folderId = extractDriveFolderId(link.url);
-    if (folderId) {
-      try {
-        const files = await listFolderFiles(folderId);
-        for (const f of files) {
-          if (!f.isFolder) arquivos.push(f);
+  // Todos os arquivos do Drive (todas as pastas ao mesmo tempo), pra mostrar
+  // o post inteiro na prévia, igual o cliente viu na aprovação.
+  const listas = await Promise.all(
+    (post.driveLinks ?? []).map(async (link): Promise<PreviewArquivo[]> => {
+      const folderId = extractDriveFolderId(link.url);
+      if (folderId) {
+        try {
+          return (await listFolderFiles(folderId)).filter((f) => !f.isFolder);
+        } catch {
+          return []; // pula essa pasta
         }
-      } catch {
-        /* pula essa pasta */
       }
-      continue;
-    }
-    const fileId = extractDriveFileId(link.url);
-    if (fileId) {
-      arquivos.push({
-        id: fileId,
-        name: link.name,
-        mimeType: '',
-        webViewLink: link.url,
-        thumbnailLink: null,
-        isFolder: false,
-      });
-    }
-  }
+      const fileId = extractDriveFileId(link.url);
+      return fileId
+        ? [{ id: fileId, name: link.name, mimeType: '', webViewLink: link.url, thumbnailLink: null, isFolder: false }]
+        : [];
+    }),
+  );
+  const arquivos: PreviewArquivo[] = listas.flat();
+  const igLigado = !!(post.projetoId && env.instagram.accounts[post.projetoId]);
 
   return (
     <ConfigProgramacao
@@ -112,6 +104,9 @@ export default async function ProgramarPostPage({
       arquivos={arquivos}
       configInicial={config}
       horarioDefault={horarioDefault}
+      horarioProjeto={timeProjeto ? horarioBase : null}
+      igLigado={igLigado}
+      statusGeral={post.statusGeral ?? null}
     />
   );
 }

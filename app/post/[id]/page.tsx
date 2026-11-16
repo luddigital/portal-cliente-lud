@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getSession } from '@/lib/auth';
@@ -10,6 +10,8 @@ import {
   lerComentariosDoPost,
   listColaboradores,
   listarTarefasDoPost,
+  listPostsDoMes,
+  getHorarioDoProjeto,
   type MaterialBloco,
   type RelacaoItem,
 } from '@/lib/notion';
@@ -37,16 +39,20 @@ import { GaleriaMateriais } from './GaleriaMateriais';
 import {
   StatusDoPostChips,
   TodasTarefasCard,
-  ProgramacaoCard,
   ComunicacaoCard,
   type ComentarioCliente,
-  type NotaHistorico,
 } from './PostSidebarLud';
 import { ComentariosLud } from './ComentariosLud';
+import { AgoraEtapa, BotaoConcluirEtapa, CaixaProgramacao, type VizinhoFeed } from './NovoLud';
+import { horaCurta } from './horaCurta';
 import { SolicitarAlteracao } from './SolicitarAlteracao';
+import { BotaoAtualizar } from '@/app/admin/_components/BotaoAtualizar';
+import { notasDoPost, tarefasClienteDoHistorico } from '@/lib/historico-post';
 import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
 import { TarefaForm } from '../../tarefa/[id]/form';
 import { HistoricoBox } from '../../_components/HistoricoBox';
+import { Trilha } from '@/app/admin/_components/Trilha';
+import { nomeCurtoDoProjeto, rotas } from '@/lib/rotas';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,7 +106,8 @@ function fmtData(iso: string | null): string {
 
 /** Histórico de comentários do post — discreto, no fim da página. */
 async function HistoricoComentarios({ postId }: { postId: string }) {
-  const comentarios = await lerComentariosDoPost(postId);
+  // Nota interna da equipe nunca aparece aqui.
+  const comentarios = (await lerComentariosDoPost(postId)).filter((c) => !c.texto.trim().startsWith('🔒'));
   return <HistoricoBox comentarios={comentarios} />;
 }
 
@@ -133,51 +140,6 @@ function comentariosDoCliente(
   return out;
 }
 
-/**
- * Comentários do Notion viram itens do histórico: o que veio do cliente pelo
- * portal (prefixos fixos) e o resto como nota da equipe.
- */
-function notasDosComentarios(
-  lista: { id: string; texto: string; criadoEm: string }[],
-  equipe: Set<string>,
-): NotaHistorico[] {
-  const out: NotaHistorico[] = [];
-  const corpoDepoisDaPrimeira = (t: string) => t.split(/\n\s*\n/).slice(1).join('\n\n').trim();
-  for (const c of lista) {
-    const t = c.texto.trim();
-    const base = { id: c.id, quando: c.criadoEm };
-    const m = t.match(/^💬\s*(\S+@\S+)\s*\n+([\s\S]*)$/);
-    if (m) {
-      const email = m[1].toLowerCase();
-      const daEquipe = equipe.has(email) || email.endsWith('@lud.digital');
-      out.push({
-        ...base,
-        tipo: daEquipe ? 'equipe' : 'cliente_comentou',
-        titulo: daEquipe ? 'Equipe comentou' : 'Cliente comentou',
-        autor: email,
-        corpo: m[2].trim(),
-      });
-    } else if (/— aprovado pelo cliente/.test(t)) {
-      const etapa = t.split('\n')[0].replace(/^✅\s*/, '').replace(/\s*— aprovado pelo cliente\.?$/, '');
-      out.push({ ...base, tipo: 'cliente_aprovou', titulo: `Cliente aprovou · ${etapa}`, autor: null, corpo: corpoDepoisDaPrimeira(t) });
-    } else if (/— alteração solicitada pelo cliente/.test(t)) {
-      out.push({ ...base, tipo: 'cliente_alteracao', titulo: 'Cliente pediu alteração', autor: null, corpo: corpoDepoisDaPrimeira(t) });
-    } else if (/— recebida do cliente/.test(t)) {
-      out.push({ ...base, tipo: 'cliente_enviou', titulo: 'Cliente enviou materiais', autor: null, corpo: t.split('\n').slice(1).join('\n').trim() });
-    } else {
-      const [primeira, ...resto] = t.split('\n');
-      out.push({
-        ...base,
-        tipo: 'equipe',
-        titulo: primeira.length <= 90 ? primeira : 'Nota da equipe',
-        autor: null,
-        corpo: primeira.length <= 90 ? resto.join('\n').trim() : t,
-      });
-    }
-  }
-  return out;
-}
-
 function diffDias(iso: string | null): number | null {
   if (!iso) return null;
   const hoje = new Date();
@@ -190,30 +152,32 @@ function diffDias(iso: string | null): number | null {
 async function resolverArquivosDoDrive(
   links: { name: string; url: string }[],
 ): Promise<PreviewArquivo[]> {
-  const out: PreviewArquivo[] = [];
-  for (const link of links) {
-    const folderId = extractDriveFolderId(link.url);
-    if (folderId) {
-      try {
-        for (const f of await listFolderFiles(folderId)) {
-          if (!f.isFolder) out.push(f);
+  // Todas as pastas ao mesmo tempo (antes era uma depois da outra), na ordem dos links.
+  const listas = await Promise.all(
+    links.map(async (link): Promise<PreviewArquivo[]> => {
+      const folderId = extractDriveFolderId(link.url);
+      if (folderId) {
+        try {
+          return (await listFolderFiles(folderId)).filter((f) => !f.isFolder);
+        } catch (err: any) {
+          console.warn('[post] erro listando pasta do Drive:', err?.message);
+          return [];
         }
-      } catch (err: any) {
-        console.warn('[post] erro listando pasta do Drive:', err?.message);
       }
-      continue;
-    }
-    const fileId = extractDriveFileId(link.url);
-    out.push({
-      id: fileId ?? link.url,
-      name: link.name,
-      mimeType: '',
-      webViewLink: link.url,
-      thumbnailLink: null,
-      isFolder: false,
-    });
-  }
-  return out;
+      const fileId = extractDriveFileId(link.url);
+      return [
+        {
+          id: fileId ?? link.url,
+          name: link.name,
+          mimeType: '',
+          webViewLink: link.url,
+          thumbnailLink: null,
+          isFolder: false,
+        },
+      ];
+    }),
+  );
+  return listas.flat();
 }
 
 export default async function PostDetalhePage({
@@ -246,6 +210,38 @@ export default async function PostDetalhePage({
   ) {
     notFound();
   }
+
+  // Vista Cliente/Lud. — cliente só vê a dele. Admin/colab default = interno.
+  const podeVerInterno = ehAdmin || ehColaborador;
+  const vista: 'cliente' | 'interno' = !podeVerInterno
+    ? 'cliente'
+    : searchParams.vista === 'cliente'
+      ? 'cliente'
+      : 'interno';
+
+  // O que não depende da tarefa sai já, junto com a detecção da tarefa
+  // (antes ia em fila: tarefa → sidebar → Drive). Cada busca tem o próprio
+  // catch: a promessa fica esperando enquanto a tarefa é lida.
+  const historicoVazio = { visualizacoes: [], envios: [] };
+  const extrasP = Promise.all([
+    listarTarefasDoPost(post.id).catch(() => []),
+    lerConfigProgramacao(post.id).catch(() => ({
+      data: '',
+      horario: '',
+      plataformas: [],
+      formato: '',
+      legenda: '',
+      atualizadoEm: null,
+      atualizadoPor: null,
+    })),
+    vista === 'interno'
+      ? lerHistoricoComunicacao(post.id).catch(() => historicoVazio)
+      : Promise.resolve(historicoVazio),
+    vista === 'interno' ? lerHistoricoPrazos(post.id).catch(() => [] as MudancaPrazo[]) : Promise.resolve([] as MudancaPrazo[]),
+    vista === 'interno' ? listColaboradores().catch(() => []) : Promise.resolve([]),
+    vista === 'interno' ? lerComentariosDoPost(post.id).catch(() => []) : Promise.resolve([]),
+  ]);
+  const arquivosP = resolverArquivosDoDrive(post.driveLinks).catch(() => [] as PreviewArquivo[]);
 
   // Carrega a tarefa específica que originou esse fluxo (se vier no query).
   // Se não vier, auto-detecta a tarefa cliente pendente desse post.
@@ -281,19 +277,20 @@ export default async function PostDetalhePage({
     typeof searchParams.voltar === 'string' && /^\/(?![\/\\])/.test(searchParams.voltar)
       ? searchParams.voltar
       : null;
+  // Sem ?voltar, o admin sobe na hierarquia (o projeto do post); /etapa é área do cliente.
   const voltarPara =
-    voltarInterno ?? (searchParams.from ? `/etapa/${searchParams.from}` : ehAdmin ? '/admin' : '/');
+    voltarInterno ??
+    (ehAdmin
+      ? post.projetoId
+        ? `/admin/projetos/${post.projetoId}`
+        : '/admin'
+      : searchParams.from
+        ? `/etapa/${searchParams.from}`
+        : '/');
 
-  // Vista Cliente/Lud. — cliente só vê a dele. Admin/colab default = interno.
-  const podeVerInterno = ehAdmin || ehColaborador;
   if (!podeVerInterno) {
     await registrarVisualizacao(post.id, tarefaId, session.email);
   }
-  const vista: 'cliente' | 'interno' = !podeVerInterno
-    ? 'cliente'
-    : searchParams.vista === 'cliente'
-      ? 'cliente'
-      : 'interno';
 
   // Preserva os outros params ao trocar de vista.
   function urlVista(v: 'cliente' | 'interno'): string {
@@ -317,28 +314,8 @@ export default async function PostDetalhePage({
     statusLower.includes('curador') ||
     modo === 'material';
 
-  // Dados extras da sidebar Lud. — só faz sentido buscar quando a vista
-  // vai ser interna. Server components dão erro se retornar Promise sem await,
-  // então busca sempre pra simplificar (barato porque já vem cacheado).
-  const historicoVazio = { visualizacoes: [], envios: [] };
-  const [tarefasDoPost, configProgramacao, historico, historicoPrazos, colaboradores, comentariosDoPost] = await Promise.all([
-    listarTarefasDoPost(post.id).catch(() => []),
-    lerConfigProgramacao(post.id).catch(() => ({
-      data: '',
-      horario: '',
-      plataformas: [],
-      formato: '',
-      legenda: '',
-      atualizadoEm: null,
-      atualizadoPor: null,
-    })),
-    vista === 'interno'
-      ? lerHistoricoComunicacao(post.id).catch(() => historicoVazio)
-      : Promise.resolve(historicoVazio),
-    vista === 'interno' ? lerHistoricoPrazos(post.id) : Promise.resolve([] as MudancaPrazo[]),
-    vista === 'interno' ? listColaboradores().catch(() => []) : Promise.resolve([]),
-    vista === 'interno' ? lerComentariosDoPost(post.id) : Promise.resolve([]),
-  ]);
+  // Dados extras da sidebar Lud. (já buscando desde o começo, em extrasP).
+  const [tarefasDoPost, configProgramacao, historico, historicoPrazos, colaboradores, comentariosDoPost] = await extrasP;
   const emailsDaEquipe = new Set([
     ...env.auth.adminEmails,
     ...colaboradores.map((c) => (c.email ?? '').trim().toLowerCase()).filter(Boolean),
@@ -352,7 +329,7 @@ export default async function PostDetalhePage({
   // a aprovação só mostra a arte; materiais aparecem na galeria.
   const precisaMateriais = modo === 'material' || vista === 'interno';
   const [arquivos, materiaisDosLinks, materiaisDaPasta] = await Promise.all([
-    resolverArquivosDoDrive(post.driveLinks),
+    arquivosP,
     precisaMateriais ? resolverArquivosDoDrive(post.materiaisLinks) : Promise.resolve([]),
     precisaMateriais
       ? listarMateriaisDoPost({
@@ -387,6 +364,7 @@ export default async function PostDetalhePage({
       colaboradores={ehAdmin ? colaboradorPorPessoa : {}}
       historico={historicoPrazos}
       podeEditarPrazo={ehAdmin}
+      linkAdmin={ehAdmin}
     />
   );
 
@@ -507,7 +485,7 @@ export default async function PostDetalhePage({
                 a caixa de aprovação/comentário não aparece. Em vez de ficar
                 mudo, explica que não precisa enviar nada agora. */}
             {!tarefaId && modo !== 'material' && (
-              <div className="card border-l-4 border-l-[var(--cal-aprovacao)] p-5">
+              <div className="card !bg-[var(--cal-aprovacao-soft)] p-5">
                 <div className="flex items-start gap-2.5">
                   <span className="mt-0.5 text-[18px] leading-none" aria-hidden>
                     ⏳
@@ -663,10 +641,10 @@ export default async function PostDetalhePage({
                       aceitarComentario: true,
                       aceitarLink: true,
                       permitirGravarVoz: !roteiroParaGravacao,
-                      tituloUpload: 'Outros arquivos (opcional)',
+                      tituloUpload: roteiroParaGravacao ? 'Fotos e vídeos' : 'Fotos, vídeos e áudios',
                       ajudaUpload: roteiroParaGravacao
-                        ? 'Fotos, vídeos e outros áudios sem limite de quantidade. A gravação do voice over feita acima já está incluída.'
-                        : 'Anexe quantas fotos e vídeos quiser (cada um até 450 MB). Áudios também — ou grava uma mensagem de voz aqui embaixo.',
+                        ? 'Quantos arquivos quiser. A gravação do voice over lá de cima já vai junto.'
+                        : 'Quantos arquivos quiser. Também dá pra gravar uma mensagem de voz aqui.',
                       textoBotao: 'Enviar materiais',
                       textoVoiceOver: roteiroParaGravacao || undefined,
                     }
@@ -676,8 +654,7 @@ export default async function PostDetalhePage({
                         aceitarLink: true,
                         permitirGravarVoz: true,
                         tituloUpload: 'Fotos e vídeos pros stories',
-                        ajudaUpload:
-                          'Anexe quantas artes e arquivos quiser. Áudios e mensagens de voz também.',
+                        ajudaUpload: 'Quantos arquivos quiser, inclusive áudios e mensagens de voz.',
                         textoBotao: 'Enviar direcionamento',
                       }
                     : sub === 'previas'
@@ -686,8 +663,7 @@ export default async function PostDetalhePage({
                           aceitarLink: true,
                           permitirGravarVoz: true,
                           tituloUpload: 'Fotos, vídeos e áudios',
-                          ajudaUpload:
-                            'Sem limite de quantidade — cada arquivo até 450 MB. Pode gravar um áudio aqui também.',
+                          ajudaUpload: 'Quantos arquivos quiser. Também dá pra gravar um áudio aqui.',
                           textoBotao: 'Enviar informações',
                         }
                       : {};
@@ -738,24 +714,14 @@ export default async function PostDetalhePage({
   // "Status Geral" vem da página do post, que fica em cache por alguns minutos.
   const statusGeral = tarefaAtual?.titulo ?? post.statusGeral ?? null;
 
-  // Ciclo de alteração no histórico: alteração concluída, aprovação interna, reprovação.
-  const eventosAlteracao: NotaHistorico[] = tarefasDoPost.flatMap((t): NotaHistorico[] => {
-    const titulo = t.titulo.trim();
-    if (!t.finalizadaEm) return [];
-    const quem = t.pessoaNome ? t.pessoaNome.split(' ')[0] : null;
-    const base = { id: `ev-${t.tarefaId}`, quando: t.finalizadaEm, autor: quem, corpo: '' };
-    if (/^altera[çc][ãa]o\s*\|/i.test(titulo) && t.status === 'Concluído') {
-      return [{ ...base, tipo: 'ok', titulo: `${titulo} concluída` }];
-    }
-    if (t.ordemUm === '03' && /^aprova[çc][ãa]o\s*\|/i.test(titulo)) {
-      if (t.status === 'Concluído') return [{ ...base, tipo: 'ok', titulo: `${titulo} da alteração aprovada` }];
-      if (t.status === 'Reprovado') {
-        return [{ ...base, tipo: 'voltou', titulo: `${titulo} da alteração reprovada, voltou pra ajuste` }];
-      }
-    }
-    return [];
+  // Histórico do post (mesma montagem do popup de prévia): comentários, alterações e envios.
+  const notasDoHistorico = notasDoPost({
+    comentarios: comentariosDoPost,
+    equipe: emailsDaEquipe,
+    tarefas: tarefasDoPost,
+    envios: historico.envios,
   });
-  const notasDoHistorico = [...notasDosComentarios(comentariosDoPost, emailsDaEquipe), ...eventosAlteracao];
+  const tarefasClienteHistorico = tarefasClienteDoHistorico(tarefasDoPost);
 
   // Alteração pronta e a nova aprovação esperando o cliente → reenviar.
   const reaprovacao =
@@ -787,6 +753,37 @@ export default async function PostDetalhePage({
         .sort((a, b) => ms(b.enviadoEm) - ms(a.enviadoEm))[0] ?? null
     : null;
 
+  // Programação (opção 6): posts vizinhos do projeto no feed e o horário de Brasília.
+  const dataProg = (configProgramacao.data || post.data || '').slice(0, 10) || null;
+  const [vizinhosRaw, horarioProjeto] = await Promise.all([
+    // Só os posts deste projeto, mês do post e os dois vizinhos (rápido e com cache).
+    dataProg && post.projetoId
+      ? Promise.all(
+          [-1, 0, 1].map((k) => {
+            const [y, m] = dataProg.split('-').map(Number);
+            const d = new Date(Date.UTC(y, m - 1 + k, 15));
+            return listPostsDoMes([post.projetoId!], d.getUTCFullYear(), d.getUTCMonth() + 1).catch(() => []);
+          }),
+        ).then((ls) => ls.flat())
+      : Promise.resolve([]),
+    post.projetoId ? getHorarioDoProjeto(post.projetoId).catch(() => null) : Promise.resolve(null),
+  ]);
+  const semTracoId = (x: string) => x.replace(/-/g, '');
+  const feedProg: VizinhoFeed[] = vizinhosRaw
+    .filter((v) => v.projetoId && post.projetoId && semTracoId(v.projetoId) === semTracoId(post.projetoId) && v.data)
+    .map((v) => ({ id: v.id, titulo: v.titulo, data: v.data.slice(0, 10), esteAqui: semTracoId(v.id) === semTracoId(post.id) }))
+    .sort((a, b) => b.data.localeCompare(a.data));
+  if (dataProg && !feedProg.some((v) => v.esteAqui)) {
+    feedProg.push({ id: post.id, titulo: post.titulo, data: dataProg, esteAqui: true });
+    feedProg.sort((a, b) => b.data.localeCompare(a.data));
+  }
+  const statusProg = (post.status ?? '').toLowerCase();
+  const situacaoProg: 'programado' | 'postado' | 'nao' = /postad|publicad/.test(statusProg)
+    ? 'postado'
+    : /agendad|programad/.test(statusProg)
+      ? 'programado'
+      : 'nao';
+
   return (
     <div className="min-h-screen pb-32">
       <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
@@ -798,6 +795,7 @@ export default async function PostDetalhePage({
             ← Voltar
           </Link>
           <div className="flex items-center gap-3">
+            {ehAdmin && <BotaoAtualizar variante="compacto" />}
             {podeVerInterno && (
               <div className="flex items-center gap-1 rounded-full bg-bgSoft p-1">
                 <Link
@@ -819,35 +817,52 @@ export default async function PostDetalhePage({
       </header>
 
       <main className="mx-auto max-w-3xl lg:max-w-7xl px-6 py-8 space-y-6">
+        {ehAdmin && post.projetoId && (
+          // Hierarquia: Projetos › projeto › post (lib/rotas.ts).
+          <Trilha
+            className="-mb-3"
+            itens={[
+              { rotulo: 'Projetos', href: rotas.projetos() },
+              { rotulo: nomeCurtoDoProjeto(post.projetoNome), href: rotas.projeto(post.projetoId) },
+              { rotulo: 'Post' },
+            ]}
+          />
+        )}
         <h1 className="text-[22px] sm:text-[28px] font-semibold tracking-[-0.03em] text-ink">
           {post.titulo}
         </h1>
 
         {/* cabeçalho: prazo em destaque + postagem, formato e status */}
-        <div className={`grid gap-4 lg:gap-3 ${prazoAtual ? 'lg:grid-cols-[minmax(0,1.25fr)_minmax(0,2.4fr)]' : ''}`}>
-          {prazoAtual && tarefaAtual && (
-            <CardPrazo
-              dias={diasAtual}
-              prazo={prazoAtual}
-              rotulo={`Prazo · ${tarefaAtual.titulo}`}
-              detalheExtra={tarefaAtual.pessoaNome ? `com ${tarefaAtual.pessoaNome.split(' ')[0]}` : null}
-              botao={
-                vezDoCliente && tarefaCliente ? (
-                  <BotaoLembreteWpp
-                    tarefaId={tarefaCliente.tarefaId}
-                    clienteNome={post.projetoNome}
-                    rotulo={
-                      reaprovacao && !reenvio
-                        ? 'Enviar reaprovação'
-                        : /aprova/i.test(tarefaCliente.titulo)
-                          ? 'Enviar para aprovação'
-                          : 'Lembrar cliente'
-                    }
-                    branco
-                  />
-                ) : null
-              }
-            />
+        <div className="grid gap-4 lg:gap-3">
+          {tarefaAtual && (
+            <div className="rounded-[20px] bg-[#F4F4F5] px-5 py-4">
+              <AgoraEtapa
+                titulo={tarefaAtual.titulo}
+                pessoa={tarefaAtual.pessoaNome}
+                tarefaId={tarefaAtual.tarefaId}
+                prazo={prazoAtual}
+                podeEditar={ehAdmin}
+                acoes={
+                  <>
+                    <BotaoConcluirEtapa tarefaId={tarefaAtual.tarefaId} />
+                    {vezDoCliente && tarefaCliente && (
+                      <BotaoLembreteWpp
+                        tarefaId={tarefaCliente.tarefaId}
+                        clienteNome={post.projetoNome}
+                        rotulo={
+                          reaprovacao && !reenvio
+                            ? 'Enviar reaprovação'
+                            : /aprova/i.test(tarefaCliente.titulo)
+                              ? 'Enviar para aprovação'
+                              : 'Lembrar no grupo'
+                        }
+                        verde
+                      />
+                    )}
+                  </>
+                }
+              />
+            </div>
           )}
           <div className="flex flex-col justify-between gap-6 rounded-[28px] bg-white px-7 py-6 lg:flex-row lg:items-center lg:gap-8 lg:rounded-2xl lg:px-5 lg:py-3.5">
             <div className="flex flex-wrap gap-x-12 gap-y-4 lg:shrink-0 lg:gap-x-8">
@@ -938,11 +953,12 @@ export default async function PostDetalhePage({
         {!semArte && !pedidoAlteracao && painelAlteracao}
 
         {/* Comentários (2 painéis: Com o cliente + Nota interna) */}
-        <ComentariosLud postId={post.id} tarefaId={tarefaId} />
+        <ComentariosLud postId={post.id} tarefaId={tarefaId} notas={notasDoHistorico} />
 
         <ComunicacaoCard
           historico={historico}
           notas={notasDoHistorico}
+          tarefasCliente={tarefasClienteHistorico}
           lembrete={
             tarefaCliente
               ? { tarefaId: tarefaCliente.tarefaId, titulo: tarefaCliente.titulo, clienteNome: post.projetoNome }
@@ -950,10 +966,13 @@ export default async function PostDetalhePage({
           }
         />
 
-        <ProgramacaoCard
+        <CaixaProgramacao
           postId={post.id}
-          configProgramacao={configProgramacao}
-          dataPostagem={post.data}
+          data={dataProg}
+          hora={horaCurta(configProgramacao.horario) ?? horaCurta(horarioProjeto)}
+          formato={formatoResumo(post.formato, formatoTipoDetectado, arquivos.length)}
+          situacao={situacaoProg}
+          feed={feedProg}
         />
       </main>
     </div>
@@ -987,7 +1006,7 @@ function CardAlteracaoConcluida({
   const linha = (rotulo: string, t: { pessoaNome: string | null; finalizadaEm: string | null }) =>
     [rotulo, t.pessoaNome?.split(' ')[0], quandoFoi(t.finalizadaEm)].filter(Boolean).join(' · ');
   return (
-    <section className="card border-l-4 border-l-[var(--prazo-em-dia)] p-5">
+    <section className="card !bg-[var(--prazo-em-dia-soft)] p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--prazo-em-dia)]">

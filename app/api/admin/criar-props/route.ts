@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
@@ -35,7 +36,7 @@ export async function POST() {
   }
 
   const { Client } = await import('@notionhq/client');
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
   const dbId = env.notion.postagensDbId;
 
   const resultado: any = { acoes: {}, erros: [] };

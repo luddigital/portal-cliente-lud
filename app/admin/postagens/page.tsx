@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { listPostsNoIntervalo } from '@/lib/notion';
 import { PostagensView } from './PostagensView';
 

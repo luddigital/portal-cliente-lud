@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
 
 /**
  * Botão compacto de concluir tarefa — usado na linha da tarefa na página
@@ -22,6 +23,7 @@ export function BotaoConcluir({ tarefaId }: { tarefaId: string }) {
         method: 'POST',
       });
       if (!res.ok) throw new Error();
+      avisarConcluida(tarefaId);
       router.refresh();
     } catch {
       setError(true);

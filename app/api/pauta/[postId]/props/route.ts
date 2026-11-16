@@ -58,7 +58,7 @@ export async function POST(req: Request, { params }: { params: { postId: string 
   try {
     if ('data' in body) {
       const d = body.data;
-      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      if (d && !/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2})?)?$/.test(d)) {
         return NextResponse.json({ error: 'data deve ser YYYY-MM-DD' }, { status: 400 });
       }
       await atualizarDataDoPost(params.postId, d ?? null);

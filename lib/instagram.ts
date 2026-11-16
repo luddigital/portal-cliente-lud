@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { env } from './env';
 
 const BASE = 'https://graph.facebook.com';
@@ -390,6 +391,52 @@ export async function getIgAnalyticsDoProjeto(
     return await getIgAnalytics(igUserId, { since, until });
   } catch (err) {
     console.error('[instagram] erro no projeto', projetoId, err);
+    return null;
+  }
+}
+
+/**
+ * Foto de perfil do Instagram do projeto (pro avatar da página do projeto).
+ * Usa a conta mapeada em IG_ACCOUNTS; sem mapeamento, procura pelo @ que
+ * aparece no nome do projeto ("IG | @turismoemchicago") nas contas do token.
+ */
+// Foto de perfil quase não muda: fica guardada 6 h entre visitas (o cache em
+// memória acima some a cada servidor novo da Vercel). Erro não vai pro cache.
+const _fotoDoProjetoCached = unstable_cache(
+  async (projetoId: string, nomeProjeto: string): Promise<string | null> => {
+    const igUserId = env.instagram.accounts[projetoId];
+    if (igUserId) {
+      const foto = await getAccount(igUserId).then((a) => a.profilePicture).catch(() => null);
+      if (foto) return foto;
+    }
+    const handle = nomeProjeto.match(/@([\w.]+)/)?.[1]?.toLowerCase();
+    if (!handle) return null;
+    const contas = await listIgAccounts();
+    const nossa = contas.find((c) => c.username.toLowerCase() === handle)?.profilePicture;
+    if (nossa) return nossa;
+    // Conta que não está no token: o Business Discovery lê a foto de qualquer perfil
+    // comercial/criador público, consultando a partir de uma conta nossa.
+    const base = contas[0]?.igUserId;
+    if (!base) return null;
+    try {
+      const json = await graph<any>(base, { fields: `business_discovery.username(${handle}){profile_picture_url}` });
+      return json?.business_discovery?.profile_picture_url ?? null;
+    } catch {
+      return null;
+    }
+  },
+  ['ig-foto-do-projeto-v2'],
+  { revalidate: 6 * 3600 },
+);
+
+export async function getFotoDoInstagramDoProjeto(
+  projetoId: string,
+  nomeProjeto: string,
+): Promise<string | null> {
+  if (!env.instagram.graphToken) return null;
+  try {
+    return await _fotoDoProjetoCached(projetoId, nomeProjeto);
+  } catch {
     return null;
   }
 }

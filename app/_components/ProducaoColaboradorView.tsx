@@ -101,7 +101,7 @@ function CardTarefa({ t, fromSlug }: { t: TarefaColaborador; fromSlug: string })
 
   return (
     <Link
-      href={`/post/${t.postId}?tarefa=${t.tarefaId}&from=${fromSlug}`}
+      href={linkDaTarefa(t, fromSlug)}
       className="group flex items-center gap-5 rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white px-5 py-4 transition hover:border-navy/30 hover:bg-bgSoft/40"
     >
       <div className="w-[56px] shrink-0 text-center leading-none">
@@ -230,6 +230,17 @@ function CardStat({
       <div className="mt-0.5 text-[11px] text-t3">{desc}</div>
     </div>
   );
+}
+
+/**
+ * Card de tarefa da produção: no admin vai pra página da tarefa
+ * (/admin/tarefas/[id]); pro colaborador, pro post com o "voltar" pra cá.
+ */
+function linkDaTarefa(t: { tarefaId: string; postId: string | null }, fromSlug: string): string {
+  if (fromSlug.startsWith('admin/')) return `/admin/tarefas/${t.tarefaId}`;
+  return t.postId
+    ? `/post/${t.postId}?tarefa=${t.tarefaId}&voltar=${encodeURIComponent(`/${fromSlug}`)}`
+    : `/tarefa/${t.tarefaId}`;
 }
 
 export function ProducaoColaboradorView({
@@ -371,7 +382,7 @@ export function ProducaoColaboradorView({
                     {concluidas.map((t, i) => (
                       <Link
                         key={t.tarefaId}
-                        href={`/post/${t.postId}?tarefa=${t.tarefaId}&from=${fromSlug}`}
+                        href={linkDaTarefa(t, fromSlug)}
                         className={`flex items-center gap-3 px-4 py-2.5 text-[13px] transition hover:bg-bgSoft ${
                           i > 0 ? 'border-t border-[rgba(21,21,33,0.05)]' : ''
                         }`}

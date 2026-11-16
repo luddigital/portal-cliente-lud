@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { listEntregas, proximaDataDaEntrega, type EntregaItem } from '@/lib/notion';
 import { hojeEmSaoPaulo } from '@/lib/lembrete-aprovacao';
 import { ChipData } from '@/app/_components/ChipData';
+import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
+import { diasEntre, nivelDoPrazo, quandoVence, type CardEntrega } from '@/lib/visao-projeto';
+import { EntregasPorQuem } from './EntregasPorQuem';
 
 const ORDEM_FREQUENCIA = ['Diária', 'Semanal', 'Mensal'];
 const pesoFrequencia = (e: EntregaItem) => {
@@ -57,6 +60,35 @@ async function montarResumo(): Promise<Resumo> {
   };
 }
 
+/** Cards da opção E: atrasadas + o que vence nos próximos 7 dias, de todos os clientes. */
+function cardsDoDashboard(entregas: EntregaItem[], hoje: string): CardEntrega[] {
+  const cards: CardEntrega[] = [];
+  for (const e of entregas) {
+    if (e.totalTarefas === 0) continue;
+    const data = proximaDataDaEntrega(e, hoje);
+    const dias = data ? diasEntre(hoje, data) : null;
+    if (e.atrasadas === 0 && (dias === null || dias > 7)) continue;
+    const freq = e.frequencia ? ` · ${e.frequencia.toUpperCase()}` : '';
+    const atrasada = e.atrasadas > 0;
+    cards.push({
+      chave: e.id,
+      titulo: e.nome,
+      tag: (atrasada ? 'ATRASADA' : quandoVence(data, hoje)) + freq,
+      nivel: atrasada ? 'atrasado' : nivelDoPrazo(data, hoje),
+      comCliente: ehTarefaDoCliente(e.nome),
+      n: atrasada ? e.atrasadas : e.totalTarefas,
+      sub: atrasada
+        ? e.atrasadas === 1 ? 'atrasada' : 'atrasadas'
+        : dias === 0 ? 'vencem hoje' : dias === 1 ? 'vencem amanhã' : `${e.totalTarefas === 1 ? 'tarefa' : 'tarefas'} · ${data!.slice(8, 10)}/${data!.slice(5, 7)}`,
+      itens: [],
+      href: `/admin/entregas/${e.id}`,
+      acao: 'Abrir',
+    });
+  }
+  const peso = (c: CardEntrega) => (c.nivel === 'atrasado' ? -1000 - c.n : 0);
+  return cards.sort((a, b) => peso(a) - peso(b));
+}
+
 function Numero({ valor, rotulo, cor }: { valor: string; rotulo: string; cor?: string }) {
   return (
     <div className="min-w-[128px] rounded-2xl bg-white px-5 py-3.5">
@@ -65,48 +97,6 @@ function Numero({ valor, rotulo, cor }: { valor: string; rotulo: string; cor?: s
       </div>
       <div className="mt-1.5 text-[12.5px] text-t2">{rotulo}</div>
     </div>
-  );
-}
-
-function CardAgora({ e, quando }: { e: EntregaItem; quando: 'hoje' | 'amanha' }) {
-  const escuro = quando === 'hoje';
-  const rotulo = [quando === 'hoje' ? 'Hoje' : 'Amanhã', e.frequencia].filter(Boolean).join(' · ');
-  return (
-    <Link
-      href={`/admin/entrega/${e.id}`}
-      className={`group flex min-h-[148px] flex-col justify-between rounded-[22px] px-6 py-5 transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(21,21,33,0.12)] ${
-        escuro ? 'bg-ink text-white' : 'bg-white text-ink'
-      }`}
-    >
-      <div>
-        <div
-          className="text-[11px] font-bold uppercase tracking-[0.14em]"
-          style={{ color: escuro ? '#F2A877' : 'var(--cal-programar)' }}
-        >
-          {rotulo}
-        </div>
-        <div className="mt-2 text-[19px] font-semibold leading-tight tracking-[-0.01em]">{e.nome}</div>
-      </div>
-      <div className="mt-4 flex items-baseline gap-2">
-        {e.atrasadas > 0 ? (
-          <>
-            <span
-              className="text-[40px] font-bold leading-none tracking-[-0.03em]"
-              style={{ color: escuro ? '#fff' : 'var(--prazo-atrasado)' }}
-            >
-              {e.atrasadas}
-            </span>
-            <span className={`text-[13px] ${escuro ? 'text-white/75' : 'text-t2'}`}>
-              {e.atrasadas === 1 ? 'atrasada' : 'atrasadas'}
-            </span>
-          </>
-        ) : (
-          <span className={`text-[14px] font-semibold ${escuro ? 'text-white/85' : 'text-[var(--prazo-em-dia)]'}`}>
-            ✓ nada atrasado
-          </span>
-        )}
-      </div>
-    </Link>
   );
 }
 
@@ -142,17 +132,7 @@ export async function EntregasResumo({ titulo = 'Entregas pendentes', linkTodas 
             </Link>
           )}
         </div>
-        {r.agora.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {r.agora.map(({ e, quando }) => (
-              <CardAgora key={e.id} e={e} quando={quando} />
-            ))}
-          </div>
-        ) : (
-          <p className="rounded-2xl bg-white px-5 py-4 text-[13px] text-t2">
-            Nenhuma entrega vence hoje ou amanhã. ✨
-          </p>
-        )}
+        <EntregasPorQuem cards={cardsDoDashboard(r.entregas, r.hoje)} vazio="Nada atrasado nem vencendo nos próximos 7 dias. ✨" />
       </div>
     </div>
   );
@@ -163,7 +143,7 @@ function LinhaEntrega({ e, hoje }: { e: EntregaItem; hoje: string }) {
   return (
     <li>
       <Link
-        href={`/admin/entrega/${e.id}`}
+        href={`/admin/entregas/${e.id}`}
         className="group flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 transition hover:bg-bgSoft/70"
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">

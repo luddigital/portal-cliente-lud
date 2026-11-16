@@ -39,7 +39,7 @@ export default function SetupPage({ searchParams }: { searchParams: { token?: st
           <p className="mt-1 text-[12px] text-mauve">
             Cola esse valor na env var <code className="rounded bg-[rgba(21,21,33,0.06)] px-1 font-mono">GOOGLE_OAUTH_REFRESH_TOKEN</code> (local e na Vercel) e reinicia o app.
           </p>
-          <pre className="mt-4 overflow-x-auto rounded-lg bg-ink p-4 font-mono text-[11px] text-[#F8F8F8]">
+          <pre className="mt-4 overflow-x-auto min-h-fit rounded-lg bg-ink p-4 font-mono text-[11px] text-[#F8F8F8]">
             {token}
           </pre>
           <p className="mt-3 text-[11px] text-t3">

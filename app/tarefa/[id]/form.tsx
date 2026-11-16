@@ -4,11 +4,19 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { upload as blobUpload } from '@vercel/blob/client';
 import { GravarVoiceOver } from '@/app/_components/GravarVoiceOver';
+import {
+  TAMANHO_MAX_MB,
+  avisosDaEscolha,
+  erroAmigavel,
+  lotesDeEnvio,
+  nomeSeguroBlob,
+  separarEscolhidos,
+  tipoArquivo,
+} from '@/lib/upload-arquivos';
 
 // Limite por arquivo: Vercel funcoes serverless tem cap perto de 500MB de
 // request body. Cortamos pouco antes pra deixar margem de overhead. Arquivos
 // maiores que isso devem ir via "link externo" (Drive próprio do cliente).
-const TAMANHO_MAX_MB = 450;
 
 // Concorrência: 2 uploads paralelos. Mais que isso, com vídeos grandes,
 // disputa banda e aumenta chance de "Failed to fetch" por timeout na rede
@@ -174,18 +182,6 @@ function putArquivoNoDrive(
 }
 
 /** Classifica o arquivo pelo tipo pra decidir qual preview mostrar. */
-function tipoArquivo(file: File): 'imagem' | 'video' | 'audio' | 'outro' {
-  const mime = (file.type || '').toLowerCase();
-  const nome = file.name.toLowerCase();
-  if (mime.startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(nome))
-    return 'imagem';
-  if (mime.startsWith('video/') || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(nome))
-    return 'video';
-  if (mime.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(nome))
-    return 'audio';
-  return 'outro';
-}
-
 /**
  * Card de 1 arquivo na galeria antes do envio.
  * Mostra preview visual (imagem/vídeo), nome editável e botão X pra remover.
@@ -389,10 +385,10 @@ export function TarefaForm({
   mostrarTexto = true,
   aceitarComentario = false,
   aceitarLink = false,
-  aceitarTipos = 'image/*,video/*,audio/*',
+  aceitarTipos = 'image/*,video/*,audio/*,application/pdf',
   textoBotao = 'Enviar materiais',
   tituloUpload = 'Fotos, vídeos e áudios',
-  ajudaUpload = 'Você pode anexar vários arquivos — incluindo gravações de voice over.',
+  ajudaUpload = 'Pode mandar quantos arquivos quiser, inclusive áudios.',
   textoVoiceOver,
   permitirGravarVoz = false,
   naoFinalizarTarefa = false,
@@ -424,18 +420,15 @@ export function TarefaForm({
   const [done, setDone] = useState<{ arquivos: number } | null>(null);
   const [popupGrandes, setPopupGrandes] = useState<File[]>([]);
 
-  function escolherArquivos(novos: File[]) {
-    setFila((prev) => [
-      // Mantém gravações de voice over que já estavam na fila — só substitui
-      // o que veio do file picker.
-      ...prev.filter((it) => it.file.name.startsWith('voice-over-')),
-      ...novos.map((f) => ({ file: f, nome: f.name, status: 'pendente' as const })),
-    ]);
-    setError(null);
+  function escolherArquivos(escolhidos: File[]) {
+    // Soma à lista: no celular a cliente costuma escolher em várias rodadas
+    // (um álbum de cada vez). Antes a segunda escolha apagava a primeira.
+    const r = separarEscolhidos(fila.map((it) => it.file), escolhidos);
+    setFila((prev) => [...prev, ...r.novos.map((f) => ({ file: f, nome: f.name, status: 'pendente' as const }))]);
+    setError(avisosDaEscolha(r));
     // Abre popup pra qualquer arquivo que exceda o limite — assim o cliente
     // não descobre só quando tenta enviar.
-    const grandes = novos.filter((f) => f.size > TAMANHO_MAX_MB * 1024 * 1024);
-    if (grandes.length > 0) setPopupGrandes(grandes);
+    if (r.grandes.length > 0) setPopupGrandes(r.grandes);
   }
 
   function adicionarGravacao(file: File) {
@@ -463,6 +456,17 @@ export function TarefaForm({
     );
   }
 
+  // Fechar a aba no meio do envio perde os arquivos que faltam: o navegador pergunta antes.
+  useEffect(() => {
+    if (!loading) return;
+    const avisar = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [loading]);
+
   const arquivosGrandes = fila.filter((it) => it.file.size > TAMANHO_MAX_MB * 1024 * 1024);
   const tamanhoTotalMB = fila.reduce((s, it) => s + it.file.size, 0) / (1024 * 1024);
 
@@ -473,7 +477,7 @@ export function TarefaForm({
     //
     // O @vercel/blob/client faz multipart chunked internamente e cuida de
     // retry a nível de pedaço. Rede caindo por segundos não derruba tudo.
-    const blob = await blobUpload(item.nome, item.file, {
+    const blob = await blobUpload(nomeSeguroBlob(item.nome), item.file, {
       access: 'public',
       contentType: item.file.type || 'application/octet-stream',
       handleUploadUrl: `/api/tarefas/${tarefaId}/blob-token`,
@@ -545,12 +549,12 @@ export function TarefaForm({
 
     const linkLimpo = linkUrl.trim();
     if (linkLimpo && !/^https?:\/\//i.test(linkLimpo)) {
-      setError('O link precisa começar com https://');
+      setError('O link precisa começar com https:// (é só copiar o endereço completo).');
       return;
     }
     if (arquivosGrandes.length > 0) {
       setError(
-        `${arquivosGrandes.length} arquivo(s) passam de ${TAMANHO_MAX_MB} MB e não vão subir aqui. Manda esses por Drive/Dropbox/WeTransfer e cola o link em "Link externo".`,
+        `${arquivosGrandes.length === 1 ? 'Um arquivo passa' : `${arquivosGrandes.length} arquivos passam`} de ${TAMANHO_MAX_MB} MB e não sobe${arquivosGrandes.length === 1 ? '' : 'm'} por aqui. Tira da lista e manda pelo Google Drive, Dropbox ou WeTransfer, colando o link em "Ou mande por link".`,
       );
       return;
     }
@@ -567,12 +571,11 @@ export function TarefaForm({
       const paraSubir = fila.filter(
         (it) => it.status === 'pendente' || it.status === 'erro',
       );
-      let cursor = 0;
       let feitos = fila.filter((it) => it.status === 'ok').length;
       setProgresso({ feitos, total: fila.length });
-      while (cursor < paraSubir.length) {
-        const lote = paraSubir.slice(cursor, cursor + PARALELOS);
-        cursor += PARALELOS;
+      // O 1º arquivo sobe sozinho: ele cria as pastas no Drive. Se 2 subirem
+      // juntos numa pasta que ainda não existe, o Drive pode criar pasta duplicada.
+      for (const lote of lotesDeEnvio(paraSubir, PARALELOS, feitos === 0)) {
         // Marca como subindo
         setFila((prev) =>
           prev.map((it) =>
@@ -590,7 +593,7 @@ export function TarefaForm({
             if (idx === -1) return it;
             const r = resultados[idx];
             if (r.status === 'fulfilled') return { ...it, status: 'ok' as const };
-            return { ...it, status: 'erro' as const, erro: r.reason?.message };
+            return { ...it, status: 'erro' as const, erro: erroAmigavel(r.reason?.message) };
           }),
         );
         feitos += resultados.filter((r) => r.status === 'fulfilled').length;
@@ -599,10 +602,7 @@ export function TarefaForm({
         // Se TODOS desse lote falharam, aborta (provavelmente erro de
         // rede/auth — não adianta continuar).
         if (resultados.every((r) => r.status === 'rejected')) {
-          throw new Error(
-            (resultados[0] as PromiseRejectedResult).reason?.message ??
-              'Falha geral no upload',
-          );
+          throw new Error(erroAmigavel((resultados[0] as PromiseRejectedResult).reason?.message));
         }
       }
 
@@ -612,12 +612,12 @@ export function TarefaForm({
       const falhados = fila.filter((it) => it.status === 'erro');
       if (falhados.length > 0) {
         setError(
-          `${falhados.length} de ${fila.length} não subiram (${falhados
+          `${falhados.length} de ${fila.length} arquivos não subiram (${falhados
             .slice(0, 3)
             .map((f) => f.file.name)
             .join(', ')}${falhados.length > 3 ? '…' : ''}). ` +
-            `Remova os que subiram, clique "Enviar" de novo pra os que faltam, ` +
-            `ou cole um link do Drive/WeTransfer em "Link externo" abaixo.`,
+            `Clica em enviar de novo que a gente tenta só os que faltaram. ` +
+            `Se continuar dando erro, manda por link.`,
         );
         setLoading(false);
         return; // não finaliza a tarefa enquanto tem falha
@@ -633,7 +633,7 @@ export function TarefaForm({
         setTimeout(() => router.push(voltarPara), 2000);
       }
     } catch (err: any) {
-      setError(err.message);
+      setError(erroAmigavel(err?.message));
     } finally {
       setLoading(false);
     }
@@ -644,28 +644,27 @@ export function TarefaForm({
       return (
         <div className="card p-5 text-center">
           <div className="text-[14px] font-semibold text-ink">
-            ✓ Materiais anexados
+            ✓ Materiais recebidos
           </div>
           <p className="mt-1 text-[12px] text-t2">
             {done.arquivos > 0
-              ? `${done.arquivos} arquivo${done.arquivos > 1 ? 's' : ''} no Drive. `
+              ? `${done.arquivos} arquivo${done.arquivos > 1 ? 's' : ''} já ${done.arquivos > 1 ? 'estão' : 'está'} com a equipe. `
               : ''}
-            Agora é só aprovar a pauta abaixo pra a gente seguir.
+            Agora é só aprovar a pauta aqui embaixo pra gente seguir.
           </p>
         </div>
       );
     }
     return (
       <div className="card p-8 text-center">
-        <div className="text-[16px] font-semibold text-ink">Enviado ✨</div>
+        <div className="text-[16px] font-semibold text-ink">Recebemos! ✨</div>
         <p className="mt-2 text-[13px] text-mauve">
           {done.arquivos > 0
-            ? `${done.arquivos} arquivo${done.arquivos > 1 ? 's' : ''} no Drive + `
-            : ''}
-          tarefa atualizada no Notion.
+            ? `${done.arquivos} arquivo${done.arquivos > 1 ? 's' : ''} já ${done.arquivos > 1 ? 'estão' : 'está'} com a equipe. Obrigada!`
+            : 'Já está tudo com a equipe. Obrigada!'}
         </p>
         <p className="mt-4 text-[11px] text-t3">
-          {voltarPara === '/' ? 'Voltando pro dashboard…' : 'Voltando pra etapa…'}
+          {voltarPara === '/' ? 'Voltando pro início…' : 'Voltando…'}
         </p>
       </div>
     );
@@ -682,12 +681,12 @@ export function TarefaForm({
     <form onSubmit={submit} className="space-y-6">
       {mostrarTexto && (
         <div className="card p-5">
-          <label className="label">Informações</label>
+          <label className="label">Conta pra gente</label>
           <textarea
             rows={8}
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
-            placeholder="Escreva aqui tudo que a gente precisa saber pra montar esse post."
+            placeholder="Escreve aqui tudo o que ajuda a montar esse post: contexto, detalhes, datas, nomes…"
             className="input resize-y"
           />
         </div>
@@ -707,7 +706,10 @@ export function TarefaForm({
             type="file"
             multiple
             accept={aceitarTipos}
-            onChange={(e) => escolherArquivos(Array.from(e.target.files ?? []))}
+            onChange={(e) => {
+              escolherArquivos(Array.from(e.target.files ?? []));
+              e.target.value = '';
+            }}
             className="absolute inset-0 cursor-pointer opacity-0"
             disabled={loading}
           />
@@ -728,42 +730,49 @@ export function TarefaForm({
           <div className="text-[13px] font-medium text-ink">
             {fila.length > 0
               ? `${fila.length} arquivo${fila.length > 1 ? 's' : ''} selecionado${fila.length > 1 ? 's' : ''} · ${tamanhoTotalMB.toFixed(1)} MB`
-              : 'Selecione os arquivos do seu computador ou celular'}
+              : 'Clique aqui ou arraste os arquivos'}
           </div>
           <div className="mt-1 text-[12px] text-t2">{ajudaUpload}</div>
         </div>
 
-        {/* Aviso destacado de limite — sempre visível, cor amber */}
-        <div
-          className="mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-[12px]"
-          style={{
-            background: 'var(--prazo-chegando-soft)',
-            borderColor: 'rgba(199,161,46,0.35)',
-            color: '#7A5A00',
-          }}
-        >
-          <span aria-hidden className="mt-0.5">⚠️</span>
-          <div>
-            <b>Cada arquivo pode ter até {TAMANHO_MAX_MB} MB.</b> Acima disso,
-            {aceitarLink
-              ? ' cole um link de Drive/Dropbox/WeTransfer no campo "Link externo" mais abaixo.'
-              : ' mande esse arquivo por Drive/Dropbox/WeTransfer.'}
+        {/* Link: alternativa ao upload, no mesmo box (arquivo grande ou pasta pronta) */}
+        {aceitarLink ? (
+          <div className="mt-4">
+            <label htmlFor="link-externo" className="block text-[12.5px] font-semibold text-ink">
+              Ou mande por link
+            </label>
+            <p className="mt-0.5 text-[12px] text-t2">
+              Arquivo com mais de {TAMANHO_MAX_MB} MB, ou já está tudo numa pasta? Cola o link do Google Drive,
+              Dropbox ou WeTransfer. Só confere se ele está aberto pra quem tiver o link.
+            </p>
+            <input
+              id="link-externo"
+              type="url"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              placeholder="https://drive.google.com/…"
+              className="input mt-2 text-[13px]"
+            />
           </div>
-        </div>
+        ) : (
+          <p className="mt-3 text-[12px] text-t2">
+            Cada arquivo pode ter até {TAMANHO_MAX_MB} MB. Se algum for maior, manda o link pra gente no WhatsApp.
+          </p>
+        )}
 
         {fila.length > 0 && (
           <div className="mt-4 space-y-3">
             <div className="flex items-baseline justify-between gap-2">
               <div className="text-[11.5px] text-t2">
                 <b className="text-ink">{fila.length}</b>{' '}
-                {fila.length === 1 ? 'arquivo pronto' : 'arquivos prontos'} pra enviar
+                {fila.length === 1 ? 'arquivo escolhido' : 'arquivos escolhidos'}
                 <span className="ml-1 text-t3">
                   · {(fila.reduce((s, it) => s + it.file.size, 0) / 1024 / 1024).toFixed(1)} MB
                 </span>
               </div>
               {!loading && (
                 <span className="text-[10.5px] italic text-t3">
-                  Revise antes de enviar: clique no nome pra renomear, X pra remover.
+                  Clique no nome pra renomear ou no X pra tirar da lista.
                 </span>
               )}
             </div>
@@ -785,7 +794,7 @@ export function TarefaForm({
           <div className="mt-3">
             <div className="flex items-center justify-between text-[11px] text-t2">
               <span>
-                Subindo arquivos… {progresso.feitos} de {progresso.total}
+                Enviando… {progresso.feitos} de {progresso.total} arquivos
               </span>
               <span className="font-mono">
                 {Math.round((progresso.feitos / progresso.total) * 100)}%
@@ -804,45 +813,20 @@ export function TarefaForm({
         )}
       </div>
 
-      {(aceitarComentario || aceitarLink) && (
-        <div className="card space-y-4 p-5">
-          <div>
-            <div className="label">Algo a mais? (opcional)</div>
-            <p className="-mt-1 mb-2 text-[11px] text-t3">
-              Deixa um recado pra equipe ou cola um link de Drive / Dropbox /
-              WeTransfer se preferir mandar os arquivos por fora.
-            </p>
-          </div>
-
-          {aceitarComentario && (
-            <div>
-              <label className="block text-[11px] font-medium text-t2">
-                Comentário
-              </label>
-              <textarea
-                rows={3}
-                value={comentario}
-                onChange={(e) => setComentario(e.target.value)}
-                placeholder="Ex: prefiro usar a foto X, ou já mandei o material no WhatsApp."
-                className="input mt-1 resize-y text-[13px]"
-              />
-            </div>
-          )}
-
-          {aceitarLink && (
-            <div>
-              <label className="block text-[11px] font-medium text-t2">
-                Link externo
-              </label>
-              <input
-                type="url"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                placeholder="https://drive.google.com/…"
-                className="input mt-1 text-[13px]"
-              />
-            </div>
-          )}
+      {aceitarComentario && (
+        <div className="card p-5">
+          <label htmlFor="recado-equipe" className="label">
+            Recado pra equipe (opcional)
+          </label>
+          <p className="-mt-1 mb-2 text-[12px] text-t2">Quer explicar alguma coisa sobre os arquivos? Escreve aqui.</p>
+          <textarea
+            id="recado-equipe"
+            rows={3}
+            value={comentario}
+            onChange={(e) => setComentario(e.target.value)}
+            placeholder="Ex.: a foto 3 é a minha preferida. Os vídeos do jantar já mandei no WhatsApp."
+            className="input resize-y text-[13px]"
+          />
         </div>
       )}
 
@@ -872,9 +856,8 @@ export function TarefaForm({
                     : `${popupGrandes.length} arquivos são grandes demais`}
                 </h3>
                 <p className="mt-1 text-[13px] text-t2">
-                  O portal aceita até <b>{TAMANHO_MAX_MB} MB</b> por arquivo.
-                  Passando disso, o mais rápido é mandar por outra plataforma
-                  e colar o link aqui embaixo.
+                  Aqui no portal cada arquivo pode ter até <b>{TAMANHO_MAX_MB} MB</b>. Pra esses, o
+                  caminho mais rápido é mandar por link.
                 </p>
               </div>
             </div>
@@ -891,14 +874,14 @@ export function TarefaForm({
             </ul>
 
             <div className="mb-4 rounded-lg bg-bgSoft/60 p-3 text-[12px] text-t1">
-              <b>Como fazer:</b>
+              <b>É rapidinho:</b>
               <ol className="mt-1.5 list-decimal space-y-1 pl-4">
-                <li>Sobe pro seu Google Drive, Dropbox ou WeTransfer</li>
-                <li>Deixa o link como "qualquer pessoa com link pode ver"</li>
+                <li>Sobe o arquivo no Google Drive, Dropbox ou WeTransfer</li>
+                <li>Deixa o link aberto pra qualquer pessoa que tiver ele</li>
                 <li>
-                  Cola o link {aceitarLink
-                    ? 'no campo "Link externo" logo abaixo'
-                    : 'aqui pelo WhatsApp/email'}
+                  {aceitarLink
+                    ? 'Cola o link em "Ou mande por link", aqui na página'
+                    : 'Manda o link pra gente no WhatsApp'}
                 </li>
               </ol>
             </div>

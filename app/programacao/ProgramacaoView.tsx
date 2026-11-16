@@ -15,7 +15,7 @@ const DIAS_SEMANA = ['SEG','TER','QUA','QUI','SEX','SÁB','DOM'];
 type Bucket = 'pronto' | 'programado' | 'publicado' | 'ajuste' | 'outro';
 
 const BUCKET_INFO: Record<Bucket, { label: string; bg: string; fg: string }> = {
-  pronto:    { label: 'Programar',               bg: 'var(--prazo-chegando-soft)', fg: 'var(--prazo-chegando)' },
+  pronto:    { label: 'Programar',               bg: 'var(--cal-programar-soft)', fg: 'var(--cal-programar)' },
   programado:{ label: 'Programado',              bg: 'var(--cal-agendado-soft)',   fg: 'var(--cal-agendado)'   },
   publicado: { label: 'Publicado',               bg: 'var(--prazo-em-dia-soft)',   fg: 'var(--prazo-em-dia)'   },
   ajuste:    { label: 'Ajuste pendente',         bg: 'var(--prazo-atrasado-soft)', fg: 'var(--prazo-atrasado)' },
@@ -301,7 +301,7 @@ export function ProgramacaoView({
 
           {/* Tiles (contexto do mês) */}
           <div className="mb-4 grid gap-3 sm:grid-cols-3">
-            <Tile cor="var(--prazo-chegando)"     label="Programar"               valor={prontosCount} />
+            <Tile cor="var(--cal-programar-soft)"     label="Programar"               valor={prontosCount} />
             <Tile cor="var(--cal-agendado)"       label="Programados"             valor={programadosCount} />
             <Tile cor="var(--prazo-em-dia)"       label="Publicados"              valor={publicadosCount} />
           </div>
@@ -399,7 +399,7 @@ export function ProgramacaoView({
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-t2">
               <LegendaSwatch cor="var(--prazo-em-dia)" label="Postado" />
               <LegendaSwatch cor="var(--cal-agendado)" label="Conferir Postagem" />
-              <LegendaSwatch cor="var(--prazo-chegando)" label="Programar" />
+              <LegendaSwatch cor="var(--cal-programar-soft)" label="Programar" />
               <LegendaSwatch cor="var(--cal-aprovacao)" label="Em Aprovação" />
               <LegendaSwatch cor="var(--prazo-atrasado)" label="Em Alteração" />
               <LegendaSwatch cor="#7A5AA6" label="Arte" />

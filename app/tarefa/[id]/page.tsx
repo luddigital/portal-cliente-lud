@@ -152,19 +152,20 @@ export default async function TarefaPage({
             {...(ehMateriais
               ? {
                   mostrarTexto: false,
+                  aceitarComentario: true,
+                  aceitarLink: true,
                   permitirGravarVoz: true,
-                  tituloUpload: 'Materiais + voice over',
-                  ajudaUpload:
-                    'Sem limite de quantidade — cada arquivo até 450 MB. Áudios também (ou grava direto aqui embaixo).',
+                  tituloUpload: 'Fotos, vídeos e áudios',
+                  ajudaUpload: 'Quantos arquivos quiser. Se precisar de um áudio, dá pra gravar aqui mesmo.',
                   textoBotao: 'Enviar materiais',
                 }
               : ehPrevias
                 ? {
                     mostrarTexto: true,
+                    aceitarLink: true,
                     permitirGravarVoz: true,
-                    tituloUpload: 'Fotos, vídeos e áudios',
-                    ajudaUpload:
-                      'Sem limite de quantidade — cada arquivo até 450 MB. Pode gravar um áudio aqui também.',
+                    tituloUpload: 'Fotos, vídeos e áudios (se tiver)',
+                    ajudaUpload: 'Quantos arquivos quiser. Também dá pra gravar um áudio aqui.',
                     textoBotao: 'Enviar informações',
                   }
                 : {})}
@@ -271,10 +272,10 @@ function analisarPrazo(iso: string | null): {
 
 function copyDaTarefa(titulo: string): string {
   if (titulo === 'Envio de Conteúdos Prévios') {
-    return 'Conte tudo que a gente precisa saber pra montar esse post: contexto, dados, tom, referências.\nSe já tiver foto ou vídeo em mãos, pode mandar junto.';
+    return 'Conta pra gente tudo o que ajuda a montar esse post: contexto, detalhes, datas e referências.\nSe já tiver foto ou vídeo, pode mandar junto.';
   }
   if (titulo === 'Materiais para Produção') {
-    return 'Anexe os materiais (fotos e vídeos) para a produção do post.\nTem alguma observação ou informação relevante? Adicione no campo de informações.';
+    return 'Hora de mandar os materiais desse post: fotos, vídeos e áudios.\nSe quiser explicar alguma coisa, deixa um recado pra equipe no fim da página.';
   }
-  return 'Mande aqui as informações e os materiais (fotos/vídeos) pra esse post.';
+  return 'Manda aqui as informações e os materiais desse post.';
 }

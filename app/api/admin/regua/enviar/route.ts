@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { concluirTarefa } from '@/lib/notion';
+import { concluirTarefa, invalidarCachesAposMudanca } from '@/lib/notion';
 import { getGrupoWhatsappDoProjeto, supabaseAdmin } from '@/lib/supabase';
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
 
@@ -69,7 +69,8 @@ export async function POST(req: Request): Promise<Response> {
     });
 
     let erroNotion: string | undefined;
-    if (item.momento === 'quinta' && item.tarefasEnvio?.length) {
+    // Lote da semana e envio separado concluem "Enviar Post Aprovação".
+    if ((item.momento === 'quinta' || item.momento === 'separado') && item.tarefasEnvio?.length) {
       const falhas = await Promise.all(
         item.tarefasEnvio.map((id) => concluirTarefa(id).then(() => null, (e) => e?.message ?? 'erro')),
       );
@@ -78,5 +79,7 @@ export async function POST(req: Request): Promise<Response> {
     resultados.push({ projetoId: item.projetoId, ok: true, erro: erroNotion });
   }
 
+  // Páginas de entrega e da régua leem as tarefas com cache: enviado sai da lista na hora.
+  invalidarCachesAposMudanca();
   return NextResponse.json({ resultados });
 }

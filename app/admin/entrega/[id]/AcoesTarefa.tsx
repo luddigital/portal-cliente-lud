@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
 
 type Modo = 'idle' | 'aprovando' | 'alterando' | 'concluindo';
 
@@ -38,6 +39,7 @@ export function AcoesTarefa({
     try {
       const res = await fetch(`/api/tarefas/${tarefaId}/concluir`, { method: 'POST' });
       if (!res.ok) throw new Error('Não consegui concluir a tarefa.');
+      avisarConcluida(tarefaId);
       onConcluido();
       router.refresh();
     } catch (e: any) {

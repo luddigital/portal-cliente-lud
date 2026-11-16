@@ -54,8 +54,8 @@ export function HistoricoBox({ comentarios }: { comentarios: ComentarioItem[] })
           c.evento ? (
             <li
               key={c.id}
-              className={`border-l-2 pl-3 ${
-                c.evento === 'ok' ? 'border-[var(--prazo-em-dia)]' : 'border-[var(--cal-alteracao)]'
+              className={`rounded-lg px-3 py-2 ${
+                c.evento === 'ok' ? 'bg-[var(--prazo-em-dia-soft)]' : 'bg-[var(--cal-alteracao-soft)]'
               }`}
             >
               <div className="text-[11px] font-medium text-t3">{fmtDataHora(c.criadoEm)}</div>
@@ -68,7 +68,7 @@ export function HistoricoBox({ comentarios }: { comentarios: ComentarioItem[] })
               </p>
             </li>
           ) : (
-            <li key={c.id} className="border-l-2 border-[rgba(21,21,33,0.15)] pl-3">
+            <li key={c.id} className="pl-0">
               <div className="text-[11px] font-medium text-t3">{fmtDataHora(c.criadoEm)}</div>
               <p className="mt-1 whitespace-pre-line text-[13.5px] leading-[1.55] text-ink">{c.texto}</p>
             </li>

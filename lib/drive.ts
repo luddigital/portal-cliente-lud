@@ -36,6 +36,9 @@ async function findChildFolder(parentId: string, name: string): Promise<string |
   const res = await drive.files.list({
     q,
     fields: 'files(id,name)',
+    // Se duas pastas iguais nasceram juntas (uploads em paralelo), todo mundo
+    // usa a MAIS ANTIGA — os arquivos não se espalham entre as duas.
+    orderBy: 'createdTime',
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
     pageSize: 1,
@@ -58,7 +61,12 @@ async function createFolder(parentId: string, name: string): Promise<string> {
 }
 
 async function ensureFolder(parentId: string, name: string): Promise<string> {
-  return (await findChildFolder(parentId, name)) ?? (await createFolder(parentId, name));
+  const existente = await findChildFolder(parentId, name);
+  if (existente) return existente;
+  const criada = await createFolder(parentId, name);
+  // Relê: se outra chamada criou a mesma pasta ao mesmo tempo, fica a mais antiga.
+  // (Se o Drive ainda não listar a nova, usa a que acabou de criar.)
+  return (await findChildFolder(parentId, name)) ?? criada;
 }
 
 /**
@@ -351,7 +359,23 @@ export async function listFolderFiles(folderId: string): Promise<DriveFileResumi
 export const PASTA_MATERIAIS_DO_POST = 'Materiais do cliente';
 
 /** `[Cliente]/[Post]/[data]/Materiais do cliente` — cria se não existir. */
+const pastaMateriaisCache = new Map<string, { ts: number; pasta: { folderId: string; webViewLink: string } }>();
+
 export async function ensurePastaMateriaisDoPost(opts: {
+  cliente: string;
+  postTitulo: string;
+  dataPostagem: string | null;
+}): Promise<{ folderId: string; webViewLink: string }> {
+  // Um envio com 40 arquivos chama isso 40 vezes: guarda a pasta por 10 min.
+  const chave = `${opts.cliente}|${opts.postTitulo}|${opts.dataPostagem ?? ''}`;
+  const hit = pastaMateriaisCache.get(chave);
+  if (hit && Date.now() - hit.ts < 10 * 60_000) return hit.pasta;
+  const pasta = await criarPastaMateriaisDoPost(opts);
+  pastaMateriaisCache.set(chave, { ts: Date.now(), pasta });
+  return pasta;
+}
+
+async function criarPastaMateriaisDoPost(opts: {
   cliente: string;
   postTitulo: string;
   dataPostagem: string | null;

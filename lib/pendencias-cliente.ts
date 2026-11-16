@@ -8,6 +8,7 @@
  */
 import {
   PADRAO,
+  avisoReadequacao,
   ddmm,
   diaComData,
   hojeEmSaoPaulo,
@@ -40,6 +41,8 @@ export type ItemPendencia = {
   prazo: string | null;
   link: string;
   grupo: GrupoPendencia;
+  /** Voltou de alteração: a mensagem diz que os ajustes foram feitos. */
+  reaprovacao?: boolean;
 };
 
 /** Em qual divisão cai uma tarefa do cliente, pelo título (mesmos critérios da home). */
@@ -110,13 +113,39 @@ export function montarMensagemPendencias(input: {
   const blocos: string[] = [comApelido(textos['lembrete.saudacao'] ?? '')];
   if (grupos.length > 1) blocos.push('Separei aqui tudo o que está pendente com você:');
 
+  const listar = (itens: ItemPendencia[]) =>
+    itens.map((i) => `• *${i.postTitulo}*${sufixoPrazo(i, hoje)}\n${i.link}`).join('\n\n');
   for (const { g, itens } of grupos) {
-    const abertura = itens.length === 1 ? ABERTURA[g.id].um : ABERTURA[g.id].varios;
-    const lista = itens
-      .map((i) => `• *${i.postTitulo}*${sufixoPrazo(i, hoje)}\n${i.link}`)
-      .join('\n\n');
-    blocos.push(`${abertura.replace('{n}', String(itens.length))}\n\n${lista}`);
+    // Posts que voltaram de alteração: deixa claro que os ajustes foram feitos.
+    const reaprovar = g.id === 'post' ? itens.filter((i) => i.reaprovacao) : [];
+    const primeira = g.id === 'post' ? itens.filter((i) => !i.reaprovacao) : itens;
+    if (reaprovar.length > 0) {
+      const abertura =
+        reaprovar.length === 1
+          ? 'Fizemos as alterações que você pediu nesse post ✨ Dá uma olhada na nova versão e aprova por aqui:'
+          : `Fizemos as alterações que você pediu nesses ${reaprovar.length} posts ✨ Dá uma olhada nas novas versões e aprova por aqui:`;
+      blocos.push(`${abertura}\n\n${listar(reaprovar)}`);
+    }
+    if (primeira.length > 0) {
+      const abertura = (primeira.length === 1 ? ABERTURA[g.id].um : ABERTURA[g.id].varios).replace(
+        '{n}',
+        String(primeira.length),
+      );
+      blocos.push(`${reaprovar.length > 0 ? abertura.replace(/^Tem /, 'E tem ') : abertura}\n\n${listar(primeira)}`);
+    }
   }
+
+  // Posts pra aprovar com prazo HOJE: avisa que, sem aprovação, serão readequados.
+  // (Prazo já vencido segue a regra do lembrete: a data é remarcada.)
+  const posts = grupos.find((x) => x.g.id === 'post')?.itens ?? [];
+  const nHoje = posts.filter((i) => i.prazo && situacaoDoPrazo(i.prazo, i.postData, hoje).codigo === 'vence_hoje').length;
+  let aviso = nHoje > 0 ? avisoReadequacao('vence_hoje', input.textos) : null;
+  if (aviso && nHoje > 1 && !input.textos?.['lembrete.readequacao.vence_hoje']) {
+    aviso = aviso
+      .replace('Se o post não for aprovado nem encaminhado', 'Se os posts não forem aprovados nem encaminhados')
+      .replace('ele vai ser readequado: o dia em que ele seria postado fica', 'eles vão ser readequados: os dias em que seriam postados ficam');
+  }
+  if (aviso) blocos.push(comApelido(aviso));
 
   // Regra de cada etapa presente, uma vez só (mesmos textos do lembrete avulso).
   for (const { g } of grupos) {

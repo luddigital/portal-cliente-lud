@@ -190,7 +190,7 @@ export function EtapaPautaCards({
           permitirGravarVoz={!roteiroVoiceOver}
           textoVoiceOver={roteiroVoiceOver || undefined}
           tituloUpload="Fotos, vídeos e áudios"
-          ajudaUpload="Sem limite de quantidade — cada arquivo até 450 MB. Áudios também, ou grava uma mensagem de voz."
+          ajudaUpload="Quantos arquivos quiser. Também dá pra gravar uma mensagem de voz."
           textoBotao="📎 Anexar materiais"
         />
       </div>

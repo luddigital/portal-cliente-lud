@@ -1,4 +1,5 @@
 import webpush from 'web-push';
+import { fetchDoNotion } from './notionFetch';
 import { Client } from '@notionhq/client';
 import { env } from './env';
 
@@ -7,7 +8,7 @@ export type PushSubscription = {
   keys: { p256dh: string; auth: string };
 };
 
-const notion = new Client({ auth: env.notion.token });
+const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 const PUSH_PROP = 'Push Subscriptions';
 
 let vapidConfigured = false;

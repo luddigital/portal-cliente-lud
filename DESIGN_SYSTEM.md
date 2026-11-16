@@ -253,6 +253,24 @@ Estado em `2026-09-15`:
 
 ---
 
+## 11. Nada cortado, nada piscando (regras obrigatórias)
+
+**Caixa nunca pode aparecer cortada.**
+- Toda faixa com rolagem lateral (`overflow-x-auto`: abas, chips, linhas de cards) leva `min-h-fit`. Num pai `flex flex-col` com altura fixa (popup, painel lateral, modal), um filho com `overflow` diferente de visible pode ser espremido na altura e corta o conteúdo (foi o que cortou as abas Post / Tarefas / Comentários / Histórico do popup do post).
+- Em popup e painel com altura fixa (`flex flex-col h-…` ou `max-h-…`), cabeçalho, abas e rodapé levam `shrink-0`; só o corpo leva `flex-1 overflow-y-auto`.
+- `overflow-hidden` só em caixa com altura livre (pra arredondar canto) ou em texto com `truncate` / `line-clamp`. Nunca em caixa de altura fixa com conteúdo variável.
+- Ao criar ou mexer numa tela, abrir no navegador e conferir que nenhuma caixa tem conteúdo escondido (scrollHeight maior que a altura visível sem barra de rolagem).
+
+**Tudo centralizado na linha.**
+- Linha de lista (post, tarefa, entrega): todos os elementos com `items-center` na mesma altura (data, título, tag, trilha, botão).
+- Texto auxiliar embaixo de um ícone (data embaixo do círculo, nome embaixo do avatar) fica pendurado com `absolute top-full`, pra não aumentar a altura e tirar o ícone do centro. Dê espaço com `py` na linha.
+- Tag ao lado de ícones: mesma altura dos ícones (h-7) e centralizada.
+
+**A tela nunca pode piscar em branco ao atualizar.**
+- Não usar `<Suspense>` dentro de página do servidor nem `loading.tsx` nas rotas. No Next 14 os dois fazem todo `router.refresh()` mostrar o esqueleto cinza de novo (a tela pisca). Use `SemPiscar` (`app/_ui/SemPiscar.tsx`) se precisar manter a estrutura. Ao trocar de página, quem mostra que está carregando é a barrinha fina no topo (nextjs-toploader, no layout raiz).
+- Depois de uma ação (concluir, aprovar, salvar, mandar), atualizar o que mudou na própria tela (estado local) e, se precisar, `router.refresh()` dentro de `startTransition`. Nunca `window.location.reload()`.
+- Lista que perde um item depois da ação (aprovado, concluído): tirar o item da lista na hora, sem recarregar a página.
+
 ## Referências consultadas
 
 - [DesignMD — Notion Design Tokens](https://designmd.cc/benchmarks/notion) (403 no fetch, mas listado)
@@ -260,3 +278,18 @@ Estado em `2026-09-15`:
 - [Fudge — Notion.com design](https://design.withfudge.com/share/notion.com-design)
 - [OpenDesign — Notion design system plugin](https://open-design.ai/plugins/design-system-notion/)
 - [shadcn — Notion Design System for React](https://www.shadcn.io/design/notion)
+
+## Paleta da Lud. — sistema de uso (out/2026)
+
+Só cores da paleta oficial: #151521, #313D65, #082640, #F8F8F8, #F1EBE5, #8485A3,
+#90181A, #642223, #3A1D1E, #FFD5D6, #FFABAC, #3B4A33, #6A7464, #889F7B,
+#1E476A, #436F95, #779DBF, #B8D2EA, #BAC4E6.
+
+1. **Base neutra:** fundo #F8F8F8, cartão branco, área secundária #F1EBE5, texto #151521.
+2. **Cor só com significado:** vinho #90181A = atrasado · salmão #FFABAC (texto #3A1D1E) = vence hoje ou em até 2 dias · verde #3B4A33 = feito/folga · azuis = informação (programado, conferir, links #436F95).
+3. **Família não mistura:** rosa/vinho só com rosa/vinho; azul só com azul/marinho; verde só com verde. Nunca texto rosa sobre azul.
+4. **Pouca cor cheia:** um destaque marinho #313D65 (texto branco ou lavanda #BAC4E6) e o vinho cheio só no atrasado.
+5. **Nunca** caixa com tracinho colorido do lado (border-left). Marque com o fundo suave da família ou com a bolinha.
+6. Sobre salmão e sálvia o texto é sempre escuro (branco fica ilegível).
+
+As variáveis `--prazo-*` e `--cal-*` do globals.css já seguem essas regras.

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { AtualizacoesRecentes } from '../_components/AtualizacoesRecentes';

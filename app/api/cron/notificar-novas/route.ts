@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import {
@@ -17,7 +18,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-const notion = new Client({ auth: env.notion.token });
+const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
 /**
  * Cron de notificação: varre tarefas que ficaram disponíveis pro cliente

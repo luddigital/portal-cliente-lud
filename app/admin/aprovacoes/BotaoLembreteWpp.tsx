@@ -30,12 +30,17 @@ function corDaSituacao(codigo: string): { bg: string; fg: string } {
  */
 export function BotaoLembreteWpp({
   tarefaId,
+  outrasTarefaIds,
   clienteNome,
   rotulo,
   branco = false,
   verde = false,
+  compacto = false,
+  aoEnviar: aoEnviarExterno,
 }: {
   tarefaId: string;
+  /** Outros posts do mesmo cliente que vão no mesmo lembrete. */
+  outrasTarefaIds?: string[];
   clienteNome: string;
   /** Texto do botão em versão maior (ex.: "Lembrar cliente: Aprovação | Post"). */
   rotulo?: string;
@@ -43,6 +48,10 @@ export function BotaoLembreteWpp({
   branco?: boolean;
   /** Verde do design system: envio de algo pro cliente (ex.: reaprovação). */
   verde?: boolean;
+  /** Botão verde pequeno pra linhas de lista (ex.: "Enviar post"). */
+  compacto?: boolean;
+  /** Avisa a tela que a mensagem saiu (pra atualizar o status sem recarregar). */
+  aoEnviar?: () => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const [enviado, setEnviado] = useState(false);
@@ -54,9 +63,13 @@ export function BotaoLembreteWpp({
         onClick={() => setAberto(true)}
         title={`Enviar lembrete de aprovação no grupo de ${clienteNome}`}
         className={`inline-flex items-center gap-1.5 rounded-full font-semibold transition ${
-          rotulo ? 'px-3.5 py-1.5 text-[12px]' : 'px-2.5 py-1 text-[10.5px]'
+          compacto ? 'whitespace-nowrap px-3 py-1.5 text-[11.5px] shadow-sm' : rotulo ? 'px-3.5 py-1.5 text-[12px]' : 'px-2.5 py-1 text-[10.5px]'
         } ${
-          branco
+          compacto
+            ? enviado
+              ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
+              : 'bg-[var(--prazo-em-dia)] text-white hover:opacity-90'
+            : branco
             ? 'bg-white px-5 py-2 text-[14px] text-current hover:bg-white/90'
             : enviado
               ? 'bg-[var(--prazo-em-dia-soft)] text-[var(--prazo-em-dia)]'
@@ -72,11 +85,15 @@ export function BotaoLembreteWpp({
       {aberto && (
         <ModalLembrete
           tarefaId={tarefaId}
+          outrasTarefaIds={outrasTarefaIds}
           clienteNome={clienteNome}
           fechar={() => setAberto(false)}
           aoEnviar={() => {
+            // Só fecha o popup: a página não recarrega (pedido da Luiza).
+            // Quem precisa refletir o envio na tela usa `aoEnviar`.
             setEnviado(true);
             setAberto(false);
+            aoEnviarExterno?.();
             setTimeout(() => setEnviado(false), 4000);
           }}
         />
@@ -87,11 +104,13 @@ export function BotaoLembreteWpp({
 
 function ModalLembrete({
   tarefaId,
+  outrasTarefaIds,
   clienteNome,
   fechar,
   aoEnviar,
 }: {
   tarefaId: string;
+  outrasTarefaIds?: string[];
   clienteNome: string;
   fechar: () => void;
   aoEnviar: () => void;
@@ -112,7 +131,7 @@ function ModalLembrete({
         const res = await fetch(`/api/admin/wpp-lembrete-aprovacao/${tarefaId}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ apenasPrevia: true, grupoId: grupoEscolhido }),
+          body: JSON.stringify({ apenasPrevia: true, grupoId: grupoEscolhido, outrasTarefaIds }),
         });
         const j = await res.json();
         if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
@@ -128,7 +147,7 @@ function ModalLembrete({
     return () => {
       cancelado = true;
     };
-  }, [tarefaId, grupoEscolhido]);
+  }, [tarefaId, grupoEscolhido, (outrasTarefaIds ?? []).join(',')]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -146,7 +165,7 @@ function ModalLembrete({
       const res = await fetch(`/api/admin/wpp-lembrete-aprovacao/${tarefaId}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mensagemCustom: texto, grupoId: previa?.grupoId }),
+        body: JSON.stringify({ mensagemCustom: texto, grupoId: previa?.grupoId, outrasTarefaIds }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);

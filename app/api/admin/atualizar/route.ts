@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { invalidarTudo } from '@/lib/notion';
+import { invalidarDadosDoDia, invalidarTudo } from '@/lib/notion';
 import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
      <meta name="viewport" content="width=device-width, initial-scale=1">
      <title>Portal atualizado</title></head>
-     <body style="font-family:Inter,system-ui,sans-serif;background:#F0F0F2;color:#151521;
+     <body style="font-family:Inter,system-ui,sans-serif;background:#F8F8F8;color:#151521;
        display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
        <div style="text-align:center;padding:32px;">
          <div style="font-size:40px;">✓</div>
@@ -41,4 +41,14 @@ export async function GET(req: Request) {
      </body></html>`,
     { headers: { 'content-type': 'text/html; charset=utf-8' } },
   );
+}
+
+/** Versão do botão "Atualizar" (fica na tela): relê tarefas e posts e responde JSON. */
+export async function POST() {
+  const session = await getSession();
+  if (!session || !env.auth.adminEmails.includes(session.email.trim().toLowerCase())) {
+    return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
+  }
+  invalidarDadosDoDia();
+  return NextResponse.json({ ok: true });
 }

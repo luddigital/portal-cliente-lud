@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { env } from '@/lib/env';
@@ -16,7 +17,7 @@ export async function GET(
     return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   }
 
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
   async function listar(blockId: string, depth = 0): Promise<any[]> {
     const out: any[] = [];

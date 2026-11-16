@@ -170,6 +170,32 @@ export function listaDePosts(posts: { titulo: string; link: string }[]): string 
   return posts.map((p) => `• *${p.titulo}*\n${p.link}`).join('\n\n');
 }
 
+/** Envio de UM post fora do lote da semana: texto curto, sem o "aproveita o findi". */
+export const PADRAO_ENVIO_SEPARADO = [
+  'Oiie {apelido}! Tudo bem? ☺️',
+  'Tem um post novo esperando sua aprovação:',
+  '{lista_posts}',
+  '🕦 O prazo de aprovação é até *{prazo_dia}*.',
+  'Se curtiu, é só aprovar. Se precisar de algum ajuste, deixa tudo detalhado nos comentários que a gente resolve 😉',
+  'Qualquer dúvida, pode me chamar! 💜',
+].join('\n\n');
+
+export function montarMensagemEnvioSeparado(input: {
+  apelido: string;
+  post: { titulo: string; link: string };
+  prazo: string | null;
+  textos?: Record<string, string>;
+}): string {
+  const modelo = input.textos?.['regua.separado'] ?? PADRAO_ENVIO_SEPARADO;
+  const vars: Record<string, string> = {
+    apelido: input.apelido,
+    lista_posts: listaDePosts([input.post]),
+    qtd_posts: '1',
+    prazo_dia: input.prazo ? diaComData(input.prazo) : 'segunda',
+  };
+  return modelo.replace(/\{(\w+)\}/g, (m, nome) => (nome in vars ? vars[nome] : m)).trim();
+}
+
 export function montarMensagemRegua(input: {
   momento: MomentoRegua;
   variante: VarianteRegua;

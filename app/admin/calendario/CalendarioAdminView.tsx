@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { LinkPrevia } from '../_components/LinkPrevia';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PostCalendario, ProjetoListItem } from '@/lib/notion';
@@ -52,8 +53,9 @@ function PostCardLink({ p }: { p: PostCalendario }) {
   const label = p.statusGeral ?? p.etapaLabel;
   const variante = varianteDoStatus(p);
   return (
-    <Link
-      href={`/post/${p.id}`}
+    // Post abre a prévia primeiro (regra do admin).
+    <LinkPrevia
+      postId={p.id}
       className="group block rounded-[6px] border border-[rgba(0,0,0,0.09)] bg-white px-2 py-1.5 transition-colors duration-150 hover:bg-[rgba(55,53,47,0.05)] hover:border-[rgba(0,0,0,0.14)]"
     >
       <div className="line-clamp-2 text-[12.5px] leading-[1.35] text-[#37352F]">
@@ -67,7 +69,7 @@ function PostCardLink({ p }: { p: PostCalendario }) {
       >
         {label}
       </span>
-    </Link>
+    </LinkPrevia>
   );
 }
 

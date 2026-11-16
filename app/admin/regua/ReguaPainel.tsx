@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { PreviaPostModal } from '../aprovacoes/PreviaPostModal';
+import { PreviaPostModal, prefetchPrevia } from '../aprovacoes/PreviaPostModal';
 import { useRouter } from 'next/navigation';
 import type { Regua } from '@/lib/regua';
 import type { ClienteRegua, EstadoArte, EstadoCliente, PostRegua } from '@/lib/regua-ciclo';
@@ -513,7 +513,7 @@ function ListaClientes({
                 <span className={`shrink-0 ${ok(p) ? 'text-ink' : 'text-t3'}`}>{ok(p) ? '✓' : '○'}</span>
                 <button
                   type="button"
-                  onClick={() => setPrevia({ postId: p.postId, tarefaId: p.aprovacaoTarefaId })}
+                  onMouseEnter={() => prefetchPrevia(p.postId)} onClick={() => setPrevia({ postId: p.postId, tarefaId: p.aprovacaoTarefaId })}
                   className="min-w-0 flex-1 truncate text-left text-t1 hover:underline"
                   title={p.titulo}
                 >

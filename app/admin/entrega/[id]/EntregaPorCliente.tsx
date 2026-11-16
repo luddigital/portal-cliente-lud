@@ -1,15 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { PreviaPostModal } from '../../aprovacoes/PreviaPostModal';
+import Link from 'next/link';
+import { rotas } from '@/lib/rotas';
+import { PreviaPostModal, prefetchPrevia } from '../../aprovacoes/PreviaPostModal';
+import { BotaoLembreteWpp } from '../../aprovacoes/BotaoLembreteWpp';
 import {
   ModalMensagem,
   type GrupoWpp,
   type ItemPendenciaUi,
 } from '@/app/admin/projetos/[id]/PendenciasCliente';
 import { grupoDaTarefa } from '@/lib/pendencias-cliente';
-import { montarMensagemRegua } from '@/lib/regua-mensagens';
+import { montarMensagemEnvioSeparado, montarMensagemRegua } from '@/lib/regua-mensagens';
 import { ChipData } from '@/app/_components/ChipData';
 
 export type TipoEntrega = 'envio' | 'cliente' | 'interna';
@@ -21,6 +23,10 @@ export type ItemEntrega = {
   pronto: boolean;
   postId: string | null;
   postTitulo: string;
+  /** Data Postagem do post. */
+  postData: string | null;
+  /** Pessoa da tarefa dessa entrega no Notion. */
+  pessoa: string | null;
   /** Onde o post está em relação a essa entrega. */
   relacao: 'aqui' | 'antes' | 'depois' | 'concluido';
   rotulo: string;
@@ -28,6 +34,10 @@ export type ItemEntrega = {
   atualTitulo: string | null;
   atualPrazo: string | null;
   responsavel: string | null;
+  /** Foto do responsável pela etapa atual. */
+  responsavelAvatar?: string | null;
+  /** Tarefa aberta atual do post (de quem está com ele agora). */
+  atualTarefaId?: string | null;
   /** Tarefa "Aprovação | Post" do post (link da mensagem pro cliente). */
   aprovacaoTarefaId: string | null;
   prazoCliente: string | null;
@@ -35,6 +45,12 @@ export type ItemEntrega = {
   /** Já feito nessa entrega (enviado ao cliente, no caso do envio de quinta). */
   enviado: boolean;
   enviadoEm: string | null;
+  /** Voltou pra alteração e está sendo aprovado de novo. */
+  reaprovacao: boolean;
+  /** 1 = primeiro envio; 2 = depois de uma alteração; … */
+  rodada: number;
+  /** Mensagens de WhatsApp que citaram o post nesse ciclo (mais recente primeiro). */
+  mensagens: { momento: string; enviadoEm: string }[];
 };
 
 export type GrupoEntrega = {
@@ -83,6 +99,10 @@ function rotuloSemana(chave: string, atual: string): { titulo: string; datas: st
 
 /** Cor semântica do design system (mesmas do calendário) pelo que está acontecendo com o post. */
 function corDoStatus(item: ItemEntrega, tipo: TipoEntrega): { bg: string; fg: string } {
+  // Status "amarelados" ficam ilegíveis no modo soft (fundo claro + texto
+  // mostarda): invertemos pra fundo CHEIO + texto branco, igual os chips de
+  // alteração/postado já são.
+  const solid = (nome: string) => ({ bg: `var(--${nome})`, fg: '#FFFFFF' });
   const par = (nome: string) => ({ bg: `var(--${nome}-soft)`, fg: `var(--${nome})` });
   if (item.relacao === 'aqui' && tipo === 'envio') return par('prazo-em-dia');
   if (item.relacao === 'concluido') return par('cal-publicado');
@@ -91,8 +111,8 @@ function corDoStatus(item: ItemEntrega, tipo: TipoEntrega): { bg: string; fg: st
   if (/enviar post/.test(t)) return par('prazo-em-dia');
   if (/programar/.test(t)) return par('cal-programar');
   if (/conferir/.test(t)) return par(/^agendado/i.test(item.rotulo) ? 'cal-agendado' : 'cal-conferir');
-  if (/aprova/.test(t)) return par('cal-aprovacao');
-  if (item.comCliente) return par('cal-aguardando');
+  if (/aprova/.test(t)) return solid('cal-aprovacao');
+  if (item.comCliente) return solid('cal-aguardando');
   return par('cal-agendado');
 }
 
@@ -104,8 +124,17 @@ type Filtros = {
   soAtrasados: boolean;
   /** Agrupar os posts por cliente (com o envio em lote) ou por data. */
   visao: 'cliente' | 'data';
+  /** Primeiro envio × reaprovação (depois de alteração). */
+  rodada: 'todas' | 'primeiro' | 'reaprovacao';
 };
-const FILTROS_PADRAO: Filtros = { ordem: 'az', situacao: 'todas', clientes: [], soAtrasados: false, visao: 'cliente' };
+const FILTROS_PADRAO: Filtros = {
+  ordem: 'az',
+  situacao: 'todas',
+  clientes: [],
+  soAtrasados: false,
+  visao: 'cliente',
+  rodada: 'todas',
+};
 
 const DIA_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
@@ -139,6 +168,12 @@ function aplicarFiltros(grupos: GrupoEntrega[], f: Filtros, hoje: string): Grupo
   const menorPrazo = (g: GrupoEntrega) =>
     g.itens.map((i) => i.prazo).filter((x): x is string => !!x).sort()[0] ?? '9999';
   return grupos
+    .map((g) =>
+      f.rodada === 'todas'
+        ? g
+        : { ...g, itens: g.itens.filter((i) => (f.rodada === 'reaprovacao' ? i.reaprovacao : !i.reaprovacao)) },
+    )
+    .filter((g) => g.itens.length > 0)
     .filter((g) => (f.situacao === 'todas' ? true : f.situacao === 'prontas' ? clientePronto(g.itens) : !clientePronto(g.itens)))
     .filter((g) => f.clientes.length === 0 || f.clientes.includes(g.projetoId || g.nome))
     .filter((g) => !f.soAtrasados || contarAtrasados(g, hoje) > 0)
@@ -245,7 +280,10 @@ function BarraFiltros({
   ];
   const situacaoAtual = situacoes.find((x) => x.id === filtros.situacao)!;
   const ordemAtual = ORDENS.find((o) => o.id === filtros.ordem) ?? ORDENS[0];
-  const temFiltro = filtros.situacao !== 'todas' || filtros.clientes.length > 0 || filtros.soAtrasados;
+  const temFiltro =
+    filtros.situacao !== 'todas' || filtros.clientes.length > 0 || filtros.soAtrasados || filtros.rodada !== 'todas';
+  const itensTodos = grupos.flatMap((g) => g.itens);
+  const nReaprovacao = itensTodos.filter((i) => i.reaprovacao).length;
   const nomesClientes = grupos.filter((g) => filtros.clientes.includes(g.projetoId || g.nome)).map((g) => g.nome);
 
   return (
@@ -373,10 +411,38 @@ function BarraFiltros({
         <span className="text-[11px] opacity-70">{grupos.filter((g) => contarAtrasados(g, hojeIso) > 0).length}</span>
       </button>
 
+      {/* 1ª aprovação × reaprovação */}
+      {nReaprovacao > 0 && (
+        <div className="inline-flex items-center gap-1 rounded-full border border-[rgba(21,21,33,0.1)] bg-white p-0.5">
+          {(
+            [
+              ['primeiro', '1ª aprovação', itensTodos.length - nReaprovacao],
+              ['reaprovacao', '↺ Reaprovação', nReaprovacao],
+            ] as const
+          ).map(([id, rotulo, n]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => mudar({ rodada: filtros.rodada === id ? 'todas' : id })}
+              aria-pressed={filtros.rodada === id}
+              className={`rounded-full px-2.5 py-1 text-[12px] transition ${
+                filtros.rodada === id
+                  ? id === 'reaprovacao'
+                    ? 'bg-[var(--cal-alteracao-soft)] font-semibold text-[var(--cal-alteracao)]'
+                    : 'bg-bgSoft font-semibold text-ink'
+                  : 'text-t2 hover:text-ink'
+              }`}
+            >
+              {rotulo} <span className="text-[11px] opacity-70">{n}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {temFiltro && (
         <button
           type="button"
-          onClick={() => mudar({ situacao: 'todas', clientes: [], soAtrasados: false })}
+          onClick={() => mudar({ situacao: 'todas', clientes: [], soAtrasados: false, rodada: 'todas' })}
           className="px-2 text-[12px] text-t3 underline transition hover:text-ink"
         >
           Limpar filtros
@@ -387,9 +453,138 @@ function BarraFiltros({
 }
 
 /** Cliente pronto: todos os posts pendentes da semana já estão nessa etapa. */
-function clientePronto(itens: ItemEntrega[]): boolean {
+export function clientePronto(itens: ItemEntrega[]): boolean {
   const pendentes = itens.filter((i) => !i.enviado);
   return pendentes.length > 0 && pendentes.every((i) => i.relacao === 'aqui');
+}
+
+export const MOMENTO_CURTO: Record<string, string> = {
+  quinta: 'envio da semana',
+  separado: 'envio do post',
+  geral: 'mensagem da entrega',
+  avulso: 'lembrete',
+  reaprovacao: 'reaprovação',
+  sexta: 'lembrete de sexta',
+  segunda_manha: 'último dia',
+  segunda_tarde: 'último dia',
+  terca: 'prazo vencido',
+};
+
+/** "hoje às 09:12", "ontem às 18:00", "sex, 16/10 às 10:02" (horário de Brasília). */
+export function quandoFoi(iso: string, hoje: string): string {
+  const d = new Date(iso);
+  const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d);
+  const hora = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+  const dif = diasEntre(dia, hoje);
+  if (dif === 0) return `hoje às ${hora}`;
+  if (dif === 1) return `ontem às ${hora}`;
+  const sem = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][new Date(`${dia}T12:00:00Z`).getUTCDay()];
+  return `${sem}, ${ddmm(dia)} às ${hora}`;
+}
+
+/** Mensagens distintas (uma mensagem cita vários posts) dos itens, mais recente primeiro. */
+export function mensagensDe(itens: ItemEntrega[]): { momento: string; enviadoEm: string }[] {
+  const vistas = new Map<string, { momento: string; enviadoEm: string }>();
+  for (const i of itens) for (const m of i.mensagens) vistas.set(`${m.momento}|${m.enviadoEm}`, m);
+  return [...vistas.values()].sort((a, b) => b.enviadoEm.localeCompare(a.enviadoEm));
+}
+
+/**
+ * "Já mandamos algo pro cliente?": mensagens sobre a entrega, quantos posts o
+ * cliente abriu e o prazo. Fica vermelho quando o prazo é hoje (ou passou) e
+ * nada foi enviado ou visto.
+ */
+function StatusDoEnvio({ itens, hoje }: { itens: ItemEntrega[]; hoje: string }) {
+  if (itens.length === 0) return null;
+  const msgs = mensagensDe(itens);
+  const vistos = itens.filter((i) => i.visto);
+  const ultimaVista = vistos.map((i) => i.visto!.ultima).sort().reverse()[0];
+  const prazos = itens.map((i) => i.prazo).filter((x): x is string => !!x).sort();
+  const prazo = prazos[0] ?? null;
+  const dias = prazo ? diasEntre(hoje, prazo) : null;
+  const nHoje = prazos.filter((x) => x === hoje).length;
+  const urgente = dias !== null && dias <= 0;
+  const alerta = urgente && (msgs.length === 0 || vistos.length === 0);
+  const caixa = (rotulo: string, valor: string, detalhe: string, vermelho: boolean) => (
+    <div className="min-w-[150px] flex-1 rounded-xl bg-white px-4 py-3">
+      <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-t3">{rotulo}</div>
+      <div className={`mt-0.5 text-[20px] font-semibold ${vermelho ? 'text-[var(--prazo-atrasado)]' : 'text-ink'}`}>{valor}</div>
+      <div className={`text-[11.5px] ${vermelho ? 'text-[var(--prazo-atrasado)]' : 'text-t3'}`}>{detalhe}</div>
+    </div>
+  );
+  return (
+    <div className={`flex flex-wrap gap-2 rounded-2xl ${alerta ? 'bg-[var(--prazo-atrasado-soft)] p-2' : ''}`}>
+      {caixa(
+        'Mensagens',
+        String(msgs.length),
+        msgs[0] ? `última ${quandoFoi(msgs[0].enviadoEm, hoje)} · ${MOMENTO_CURTO[msgs[0].momento] ?? msgs[0].momento}` : 'nenhuma sobre essa entrega',
+        urgente && msgs.length === 0,
+      )}
+      {caixa(
+        'Cliente viu',
+        `${vistos.length} de ${itens.length}`,
+        ultimaVista ? `última abertura ${quandoFoi(ultimaVista, hoje)}` : 'nenhum post aberto',
+        urgente && vistos.length === 0,
+      )}
+      {prazo &&
+        caixa(
+          'Prazo do cliente',
+          dias! < 0 ? 'Atrasado' : dias === 0 ? 'Hoje' : dias === 1 ? 'Amanhã' : `Em ${dias} dias`,
+          dias! < 0
+            ? `venceu ${ddmm(prazo)}`
+            : nHoje > 0
+              ? `${nHoje} ${nHoje === 1 ? 'post vence' : 'posts vencem'} hoje`
+              : `até ${ddmm(prazo)}`,
+          urgente,
+        )}
+    </div>
+  );
+}
+
+/**
+ * Reaprovação (vinho, com a rodada) + quantas vezes a mensagem desse post já
+ * foi pro grupo nessa rodada: "1º envio", "2º envio" (cobrança, em destaque)…
+ */
+export function PilulaRodada({ item, tipo }: { item: ItemEntrega; tipo: TipoEntrega }) {
+  return (
+    <>
+      {item.reaprovacao && (
+        <span
+          className="shrink-0 rounded-full bg-[var(--cal-alteracao-soft)] px-2 py-0.5 text-[10.5px] font-semibold text-[var(--cal-alteracao)]"
+          title="Voltou pra alteração e está sendo aprovado de novo"
+        >
+          ↺ Reaprovação{item.rodada > 1 ? ` · ${item.rodada}ª rodada` : ''}
+        </span>
+      )}
+      {tipo === 'cliente' && <PilulaEnvios item={item} />}
+    </>
+  );
+}
+
+/** Nº de mensagens que citaram o post nessa rodada; passa o mouse pra ver quando. */
+export function PilulaEnvios({ item }: { item: ItemEntrega }) {
+  const n = item.mensagens.length;
+  if (n === 0) {
+    return (
+      <span className="shrink-0 rounded-full bg-bgSoft px-2 py-0.5 text-[10.5px] font-medium text-t3" title="Nenhuma mensagem sobre esse post nessa rodada">
+        não enviado
+      </span>
+    );
+  }
+  const quando = [...item.mensagens]
+    .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm))
+    .map((m, i) => `${i + 1}º · ${fmtEnvio(m.enviadoEm)} · ${MOMENTO_CURTO[m.momento] ?? m.momento}`)
+    .join('\n');
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+        n >= 2 ? 'bg-[var(--cal-aguardando)] text-white' : 'bg-bgSoft text-t2'
+      }`}
+      title={quando}
+    >
+      {n}º envio
+    </span>
+  );
 }
 
 function PilulaVisto({ visto }: { visto: boolean }) {
@@ -408,11 +603,15 @@ function PilulaVisto({ visto }: { visto: boolean }) {
  * Tarefa atual do post numa peça só: status + responsável + prazo dela.
  * Deixa claro que essa data é da tarefa vigente, não da entrega.
  */
-function PilulaTarefaAtual({ item, tipo, hoje }: { item: ItemEntrega; tipo: TipoEntrega; hoje: string }) {
+export function PilulaTarefaAtual({ item, tipo, hoje }: { item: ItemEntrega; tipo: TipoEntrega; hoje: string }) {
   const cor = corDoStatus(item, tipo);
   const texto = item.relacao === 'aqui' && tipo === 'envio' ? 'Pronto pra enviar' : item.rotulo;
   const comPrazo = item.relacao !== 'aqui' && (item.atualPrazo || item.responsavel);
   const atrasada = item.atualPrazo ? diasEntre(hoje, item.atualPrazo) < 0 : false;
+  // Modo "solid" = fundo cheio + texto branco (status amarelados que ficam
+  // ilegíveis no modo soft). Pra parte direita, aí usamos um overlay escuro
+  // em vez de branco translúcido, pra manter a fonte branca legível.
+  const solid = cor.fg === '#FFFFFF';
   return (
     <span
       className="inline-flex max-w-full items-stretch overflow-hidden rounded-full text-[11px] font-semibold"
@@ -424,17 +623,31 @@ function PilulaTarefaAtual({ item, tipo, hoje }: { item: ItemEntrega; tipo: Tipo
         <span className="truncate">{texto}</span>
       </span>
       {comPrazo && (
-        <span className="flex items-center gap-1.5 bg-white/55 py-1 pl-1.5 pr-2.5">
+        <span
+          className={`flex items-center gap-1.5 py-1 pl-1.5 pr-2.5 ${
+            solid ? 'bg-black/15' : 'bg-white/55'
+          }`}
+        >
           {item.responsavel && (
             <span
               title={item.responsavel}
-              className="flex h-4 w-4 items-center justify-center rounded-full bg-white text-[9px] font-bold text-ink"
+              className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+                solid ? 'bg-white/90 text-ink' : 'bg-white text-ink'
+              }`}
             >
               {item.responsavel.trim()[0]?.toUpperCase()}
             </span>
           )}
           {item.atualPrazo && (
-            <span className={atrasada ? 'text-[var(--prazo-atrasado)]' : 'text-ink/70'}>
+            <span
+              className={
+                atrasada
+                  ? 'text-[var(--prazo-atrasado)]'
+                  : solid
+                    ? 'text-white'
+                    : 'text-ink/70'
+              }
+            >
               {atrasada ? `atrasada desde ${ddmm(item.atualPrazo)}` : `até ${ddmm(item.atualPrazo)}`}
             </span>
           )}
@@ -471,13 +684,16 @@ function pontualidade(i: ItemEntrega): { dias: number; texto: string } | null {
  * conforme a entrega, o botão de envio pro grupo do cliente.
  */
 export function EntregaPorCliente({
+  entregaId,
   entregaNome,
   tipo,
-  grupos,
+  grupos: gruposDoServidor,
   textos,
   baseUrl,
   hojeIso,
 }: {
+  /** Pra levar cada cliente à entrega do projeto dele. */
+  entregaId: string;
   entregaNome: string;
   tipo: TipoEntrega;
   grupos: GrupoEntrega[];
@@ -486,7 +702,34 @@ export function EntregaPorCliente({
   hojeIso: string;
 }) {
   const [previa, setPrevia] = useState<{ postId: string; tarefaId: string } | null>(null);
-  const [envio, setEnvio] = useState<GrupoEntrega | null>(null);
+  // separado = "Enviar só este": um post fora do lote da semana.
+  const [envio, setEnvio] = useState<{ grupo: GrupoEntrega; separado: boolean } | null>(null);
+  // Enviados agora nesta tela (tarefaId → hora): saem da lista na hora, antes do servidor responder.
+  const [enviadosAgora, setEnviadosAgora] = useState<Record<string, string>>({});
+  // Mensagens mandadas agora (postId → mensagens): o status muda sem recarregar a página.
+  const [mensagensAgora, setMensagensAgora] = useState<Record<string, { momento: string; enviadoEm: string }[]>>({});
+  const registrarMensagem = (postIds: (string | null)[], momento: string) => {
+    const agora = new Date().toISOString();
+    setMensagensAgora((m) => {
+      const n = { ...m };
+      for (const id of postIds) if (id) n[id] = [{ momento, enviadoEm: agora }, ...(n[id] ?? [])];
+      return n;
+    });
+  };
+  const grupos = useMemo(
+    () =>
+      gruposDoServidor.map((g) => ({
+        ...g,
+        itens: g.itens.map((i) => {
+          const comMsg =
+            i.postId && mensagensAgora[i.postId] ? { ...i, mensagens: [...mensagensAgora[i.postId], ...i.mensagens] } : i;
+          return enviadosAgora[i.tarefaId] && !comMsg.enviado
+            ? { ...comMsg, enviado: true, enviadoEm: enviadosAgora[i.tarefaId] }
+            : comMsg;
+        }),
+      })),
+    [gruposDoServidor, enviadosAgora, mensagensAgora],
+  );
   const [mensagem, setMensagem] = useState<GrupoEntrega | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [enviadosAbertos, setEnviadosAbertos] = useState<Set<string>>(new Set());
@@ -574,7 +817,7 @@ export function EntregaPorCliente({
         </div>
       )}
 
-      <div className="flex gap-1 overflow-x-auto border-b border-[rgba(21,21,33,0.08)]">
+      <div className="flex gap-1 overflow-x-auto min-h-fit border-b border-[rgba(21,21,33,0.08)]">
         {semanas.map((k) => {
           const r = rotuloSemana(k, semanaAtual);
           const c = contar(k);
@@ -604,6 +847,8 @@ export function EntregaPorCliente({
         })}
       </div>
 
+      {tipo === 'cliente' && <StatusDoEnvio itens={itensSemana} hoje={hojeIso} />}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-t2">
         <span>
@@ -616,6 +861,11 @@ export function EntregaPorCliente({
         {nAtrasados > 0 && (
           <span>
             <b className="text-[var(--prazo-atrasado)]">{nAtrasados}</b> atrasados
+          </span>
+        )}
+        {itensSemana.some((i) => i.reaprovacao) && (
+          <span>
+            <b className="text-[var(--cal-alteracao)]">{itensSemana.filter((i) => i.reaprovacao).length}</b> em reaprovação
           </span>
         )}
         {nEnviados > 0 && (
@@ -674,12 +924,12 @@ export function EntregaPorCliente({
       )}
 
       {filtros.visao === 'data' && (() => {
-        const porDia = new Map<string, { item: ItemEntrega; cliente: string }[]>();
+        const porDia = new Map<string, { item: ItemEntrega; cliente: string; grupo: GrupoEntrega }[]>();
         for (const g of aplicarFiltros(gruposDaSemana, filtros, hojeIso))
           for (const i of g.itens) {
             const k = i.prazo ?? 'sem-data';
             const lista = porDia.get(k) ?? [];
-            lista.push({ item: i, cliente: g.nome });
+            lista.push({ item: i, cliente: g.nome, grupo: g });
             porDia.set(k, lista);
           }
         const dias = [...porDia.keys()].sort((a, b) => (a === 'sem-data' ? 1 : b === 'sem-data' ? -1 : a.localeCompare(b)));
@@ -713,23 +963,42 @@ export function EntregaPorCliente({
                     <span className="shrink-0">Tarefa atual do post</span>
                   </div>
                   <ul className="divide-y divide-[rgba(21,21,33,0.05)]">
-                    {linhas.map(({ item: i, cliente }) => (
-                      <li key={i.tarefaId}>
+                    {linhas.map(({ item: i, cliente, grupo: g }) => (
+                      <li key={i.tarefaId} className="flex items-center transition hover:bg-bgSoft/60">
                         <button
                           type="button"
-                          onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
+                          onMouseEnter={() => prefetchPrevia(i.postId)} onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
                           disabled={!i.postId}
-                          className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
+                          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-left disabled:cursor-default"
                         >
                           <span className="w-full truncate text-[12px] font-semibold text-t2 sm:w-[170px] sm:shrink-0">{cliente}</span>
                           <span className="flex min-w-0 flex-1 items-center gap-2">
                             <span className="min-w-0 truncate text-[13px] text-ink">{i.postTitulo}</span>
+                            <PilulaRodada item={i} tipo={tipo} />
                             {i.comCliente && <PilulaVisto visto={!!i.visto} />}
                           </span>
                           <span className="flex w-full justify-end sm:w-auto sm:shrink-0">
                             <PilulaTarefaAtual item={i} tipo={tipo} hoje={hojeIso} />
                           </span>
                         </button>
+                        {(tipo === 'envio' || tipo === 'cliente') && (
+                          <span className="flex shrink-0 justify-end pr-4 sm:w-[128px]">
+                            {i.relacao === 'aqui' && i.postId &&
+                              (tipo === 'envio' ? (
+                                <BotaoEnviarSoEste onClick={() => setEnvio({ grupo: { ...g, itens: [i] }, separado: true })} />
+                              ) : (
+                                // Já está com o cliente: manda a mensagem de aprovação só desse post
+                                // (o texto muda sozinho pra reaprovação quando o post voltou de alteração).
+                                <BotaoLembreteWpp
+                                  tarefaId={i.tarefaId}
+                                  clienteNome={g.nome}
+                                  rotulo="Enviar post"
+                                  compacto
+                                  aoEnviar={() => registrarMensagem([i.postId], 'avulso')}
+                                />
+                              ))}
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -751,7 +1020,16 @@ export function EntregaPorCliente({
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(21,21,33,0.06)] px-5 py-3.5">
               <div className="min-w-0">
-                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">{g.nome}</h2>
+                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
+                  {g.projetoId ? (
+                    // Cliente → a entrega só do projeto dele (hierarquia projeto › entrega).
+                    <Link href={rotas.entregaDoProjeto(g.projetoId, entregaId)} className="hover:underline" title="Ver a entrega só desse projeto">
+                      {g.nome} <span className="text-[12px] font-medium text-t3">›</span>
+                    </Link>
+                  ) : (
+                    g.nome
+                  )}
+                </h2>
                 <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11.5px] text-t3">
                   {g.projetoNome && g.projetoNome !== g.nome && <span>{g.projetoNome}</span>}
                   <span>
@@ -763,11 +1041,28 @@ export function EntregaPorCliente({
                     <span className="font-semibold text-[var(--prazo-atrasado)]">· {atrasados} atrasados</span>
                   )}
                   {g.gruposWpp.length === 0 && <span>· sem grupo do WhatsApp</span>}
+                  {(tipo === 'cliente' || tipo === 'envio') &&
+                    (() => {
+                      const ultima = mensagensDe(g.itens)[0];
+                      const venceAte = g.itens.some((i) => i.prazo && diasEntre(hojeIso, i.prazo) <= 0);
+                      return ultima ? (
+                        <span>
+                          · 📱 {(() => {
+                            const n = mensagensDe(g.itens).length;
+                            return `${n} ${n === 1 ? 'mensagem' : 'mensagens'}`;
+                          })()} · última {quandoFoi(ultima.enviadoEm, hojeIso)} ({MOMENTO_CURTO[ultima.momento] ?? ultima.momento})
+                        </span>
+                      ) : (
+                        <span className={venceAte ? 'font-semibold text-[var(--prazo-atrasado)]' : ''}>
+                          · 📱 nenhuma mensagem enviada ainda
+                        </span>
+                      );
+                    })()}
                 </div>
               </div>
               {tipo === 'envio' && clientePronto(g.itens) && (
                 // Só aparece com TODOS os posts do cliente prontos (o lote não sai pela metade).
-                <button type="button" onClick={() => setEnvio(g)} className="btn-enviar">
+                <button type="button" onClick={() => setEnvio({ grupo: g, separado: false })} className="btn-enviar">
                   📱 Enviar para aprovação ({prontos.length})
                 </button>
               )}
@@ -788,22 +1083,41 @@ export function EntregaPorCliente({
             </div>
             <ul className="divide-y divide-[rgba(21,21,33,0.05)]">
               {g.itens.map((i) => (
-                <li key={i.tarefaId}>
+                <li key={i.tarefaId} className="flex items-center transition hover:bg-bgSoft/60">
                   <button
                     type="button"
-                    onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
+                    onMouseEnter={() => prefetchPrevia(i.postId)} onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
                     disabled={!i.postId}
-                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
+                    className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 text-left disabled:cursor-default"
                   >
                     <ChipData prazo={i.prazo} hoje={hojeIso} className="w-[66px]" />
                     <span className="flex min-w-0 flex-1 items-center gap-2">
                       <span className="min-w-0 truncate text-[13px] text-ink">{i.postTitulo}</span>
-                      {i.comCliente && <PilulaVisto visto={!!i.visto} />}
+                      <PilulaRodada item={i} tipo={tipo} />
+                            {i.comCliente && <PilulaVisto visto={!!i.visto} />}
                     </span>
                     <span className="flex w-full justify-end sm:w-auto sm:shrink-0">
                       <PilulaTarefaAtual item={i} tipo={tipo} hoje={hojeIso} />
                     </span>
                   </button>
+                  {(tipo === 'envio' || tipo === 'cliente') && (
+                    <span className="flex shrink-0 justify-end pr-4 sm:w-[128px]">
+                      {i.relacao === 'aqui' && i.postId &&
+                        (tipo === 'envio' ? (
+                          <BotaoEnviarSoEste onClick={() => setEnvio({ grupo: { ...g, itens: [i] }, separado: true })} />
+                        ) : (
+                          // Já está com o cliente: manda a mensagem de aprovação só desse post
+                          // (o texto muda sozinho pra reaprovação quando o post voltou de alteração).
+                          <BotaoLembreteWpp
+                                  tarefaId={i.tarefaId}
+                                  clienteNome={g.nome}
+                                  rotulo="Enviar post"
+                                  compacto
+                                  aoEnviar={() => registrarMensagem([i.postId], 'avulso')}
+                                />
+                        ))}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -878,7 +1192,7 @@ export function EntregaPorCliente({
                             <li key={i.tarefaId}>
                               <button
                                 type="button"
-                                onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
+                                onMouseEnter={() => prefetchPrevia(i.postId)} onClick={() => i.postId && setPrevia({ postId: i.postId, tarefaId: i.aprovacaoTarefaId ?? i.tarefaId })}
                                 disabled={!i.postId}
                                 className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2 pl-11 text-left transition hover:bg-bgSoft/60 disabled:cursor-default"
                               >
@@ -924,12 +1238,19 @@ export function EntregaPorCliente({
 
       {envio && (
         <ModalEnvioAprovacao
-          grupo={envio}
+          grupo={envio.grupo}
+          separado={envio.separado}
           textos={textos}
           baseUrl={baseUrl}
           hojeIso={hojeIso}
           fechar={() => setEnvio(null)}
-          aoEnviar={(msg) => {
+          aoEnviar={(msg, tarefaIds) => {
+            registrarMensagem(
+              envio.grupo.itens.filter((i) => tarefaIds.includes(i.tarefaId)).map((i) => i.postId),
+              envio.separado ? 'separado' : 'quinta',
+            );
+            const agora = new Date().toISOString();
+            setEnviadosAgora((e) => ({ ...e, ...Object.fromEntries(tarefaIds.map((id) => [id, agora])) }));
             setEnvio(null);
             setAviso(msg);
           }}
@@ -954,6 +1275,7 @@ export function EntregaPorCliente({
                 prazo: i.prazo,
                 link: `${baseUrl}/post/${i.postId}?tarefa=${i.tarefaId}`,
                 grupo: grupoDaTarefa(i.titulo),
+                reaprovacao: i.reaprovacao,
                 visto: i.visto,
               }),
             )}
@@ -961,6 +1283,10 @@ export function EntregaPorCliente({
           hojeIso={hojeIso}
           fechar={() => setMensagem(null)}
           aoEnviar={(nomeGrupo) => {
+            registrarMensagem(
+              mensagem.itens.filter((i) => i.relacao === 'aqui').map((i) => i.postId),
+              'geral',
+            );
             setMensagem(null);
             setAviso(`Mensagem enviada no grupo ${nomeGrupo ?? mensagem.gruposWpp[0]?.nome ?? 'do cliente'}.`);
           }}
@@ -970,9 +1296,24 @@ export function EntregaPorCliente({
   );
 }
 
+/** Manda um post pra aprovação fora do lote da semana, sem precisar abrir o post. */
+export function BotaoEnviarSoEste({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Enviar este post pro cliente aprovar agora, fora do lote da semana"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--prazo-em-dia)] px-3 py-1.5 text-[11.5px] font-semibold text-white shadow-sm transition hover:opacity-90"
+    >
+      📱 Enviar post
+    </button>
+  );
+}
+
 /** Envio de quinta: lote com os posts prontos do cliente (texto do envio da Régua). */
-function ModalEnvioAprovacao({
+export function ModalEnvioAprovacao({
   grupo,
+  separado = false,
   textos,
   baseUrl,
   hojeIso,
@@ -980,13 +1321,14 @@ function ModalEnvioAprovacao({
   aoEnviar,
 }: {
   grupo: GrupoEntrega;
+  /** "Enviar só este": um post, texto curto e registro próprio (não fecha o lote da semana). */
+  separado?: boolean;
   textos: Record<string, string>;
   baseUrl: string;
   hojeIso: string;
   fechar: () => void;
-  aoEnviar: (mensagem: string) => void;
+  aoEnviar: (mensagem: string, tarefaIds: string[]) => void;
 }) {
-  const router = useRouter();
   const prontos = grupo.itens.filter((i) => i.relacao === 'aqui' && i.postId);
   const travados = grupo.itens.filter((i) => i.relacao === 'antes');
   const [sel, setSel] = useState<Set<string>>(() => new Set(prontos.map((i) => i.tarefaId)));
@@ -1005,7 +1347,19 @@ function ModalEnvioAprovacao({
     () =>
       selecionados.length === 0
         ? ''
-        : montarMensagemRegua({
+        : separado
+          ? montarMensagemEnvioSeparado({
+              apelido: grupoAtual?.apelido || grupo.nome,
+              post: {
+                titulo: selecionados[0].postTitulo,
+                link: `${baseUrl}/post/${selecionados[0].postId}${
+                  selecionados[0].aprovacaoTarefaId ? `?tarefa=${selecionados[0].aprovacaoTarefaId}` : ''
+                }`,
+              },
+              prazo: prazoCliente,
+              textos,
+            })
+          : montarMensagemRegua({
             momento: 'quinta',
             variante: 'unica',
             apelido: grupoAtual?.apelido || grupo.nome,
@@ -1016,7 +1370,7 @@ function ModalEnvioAprovacao({
             prazo: prazoCliente,
             textos,
           }),
-    [selecionados, grupoAtual, grupo.nome, baseUrl, prazoCliente, textos],
+    [selecionados, grupoAtual, grupo.nome, baseUrl, prazoCliente, textos, separado],
   );
   const [texto, setTexto] = useState(gerado);
   useEffect(() => {
@@ -1044,8 +1398,8 @@ function ModalEnvioAprovacao({
             {
               projetoId: grupo.projetoId,
               ciclo,
-              momento: 'quinta',
-              variante: 'unica',
+              momento: separado ? 'separado' : 'quinta',
+              variante: separado ? null : 'unica',
               texto,
               postIds: selecionados.map((i) => i.postId),
               tarefasEnvio: selecionados.map((i) => i.tarefaId),
@@ -1058,11 +1412,11 @@ function ModalEnvioAprovacao({
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       const r = (j.resultados ?? [])[0];
       if (!r?.ok) throw new Error(r?.erro ?? 'Não consegui enviar.');
-      router.refresh();
       aoEnviar(
         `Enviado no grupo ${grupoAtual?.nome ?? ''}: ${selecionados.length} ${
           selecionados.length === 1 ? 'post' : 'posts'
         } pra aprovação.${r.erro ? ` ${r.erro}` : ''}`,
+        selecionados.map((i) => i.tarefaId),
       );
     } catch (e: any) {
       setErro(e?.message ?? 'Erro ao enviar.');
@@ -1080,7 +1434,9 @@ function ModalEnvioAprovacao({
       >
         <div className="flex items-start justify-between gap-3 border-b border-[rgba(21,21,33,0.08)] px-5 py-3">
           <div className="min-w-0">
-            <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-t3">Enviar para aprovação</div>
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-t3">
+              {separado ? 'Enviar só este post · fora do lote da semana' : 'Enviar para aprovação'}
+            </div>
             <h3 className="mt-0.5 truncate text-[15px] font-semibold text-ink">{grupo.nome}</h3>
           </div>
           <button

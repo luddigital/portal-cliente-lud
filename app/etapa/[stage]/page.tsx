@@ -5,6 +5,8 @@ import {
   listTarefasPendentesPorCategoria,
   CATEGORIA_LABEL,
   type CategoriaTarefa,
+  projetosOcultosDoCliente,
+  findProjetosByEmail,
 } from '@/lib/notion';
 import { TaskItemCard } from '../../_components/TaskItemCard';
 
@@ -27,7 +29,17 @@ export default async function EtapaPage({ params }: { params: { stage: string } 
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const todas = await listTarefasPendentesPorCategoria(session.projetoIds);
+  // Mesma regra da home: projetos atuais da cliente (Ativos e não escondidos),
+  // não os guardados na sessão quando ela entrou.
+  const [ocultos, listaAtual] = await Promise.all([
+    projetosOcultosDoCliente(),
+    findProjetosByEmail(session.email).catch(() => []),
+  ]);
+  const todas = await listTarefasPendentesPorCategoria(
+    listaAtual.length > 0
+      ? listaAtual.map((p) => p.id)
+      : session.projetoIds.filter((id) => !ocultos.has(id.replace(/-/g, ''))),
+  );
   const tarefas = todas[stage];
   const meta = CATEGORIA_LABEL[stage];
 

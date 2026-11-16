@@ -4,47 +4,52 @@
 
 :root {
   /* Calendar status colors */
-  --cal-publicado: #4F6B4A;
-  --cal-publicado-soft: #EBEFE9;
-  --cal-agendado: #3B6789;
-  --cal-agendado-soft: #E6EDF2;
-  --cal-aprovacao: #B68A2E;
-  --cal-aprovacao-soft: #F5EFD9;
-  --cal-alteracao: #6E2A2C;
-  --cal-alteracao-soft: #F3E7E7;
-  --cal-aguardando: #BB6B3A;
-  --cal-aguardando-soft: #F4E8DD;
-  --cal-rascunho: #9A9AA6;
-  --cal-rascunho-soft: #EEF0F4;
+  --cal-publicado: #3B4A33;
+  --cal-publicado-soft: #E4EBDF;
+  --cal-agendado: #1E476A;
+  --cal-agendado-soft: #B8D2EA;
+  --cal-aprovacao: #313D65;
+  --cal-aprovacao-soft: #BAC4E6;
+  --cal-alteracao: #90181A;
+  --cal-alteracao-soft: #FFD5D6;
+  --cal-aguardando: #642223;
+  --cal-aguardando-soft: #FFD5D6;
+  --cal-rascunho: #6A7464;
+  --cal-rascunho-soft: #F1EBE5;
   /* Status Geral do Notion — cores dedicadas pra diferenciar visualmente
      dois estágios que caíam em azul/verde e confundiam a leitura: */
-  --cal-programar: #C25E1E;         /* terracota — pede ação */
-  --cal-programar-soft: #FBE4D2;
-  --cal-conferir: #2E8A94;          /* turquesa escuro — só verificar */
-  --cal-conferir-soft: #DDEFF1;
+  --cal-programar: #6E2E0A;         /* laranja da paleta: falta programar, pede ação */
+  --cal-programar-soft: #F5CBA7;
+  --cal-conferir: #436F95;          /* turquesa escuro — só verificar */
+  --cal-conferir-soft: #DCE8F3;
 
+  /* Paleta da Lud. — sistema de uso (mapa do portal › "Paleta da Lud. · como usar"):
+     cor só quando quer dizer algo; família não mistura (rosa/vinho, azul/marinho,
+     verde); fundo suave sempre com o texto escuro da mesma família; nunca caixa
+     com tracinho colorido do lado. Prazo em 3 níveis: atrasado (vinho), vence
+     logo (vinho escuro + salmão), folga (verde). */
   /* Prazo / urgência (timing) — semântica de tempo */
-  --prazo-atrasado: #C04737;        /* vermelho */
-  --prazo-atrasado-soft: #F8E5E1;
-  --prazo-hoje: #D97A35;            /* laranja vivo */
-  --prazo-hoje-soft: #FBEADB;
-  --prazo-chegando: #C7A12E;        /* amarelo/mostarda */
-  --prazo-chegando-soft: #F8F1D9;
-  --prazo-em-dia: #4F6B4A;          /* verde */
-  --prazo-em-dia-soft: #EBEFE9;
-  --prazo-tranquilo: #6F6F7E;       /* cinza neutro */
-  --prazo-tranquilo-soft: #EEF0F4;
+  --prazo-atrasado: #90181A;        /* vinho */
+  --prazo-atrasado-soft: #FFD5D6;
+  --prazo-hoje: #642223;            /* vinho escuro (vence logo) */
+  --prazo-hoje-soft: #FFABAC;
+  --prazo-chegando: #642223;        /* vinho escuro (vence logo) */
+  --prazo-chegando-soft: #FFD5D6;
+  --prazo-em-dia: #3B4A33;          /* verde escuro */
+  --prazo-em-dia-soft: #E4EBDF;
+  --prazo-tranquilo: #6A7464;       /* cinza-oliva */
+  --prazo-tranquilo-soft: #F1EBE5;
 
   /* Paleta da marca (espelha tailwind.config.ts) — expõe as cores como CSS
      vars pra poderem ser usadas em style={{ background: 'var(--navy)' }}.
      Sem isso, var(--navy)/var(--lavender)/etc resolvem pra nada e o
      elemento fica transparente (ex.: barras do painel de Público). */
   --ink: #151521;
-  --bg: #F0F0F2;
+  --bg: #F8F8F8;
   --bgSoft: #F7F7F8;
   --cream: #F1EBE5;
   --navy: #313D65;
-  --navyHub: #1F2D4A;
+  --navyHub: #082640;
   --deep: #1E476A;
   --denim: #436F95;
   --steel: #779DBF;
@@ -59,16 +64,16 @@
   --t1: #151521;
   --t2: #5C5B72;
   --t3: #9898AA;
-  --hubBlue: #3B6789;
-  --hubGreen: #4F6B4A;
-  --hubRed: #6E2A2C;
+  --hubBlue: #436F95;
+  --hubGreen: #3B4A33;
+  --hubRed: #642223;
 }
 
 @layer base {
   html, body { height: 100%; }
   body {
     font-family: Inter, system-ui, sans-serif;
-    background: #F0F0F2;
+    background: #F8F8F8;
     color: #151521;
     font-size: 13px;
     -webkit-font-smoothing: antialiased;
@@ -195,6 +200,14 @@
     @apply text-[10px] sm:text-[11px] font-mono text-t2;
   }
   .hub-cal-day.muted .hub-cal-day-num { @apply text-t3; }
+  /* Página do projeto (destacarHoje): hoje bem marcado, passado apagado. */
+  .hub-cal-day.hoje-forte { background: #EEF1F8; box-shadow: inset 0 0 0 2px #313D65, 0 0 0 3px rgba(39,50,77,0.15); }
+  .hub-cal-day .hoje-num {
+    @apply inline-flex h-6 min-w-[24px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-white;
+    background: #313D65;
+  }
+  .hub-cal-day.passado { background: #F7F7F8; }
+  .hub-cal-day.passado .hub-cal-day-num { @apply text-t3; }
   .cal-post {
     @apply text-[10.5px] leading-tight px-1.5 py-0.5 rounded font-medium truncate;
   }

@@ -22,7 +22,7 @@ export function corDoStatus(p: PostCalendario): CorStatus {
   if (sg.includes('postado')) {
     return { bg: 'var(--cal-publicado-soft)', fg: 'var(--cal-publicado)' };
   }
-  if (sg === 'programar') {
+  if (sg.includes('programar')) {
     return { bg: 'var(--cal-programar-soft)', fg: 'var(--cal-programar)' };
   }
 

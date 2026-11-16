@@ -1,30 +1,51 @@
+import { projetoDoPortal, type ProjetoNoPortal } from '@/lib/conteudo-portal';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { classificarProjeto } from '@/lib/projetoServico';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import {
+  getCapaDoProjetoNotion,
+  getHorarioDoProjeto,
   getProjetoDetalhe,
+  listAllClientes,
   listPostsDoMes,
   listTarefasPendentesDoCliente,
   type ProjetoConfig,
   type ProjetoDetalhe,
   type PostCalendario,
+  listAllProjetos,
+  getPostsPorMes,
 } from '@/lib/notion';
-import { getGruposWhatsappDoProjeto, lerVisualizacoes } from '@/lib/supabase';
+import {
+  getGruposWhatsappDoProjeto,
+  lerCustomizacaoProjeto,
+  lerVisualizacoes,
+  listarMensagens,
+  lerEnviosDoProjeto,
+} from '@/lib/supabase';
 import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
 import { hojeEmSaoPaulo } from '@/lib/lembrete-aprovacao';
 import { grupoDaTarefa, type ItemPendencia } from '@/lib/pendencias-cliente';
 import { getHotmartResumo, type HotmartResumo } from '@/lib/hotmart';
 import { getMetaAdsRelatorio, getMetaAdsCampanhas, type CampanhaAds } from '@/lib/metaAds';
-import { getIgAnalyticsDoProjeto, type IgAnalytics } from '@/lib/instagram';
+import { getFotoDoInstagramDoProjeto, getIgAnalyticsDoProjeto, type IgAnalytics } from '@/lib/instagram';
 import { env } from '@/lib/env';
 import type { RelatorioAds } from '@/lib/csvAds';
-import { CalendarMes } from '@/app/_components/CalendarMes';
-import { resumirEtapas, ddmm, textoProxima, type ResumoEtapa } from '@/lib/etapas-projeto';
-import { EntregasKanban } from './EntregasKanban';
-import { EntregasPorEtapa } from './EntregasPorEtapa';
-import { SeletorMes } from './SeletorMes';
+import { etapaDaTarefa, resumirEtapas } from '@/lib/etapas-projeto';
+import { cardsDoProjeto } from '@/lib/visao-projeto';
 import { EditarProjeto } from '../EditarProjeto';
+import { ProjetoCover } from './ProjetoCover';
+import { Trilha } from '../../_components/Trilha';
+import { nomeCurtoDoProjeto, rotas } from '@/lib/rotas';
 import { FiltroPeriodo } from './FiltroPeriodo';
+import { VisaoProjetoNova } from './VisaoProjetoNova';
+import { CalendarioProjetoNovo } from './CalendarioProjetoNovo';
+import { ComentariosInternos, LateralWhatsapp, type MsgLateral } from './LateralWhatsapp';
+import { AcoesProjeto } from './AcoesProjeto';
+import { TrafegoProjeto } from './TrafegoProjeto';
+import { EsqueletoProjeto } from './EsqueletoProjeto';
+import { contaMetaDoProjeto } from '@/lib/trafegoResumo';
+import { Avatar, ST, Tag, type St } from '../../_ui/lud';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 
@@ -118,7 +139,7 @@ function VendasHotmart({ resumo }: { resumo: HotmartResumo }) {
         <MetricaCard label="Vendas" valor={fmtNum(resumo.vendas)} />
         <MetricaCard
           label="Ticket médio"
-          valor={resumo.ticketMedio != null ? moeda(resumo.ticketMedio) : '—'}
+          valor={resumo.ticketMedio != null ? moeda(resumo.ticketMedio) : 'sem dado'}
         />
       </div>
     </div>
@@ -420,18 +441,12 @@ const METRICAS: {
 // Página em abas: Calendário · Entregas · Desempenho · Ficha
 // ============================================================================
 
-type Aba = 'calendario' | 'entregas' | 'desempenho';
+type Aba = 'geral' | 'desempenho';
 
 function normalizeAba(v: string | string[] | undefined): Aba {
   const s = Array.isArray(v) ? v[0] : v;
-  if (s === 'entregas' || s === 'desempenho') return s;
-  return 'calendario';
+  return s === 'desempenho' ? 'desempenho' : 'geral';
 }
-
-const MESES = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
-];
 
 function resolveMes(v: string | string[] | undefined): { year: number; month: number } {
   const s = Array.isArray(v) ? v[0] : v;
@@ -440,242 +455,403 @@ function resolveMes(v: string | string[] | undefined): { year: number; month: nu
     const mo = Number(m[2]);
     if (mo >= 1 && mo <= 12) return { year: Number(m[1]), month: mo };
   }
-  const now = new Date();
-  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  const hoje = hojeEmSaoPaulo();
+  return { year: Number(hoje.slice(0, 4)), month: Number(hoje.slice(5, 7)) };
 }
 
-function deslocarMes(year: number, month: number, delta: number): { year: number; month: number } {
-  const idx = year * 12 + (month - 1) + delta;
-  return { year: Math.floor(idx / 12), month: (idx % 12) + 1 };
+function hrefProjeto(id: string, aba: Aba): string {
+  return aba === 'desempenho' ? `/admin/projetos/${id}?aba=desempenho` : `/admin/projetos/${id}`;
 }
 
-function mesParam(year: number, month: number): string {
-  return `${year}-${String(month).padStart(2, '0')}`;
+// ---- cabeçalho (capa + avatar sobreposto) ----------------------------------
+
+/** Pessoas que mais aparecem nas tarefas abertas, com a tarefa mais comum de cada uma. */
+function equipeDoProjeto(d: ProjetoDetalhe): { nome: string; papel: string }[] {
+  const porPessoa = new Map<string, Map<string, number>>();
+  for (const t of d.tarefas) {
+    if (!t.pessoa) continue;
+    const m = porPessoa.get(t.pessoa) ?? new Map<string, number>();
+    const k = t.titulo.split('|')[0].trim();
+    m.set(k, (m.get(k) ?? 0) + 1);
+    porPessoa.set(t.pessoa, m);
+  }
+  const lista = [...porPessoa.entries()]
+    .map(([nome, m]) => ({ nome, n: [...m.values()].reduce((s, v) => s + v, 0), papel: [...m.entries()].sort((a, b) => b[1] - a[1])[0][0].toLowerCase() }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 3);
+  if (d.gestor && !lista.some((p) => p.nome === d.gestor)) lista.unshift({ nome: d.gestor, n: 0, papel: 'gestão' });
+  return lista.slice(0, 3);
 }
 
-function hrefProjeto(id: string, aba: Aba, mes: string): string {
-  const q = new URLSearchParams();
-  if (aba !== 'calendario') q.set('aba', aba);
-  if (mes) q.set('mes', mes);
-  return `/admin/projetos/${id}?${q.toString()}`;
-}
-
-
-// ---- header ----------------------------------------------------------------
-
-function ProjetoHeader({ d }: { d: ProjetoDetalhe }) {
-  const inicial = d.nome.trim()[0]?.toUpperCase() ?? '·';
+function CabecalhoProjeto({
+  d,
+  capa,
+  coverUrl,
+  combinado,
+  noPortal,
+  foto,
+  clienteId,
+  acoesExtras,
+}: {
+  d: ProjetoDetalhe;
+  capa: string | null;
+  coverUrl: string | null;
+  combinado: Combinado;
+  noPortal: ProjetoNoPortal | null;
+  foto: string | null;
+  clienteId: string | null;
+  acoesExtras?: React.ReactNode;
+}) {
+  const curto = nomeCurtoDoProjeto(d.nome);
+  const inicial = (curto.startsWith('@') ? curto.slice(1) : d.nome).trim()[0]?.toUpperCase() ?? '·';
+  const equipe = equipeDoProjeto(d);
+  const ativo = /ativo/i.test(d.status ?? '');
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="min-w-0">
-        <Link href="/admin/projetos" className="text-[12px] text-mauve transition hover:text-ink">
-          ← Projetos
-        </Link>
-        <div className="mt-1.5 flex flex-wrap items-center gap-3">
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[16px] font-bold text-white"
-            style={{ background: 'linear-gradient(150deg, #436F95, #1E476A)' }}
-          >
-            {inicial}
-          </div>
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">{d.nome}</h1>
-          {d.status && (
-            <span
-              className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.06em]"
-              style={{ background: 'var(--cal-publicado-soft)', color: 'var(--cal-publicado)' }}
-            >
-              ● {d.status}
+    <section className="flex flex-col rounded-[22px] border border-[#E9E9EB] bg-white">
+      <ProjetoCover projetoId={d.id} coverUrlInicial={coverUrl} capaNotion={capa} nomeProjeto={d.nome} />
+      <div className="flex flex-wrap items-end justify-between gap-4 px-5 pb-5">
+        <div className="flex min-w-0 items-end gap-4">
+          {foto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={foto} alt={`Foto do Instagram de ${d.nome}`} className="-mt-12 h-[88px] w-[88px] shrink-0 rounded-full border-[5px] border-white object-cover" />
+          ) : (
+            <span className="-mt-12 flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full border-[5px] border-white bg-[#111113] text-[32px] font-extrabold text-white">
+              {inicial}
             </span>
           )}
-        </div>
-        {(d.clienteNome || d.gestor) && (
-          <div className="mt-1.5 pl-[52px] text-[12px] text-t2">
-            {[d.clienteNome, d.gestor && `Gestor: ${d.gestor}`].filter(Boolean).join(' · ')}
-          </div>
-        )}
-      </div>
-      <EditarProjeto projetoId={d.id} projetoNome={d.nome} configInicial={d.config} />
-    </div>
-  );
-}
-
-/** Seletor de mês — só da aba Calendário, logo acima do calendário. */
-function SeletorMesCalendario({ id, year, month }: { id: string; year: number; month: number }) {
-  const prev = deslocarMes(year, month, -1);
-  const next = deslocarMes(year, month, 1);
-  return (
-    <SeletorMes
-      rotulo={`${MESES[month - 1]} ${year}`}
-      hrefAnterior={hrefProjeto(id, 'calendario', mesParam(prev.year, prev.month))}
-      hrefProximo={hrefProjeto(id, 'calendario', mesParam(next.year, next.month))}
-    />
-  );
-}
-
-// ---- banner + cards --------------------------------------------------------
-
-function ChipResumo({ cor, n, txt }: { cor: string; n: number; txt: string }) {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(21,21,33,0.08)] bg-white px-3 py-1.5 text-[12px] font-semibold text-t1">
-      <span className="h-2 w-2 rounded-full" style={{ background: cor }} />
-      <span className="font-mono">{n}</span> {txt}
-    </span>
-  );
-}
-
-function BannerResumo({ etapas, id, hoje }: { etapas: ResumoEtapa[]; id: string; hoje: string }) {
-  const atrasados = etapas.reduce((n, e) => n + e.atrasadas, 0);
-  const comCliente = etapas.reduce((n, e) => n + e.posts.filter((p) => p.doCliente).length, 0);
-  const vencemHoje = etapas.reduce(
-    (n, e) => n + e.posts.filter((p) => p.tarefa.prazo === hoje).length,
-    0,
-  );
-  const nAtencao = atrasados + vencemHoje;
-  const visiveis = etapas.filter((e) => e.etapa !== 'stories' || e.posts.length > 0);
-  return (
-    <div className="mt-5 space-y-4">
-      <div className="flex flex-col gap-4 rounded-2xl border border-[rgba(21,21,33,0.06)] bg-bgSoft p-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-        <div className="min-w-0">
-          <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-ink">
-            {nAtencao > 0
-              ? `${nAtencao} ${nAtencao === 1 ? 'coisa precisa' : 'coisas precisam'} de atenção`
-              : 'Tudo em dia por aqui 🎉'}
-          </h3>
-          <p className="mt-0.5 text-[12.5px] text-t2">
-            Onde cada post está agora e o prazo de cada etapa.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <ChipResumo cor="var(--prazo-atrasado)" n={atrasados} txt="atrasados" />
-            <ChipResumo cor="var(--cal-aprovacao)" n={vencemHoje} txt="vencem hoje" />
-            <ChipResumo cor="var(--cal-aguardando)" n={comCliente} txt="com o cliente" />
+          <div className="flex min-w-0 flex-col gap-1.5 pt-3">
+            <span className="flex flex-wrap items-center gap-2">
+              <h1 className="text-[26px] font-extrabold leading-tight tracking-[-0.02em]">{curto.startsWith('@') ? curto : d.nome}</h1>
+              {d.status && <Tag st={ativo ? 'ok' : 'neu'}>{d.status}</Tag>}
+            </span>
+            <span className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+              {curto.startsWith('@') && <span className="text-[#636369]">{d.nome}</span>}
+              {clienteId && d.clienteNome && (
+                <Link href={rotas.cliente(clienteId)} className="rounded-full border border-[#E9E9EB] px-3 py-1.5 text-[12px] font-bold hover:border-[#B4B4B9]">
+                  {d.clienteNome} →
+                </Link>
+              )}
+              {noPortal && (
+                <Link href={`/admin/conteudo/${noPortal.projetoId}`} className="rounded-full border border-[#E9E9EB] px-3 py-1.5 text-[12px] font-bold hover:border-[#B4B4B9]" title={`conteúdo a partir de ${noPortal.desde.split('-').reverse().join('/')} roda só no portal`}>
+                  Calendário no portal →
+                </Link>
+              )}
+            </span>
           </div>
         </div>
-        {atrasados > 0 && (
-          <Link href={`${hrefProjeto(id, 'entregas', '')}`} className="btn-primary shrink-0 self-start">
-            Ver entregas →
-          </Link>
-        )}
-      </div>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
-        {visiveis.map((e) => (
-          <CardEtapa key={e.etapa} e={e} id={id} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CardEtapa({ e, id }: { e: ResumoEtapa; id: string }) {
-  const vazio = e.posts.length === 0;
-  return (
-    <Link
-      href={`${hrefProjeto(id, 'entregas', '')}#etapa-${e.etapa}`}
-      className={`block rounded-2xl border bg-white p-3.5 transition hover:bg-bgSoft/60 ${
-        e.atrasadas > 0 ? 'border-[rgba(110,42,44,0.3)]' : 'border-[rgba(21,21,33,0.08)]'
-      } ${vazio ? 'opacity-55' : ''}`}
-    >
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-t3">{e.curto}</div>
-      <div className="mt-1 flex items-baseline gap-1">
-        <span className="text-[26px] font-semibold leading-none tracking-[-0.03em] text-ink">
-          {e.posts.length}
-        </span>
-        <span className="text-[11px] text-t3">{e.posts.length === 1 ? 'post' : 'posts'}</span>
-      </div>
-      <div className="mt-2 space-y-0.5 text-[11px] leading-[1.35]">
-        {vazio && <div className="text-t3">nada nessa etapa</div>}
-        {e.atrasadas > 0 && (
-          <div className="font-semibold text-[var(--prazo-atrasado)]">
-            {e.atrasadas} atrasado{e.atrasadas > 1 ? 's' : ''} · venceu {ddmm(e.ultimoAtraso!)}
-          </div>
-        )}
-        {e.proxima && (
-          <div className="text-t2">
-            Próxima {ddmm(e.proxima)} · {textoProxima(e.diasProxima)}
-          </div>
-        )}
-        {!vazio && e.atrasadas === 0 && !e.proxima && <div className="text-t3">sem data limite</div>}
-      </div>
-    </Link>
-  );
-}
-
-// ---- tab nav ---------------------------------------------------------------
-
-function TabNav({
-  id,
-  aba,
-  mes,
-  atrasados,
-}: {
-  id: string;
-  aba: Aba;
-  mes: string;
-  atrasados: number;
-}) {
-  const tabs: { id: Aba; label: string; badge?: number }[] = [
-    { id: 'calendario', label: '📅 Calendário' },
-    { id: 'entregas', label: '📦 Entregas', badge: atrasados },
-    { id: 'desempenho', label: '📊 Desempenho' },
-  ];
-  return (
-    <div className="mt-6 flex gap-1 overflow-x-auto border-b border-[rgba(21,21,33,0.08)]">
-      {tabs.map((t) => {
-        const on = t.id === aba;
-        return (
-          <Link
-            key={t.id}
-            href={hrefProjeto(id, t.id, mes)}
-            className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-[13.5px] font-semibold transition ${
-              on ? 'border-ink text-ink' : 'border-transparent text-t3 hover:text-t2'
-            }`}
-          >
-            {t.label}
-            {t.badge ? (
-              <span className="rounded-full bg-[var(--prazo-atrasado)] px-1.5 text-[10px] font-bold text-white">
-                {t.badge}
+        <div className="flex flex-wrap items-center gap-3">
+          {equipe.length > 0 && (
+            <span className="flex items-center gap-2">
+              <span className="flex -space-x-1.5">
+                {equipe.map((p) => (
+                  <span key={p.nome} className="rounded-full ring-2 ring-white">
+                    <Avatar nome={p.nome} tam={26} />
+                  </span>
+                ))}
               </span>
-            ) : null}
-          </Link>
-        );
-      })}
-    </div>
+              <span className="hidden max-w-[260px] flex-col text-[11.5px] leading-tight text-[#46464B] md:flex">
+                {equipe.map((p) => (
+                  <span key={p.nome} className="truncate">
+                    <b className="text-[#111113]">{p.nome.split(' ')[0]}</b> {p.papel}
+                  </span>
+                ))}
+              </span>
+            </span>
+          )}
+          {acoesExtras}
+          <EditarProjeto projetoId={d.id} projetoNome={d.nome} configInicial={d.config} combinadoInicial={combinado} />
+        </div>
+      </div>
+    </section>
   );
 }
 
 // ---- abas ------------------------------------------------------------------
 
-function CalendarioTab({
-  id,
-  posts,
-  year,
-  month,
-}: {
-  id: string;
-  posts: PostCalendario[];
-  year: number;
-  month: number;
-}) {
-  const legenda: [string, string][] = [
-    ['publicado', 'Publicado'],
-    ['agendado', 'Em produção'],
-    ['aprovacao', 'Aprovação'],
-    ['alteracao', 'Em alteração'],
-    ['aguardando', 'Aguardando cliente'],
-    ['rascunho', 'Rascunho'],
+function TabNav({ id, aba }: { id: string; aba: Aba }) {
+  const tabs: { id: Aba; label: string }[] = [
+    { id: 'geral', label: 'Visão geral' },
+    { id: 'desempenho', label: 'Desempenho' },
   ];
   return (
-    <div>
-      <SeletorMesCalendario id={id} year={year} month={month} />
-      <CalendarMes year={year} month={month} posts={posts} comPrevia />
-      <div className="mt-3.5 flex flex-wrap gap-x-4 gap-y-2 text-[11.5px] text-t2">
-        {legenda.map(([cor, label]) => (
-          <span key={cor} className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full" style={{ background: `var(--cal-${cor})` }} />
-            {label}
+    <div className="flex gap-1.5">
+      {tabs.map((t) => (
+        <Link
+          key={t.id}
+          href={hrefProjeto(id, t.id)}
+          className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12.5px] font-bold ${t.id === aba ? 'bg-[#111113] text-white' : 'border border-[#E9E9EB] bg-white text-[#46464B] hover:border-[#B4B4B9]'}`}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// ---- sobre o projeto (4 caixinhas) -------------------------------------------
+
+const LETRA_DIA = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+const NOME_DIA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+/** Combinado com o cliente: posts por mês (campo N do Notion) e dias fixos (0 = domingo … 6 = sábado). */
+type Combinado = { postsPorMes: number | null; diasFixos: number[] };
+
+async function SobreProjeto({ d, postsDoMes, clienteId, grupos, combinado }: { d: ProjetoDetalhe; postsDoMes: PostCalendario[]; clienteId: string | null; grupos: { nome: string; apelido: string | null }[]; combinado: Combinado }) {
+  const [horario, clientes] = await Promise.all([getHorarioDoProjeto(d.id).catch(() => null), listAllClientes().catch(() => [])]);
+  const cliente = clientes.find((c) => (clienteId && c.id.replace(/-/g, '') === clienteId.replace(/-/g, '')) || c.nome.trim().toLowerCase() === (d.clienteNome ?? '').trim().toLowerCase());
+  const porDia = [0, 0, 0, 0, 0, 0, 0];
+  for (const p of postsDoMes) {
+    const [y, m, dd] = p.data.slice(0, 10).split('-').map(Number);
+    porDia[(new Date(Date.UTC(y, m - 1, dd)).getUTCDay() + 6) % 7] += 1;
+  }
+  const maxDia = Math.max(1, ...porDia);
+  const grupo = grupos[0] ?? null;
+  const caixa = (st: St) => ({ background: ST[st][0], color: ST[st][1] });
+  const ROT = 'text-[10.5px] font-extrabold uppercase tracking-[0.08em]';
+  const hrefCli = cliente ? rotas.cliente(cliente.id) : clienteId ? rotas.cliente(clienteId) : null;
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="flex flex-col gap-1.5 rounded-[18px] p-4" style={caixa('areia')}>
+        <span className={ROT}>Cliente</span>
+        <b className="truncate text-[17px]">{d.clienteNome ?? 'Sem cliente no Notion'}</b>
+        <span className="truncate text-[12px]">{grupo ? `💬 ${grupo.apelido?.trim() || grupo.nome}` : 'sem grupo de WhatsApp'}</span>
+        {cliente?.email && <span className="truncate text-[12px]">✉ {cliente.email}</span>}
+        {hrefCli && <Link href={hrefCli} className="mt-auto text-[12px] font-extrabold hover:underline">abrir página do cliente →</Link>}
+      </div>
+      <div className="flex flex-col gap-1.5 rounded-[18px] p-4" style={caixa('info')}>
+        <span className={ROT}>Informações</span>
+        <span className="flex flex-wrap items-baseline gap-1.5">
+          <b className="text-[17px]">
+            {combinado.postsPorMes != null ? `${combinado.postsPorMes} ${combinado.postsPorMes === 1 ? 'post' : 'posts'} por mês` : 'posts por mês não preenchido'}
+          </b>
+          {combinado.postsPorMes != null && <span className="text-[11px]">combinado no contrato</span>}
+        </span>
+        {combinado.diasFixos.length > 0 ? (
+          <span className="flex gap-1">
+            {LETRA_DIA.map((l, i) => {
+              const ligado = combinado.diasFixos.includes((i + 1) % 7);
+              return (
+                <span
+                  key={i}
+                  className="flex h-[26px] flex-1 items-center justify-center rounded-[7px] text-[11px] font-extrabold"
+                  style={ligado ? { background: ST.info[2], color: '#fff' } : { background: 'rgba(36,70,107,0.10)', color: 'rgba(36,70,107,0.55)' }}
+                >
+                  {l}
+                </span>
+              );
+            })}
           </span>
-        ))}
+        ) : (
+          <span className="flex h-[30px] items-end gap-1" title="Sem dias fixos: mostrando os dias que têm post neste mês">
+            {porDia.map((n, i) => (
+              <span key={i} className="flex flex-1 flex-col items-center gap-0.5">
+                <span className="w-full rounded-[3px]" style={{ height: `${n ? Math.max(5, (n / maxDia) * 18) : 3}px`, background: n ? ST.info[2] : 'rgba(36,70,107,0.18)' }} />
+                <span className="text-[9.5px] font-bold">{LETRA_DIA[i]}</span>
+              </span>
+            ))}
+          </span>
+        )}
+        <span className="text-[12px]">
+          {combinado.diasFixos.length
+            ? [1, 2, 3, 4, 5, 6, 0].filter((d) => combinado.diasFixos.includes(d)).map((d) => NOME_DIA[d]).join(', ').replace(/, ([^,]*)$/, ' e $1')
+            : 'dias fixos não preenchidos (Editar projeto)'}
+          {' · '}
+          {horario ? `sempre às ${horario} (horário de Brasília)` : 'horário não preenchido (campo Time)'}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1.5 rounded-[18px] p-4" style={caixa('ok')}>
+        <span className={ROT}>Contrato</span>
+        <b className="text-[17px]">Sem dados</b>
+        <span className="text-[12px]">ligação com a Nibo ainda não feita</span>
+        {hrefCli && <Link href={hrefCli} className="mt-auto text-[12px] font-extrabold hover:underline">ver na página do cliente →</Link>}
       </div>
     </div>
+  );
+}
+
+// ---- dados do lado do cliente (pendências liberadas) ----------------------
+
+async function itensDoCliente(projetoId: string) {
+  const pendentes = await listTarefasPendentesDoCliente([projetoId]).catch(() => []);
+  const [textos, vistas] = await Promise.all([
+    lerMensagensEditadas().catch(() => ({}) as Record<string, string>),
+    lerVisualizacoes(pendentes.map((p) => p.postId)).catch(() => ({}) as Awaited<ReturnType<typeof lerVisualizacoes>>),
+  ]);
+  const itens = pendentes.map((p) => {
+    const base: ItemPendencia = {
+      tarefaId: p.tarefaId,
+      tarefaTitulo: p.tarefaTitulo,
+      postId: p.postId,
+      postTitulo: p.postTitulo,
+      postData: p.postData,
+      prazo: p.tarefaPrazo,
+      link: `${env.app.url}/post/${p.postId}?tarefa=${p.tarefaId}`,
+      grupo: grupoDaTarefa(p.tarefaTitulo),
+      reaprovacao: p.reaprovacao,
+    };
+    const v = vistas[p.postId];
+    return { ...base, visto: v ? { ultima: v.ultima, total: v.total } : null };
+  });
+  return { itens, textos };
+}
+
+/** Últimas mensagens do grupo principal, pra lateral. */
+async function mensagensDoGrupo(grupoId: string | null, projetoId: string): Promise<MsgLateral[]> {
+  const hoje = hojeEmSaoPaulo();
+  const quando = (iso: string) => {
+    const d = new Date(iso);
+    const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d);
+    const hora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).format(d).replace(':', 'h');
+    return `${dia === hoje ? 'hoje' : `${dia.slice(8)}/${dia.slice(5, 7)}`} ${hora}`;
+  };
+  // Lembretes e mensagens que o portal mandou (régua, 📱 lembrar, mensagem geral).
+  const doPortal: (MsgLateral & { ts: string })[] = await lerEnviosDoProjeto(projetoId, 4)
+    .then((es) =>
+      es.map((e) => ({
+        id: `envio-${e.id}`,
+        autor: e.enviadoPor ? e.enviadoPor.split('@')[0] : 'Lud.',
+        texto: e.texto?.trim() || 'Mensagem enviada pelo portal',
+        quando: quando(e.enviadoEm),
+        daLud: true,
+        ts: e.enviadoEm,
+      })),
+    )
+    .catch(() => []);
+  if (!grupoId) return doPortal.sort((a, b) => a.ts.localeCompare(b.ts)).slice(-4).map(({ ts: _ts, ...m }) => m);
+  try {
+    const ms = await listarMensagens(grupoId, 4);
+    const doGrupo = ms.map((m) => {
+      const d = new Date(m.timestamp);
+      const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d);
+      const hora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).format(d).replace(':', 'h');
+      const daLud = m.enviado_via_portal || m.remetente_nome === 'Lud.';
+      return {
+        id: m.id,
+        autor: daLud ? (m.enviado_por_usuario ? m.enviado_por_usuario.split('@')[0] : 'Lud.') : m.remetente_nome ?? 'Cliente',
+        texto: m.conteudo?.trim() || `[${m.tipo}]`,
+        quando: `${dia === hoje ? 'hoje' : `${dia.slice(8)}/${dia.slice(5, 7)}`} ${hora}`,
+        daLud,
+        ts: m.timestamp,
+      };
+    });
+    // Junta as duas fontes sem repetir o mesmo texto e mostra as 4 mais recentes.
+    const vistos = new Set<string>();
+    return [...doGrupo, ...doPortal]
+      .sort((a, b) => String(a.ts).localeCompare(String(b.ts)))
+      .filter((m) => {
+        const k = m.texto.slice(0, 80);
+        if (vistos.has(k)) return false;
+        vistos.add(k);
+        return true;
+      })
+      .slice(-4)
+      .map(({ ts: _ts, ...m }) => m);
+  } catch {
+    return doPortal.sort((a, b) => a.ts.localeCompare(b.ts)).slice(-4).map(({ ts: _ts, ...m }) => m);
+  }
+}
+
+// ---- visão geral (proposta NOVA) --------------------------------------------
+
+async function VisaoGeral({
+  d,
+  etapas,
+  postsDoMes,
+  ano,
+  mes,
+  hoje,
+  grupos,
+}: {
+  d: ProjetoDetalhe;
+  etapas: ReturnType<typeof resumirEtapas>;
+  postsDoMes: PostCalendario[];
+  ano: number;
+  mes: number;
+  hoje: string;
+  grupos: { id: string; nome: string; apelido: string | null }[];
+}) {
+  const [{ itens: itensCliente, textos }, mensagens] = await Promise.all([itensDoCliente(d.id), mensagensDoGrupo(grupos[0]?.id ?? null, d.id)]);
+
+  // Projeto que não é de conteúdo (e-book, site…): não tem posts. Avisa e
+  // leva pros projetos de Instagram/TikTok da mesma cliente.
+  const servico = classificarProjeto(d.nome);
+  const ehDePosts = ['Instagram', 'TikTok', 'Stories'].includes(servico);
+  const semTr = (id: string) => id.replace(/-/g, '');
+  const irmaosDePosts = ehDePosts
+    ? []
+    : await listAllProjetos()
+        .then((todos) => {
+          const eu = todos.find((p) => semTr(p.id) === semTr(d.id));
+          return eu
+            ? todos.filter((p) => p.clienteId === eu.clienteId && semTr(p.id) !== semTr(eu.id) && ['Instagram', 'TikTok', 'Stories'].includes(classificarProjeto(p.nome)))
+            : [];
+        })
+        .catch(() => []);
+
+  // Tarefas: só a tarefa atual de cada post (a que define a etapa) + as de
+  // fora do fluxo de posts (reunião, calendário…).
+  const atuais = etapas.flatMap((e) => e.posts.map((p) => p.tarefa));
+  const foraDoFluxo = d.tarefas.filter((t) => !t.postId || !etapaDaTarefa(t.titulo));
+  const primeiroNome = (d.clienteNome ?? '').trim().split(/\s+/)[0];
+  const rotuloCliente = primeiroNome ? `Com ${/a$/i.test(primeiroNome) ? 'a' : 'o'} ${primeiroNome}` : 'Com o cliente';
+  const gruposWpp = grupos.map((g) => ({ id: g.id, nome: g.nome, apelido: g.apelido?.trim() || null }));
+
+  return (
+    <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-[minmax(0,1fr)_330px]">
+      <div className="flex min-w-0 flex-col gap-[18px]">
+        {!ehDePosts && (
+          <div className="rounded-[20px] border border-[#E9E9EB] bg-white px-5 py-4 text-[13px] leading-[1.55] text-[#46464B]">
+            <b className="text-[#111113]">Esse projeto é de {servico === 'Outros' ? 'outro serviço' : servico}: não tem posts.</b> Aqui aparecem só as tarefas dele.
+            {irmaosDePosts.length > 0 && (
+              <>
+                {' '}Os posts de {d.clienteNome ?? 'cliente'} ficam em{' '}
+                {irmaosDePosts.map((p, i) => (
+                  <span key={p.id}>
+                    {i > 0 && ' e '}
+                    <Link href={rotas.projeto(p.id)} className="font-bold text-[#111113] underline underline-offset-2">
+                      {nomeCurtoDoProjeto(p.nome)} →
+                    </Link>
+                  </span>
+                ))}
+                .
+              </>
+            )}
+          </div>
+        )}
+        <VisaoProjetoNova
+          projetoId={d.id}
+          clienteNome={d.clienteNome ?? d.nome}
+          rotuloCliente={rotuloCliente}
+          cards={cardsDoProjeto(etapas, hoje)}
+          tarefas={[...atuais, ...foraDoFluxo]}
+          itensCliente={itensCliente}
+          gruposWpp={gruposWpp}
+          textos={textos}
+          hojeIso={hoje}
+          calendario={ehDePosts ? <CalendarioProjetoNovo projetoId={d.id} ano={ano} mes={mes} postsIniciais={postsDoMes} hojeIso={hoje} /> : null}
+        />
+      </div>
+      <div className="flex min-w-0 flex-col gap-[18px]">
+        <LateralWhatsapp projetoId={d.id} clienteNome={d.clienteNome ?? d.nome} gruposWpp={gruposWpp} mensagens={mensagens} itensCliente={itensCliente} textos={textos} hojeIso={hoje} />
+        <ComentariosInternos />
+      </div>
+    </div>
+  );
+}
+
+/** Lateral da página de tráfego: ações (tarefas) + grupo do WhatsApp. */
+async function LateralTrafego({ d, hoje, grupos }: { d: ProjetoDetalhe; hoje: string; grupos: { id: string; nome: string; apelido: string | null }[] }) {
+  const [{ itens: itensCliente, textos }, mensagens] = await Promise.all([itensDoCliente(d.id), mensagensDoGrupo(grupos[0]?.id ?? null, d.id)]);
+  const acoes = [...d.tarefas]
+    .filter((t) => !/^calend[aá]rio\b/i.test(t.titulo.trim()))
+    .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'))
+    .slice(0, 8)
+    .map((t) => ({ id: t.id, titulo: t.titulo, prazo: t.prazo, pessoa: t.pessoa }));
+  const gruposWpp = grupos.map((g) => ({ id: g.id, nome: g.nome, apelido: g.apelido?.trim() || null }));
+  return (
+    <>
+      <AcoesProjeto acoes={acoes} hojeIso={hoje} />
+      <LateralWhatsapp projetoId={d.id} clienteNome={d.clienteNome ?? d.nome} gruposWpp={gruposWpp} mensagens={mensagens} itensCliente={itensCliente} textos={textos} hojeIso={hoje} />
+    </>
   );
 }
 
@@ -711,7 +887,7 @@ async function DesempenhoTab({
               Análise completa do Instagram
             </div>
             <div className="text-[12px] text-t2">
-              Insights de IA, público e demografia — na página de Análise.
+              Insights de IA, público e demografia, na página de Análise.
             </div>
           </div>
           <span className="shrink-0 text-[13px] font-semibold text-navy">Abrir →</span>
@@ -776,7 +952,7 @@ function ObjetivoMetas({ config }: { config: ProjetoConfig }) {
                 <div className="mt-2 flex items-baseline gap-1.5">
                   {v.inicio && <span className="text-[12px] text-t3">{v.inicio}</span>}
                   <span className="text-[18px] font-semibold tracking-[-0.02em] text-ink">
-                    {v.atual || '—'}
+                    {v.atual || 'sem dado'}
                   </span>
                   {v.meta && <span className="text-[12px] text-t3">→ {v.meta}</span>}
                 </div>
@@ -789,66 +965,6 @@ function ObjetivoMetas({ config }: { config: ProjetoConfig }) {
   );
 }
 
-// ---- pendências com o cliente + mensagem geral -----------------------------
-
-/** Entregas por etapa + o que já está liberado pro cliente (pra mensagem). */
-async function EntregasSection({
-  id,
-  clienteNome,
-  etapas,
-}: {
-  id: string;
-  clienteNome: string;
-  etapas: ResumoEtapa[];
-}) {
-  let pendentes;
-  try {
-    pendentes = await listTarefasPendentesDoCliente([id]);
-  } catch (err: any) {
-    console.warn('[projeto] pendências do cliente:', err?.message);
-    return (
-      <p className="rounded-md border border-[rgba(0,0,0,0.09)] px-4 py-3 text-[12px] text-[#787774]">
-        Não consegui carregar as pendências do cliente agora. Recarregue a página em
-        instantes.
-      </p>
-    );
-  }
-
-  const [grupos, textos, vistas] = await Promise.all([
-    getGruposWhatsappDoProjeto(id).catch(() => []),
-    lerMensagensEditadas().catch(() => ({}) as Record<string, string>),
-    lerVisualizacoes(pendentes.map((p) => p.postId)).catch(
-      () => ({}) as Awaited<ReturnType<typeof lerVisualizacoes>>,
-    ),
-  ]);
-
-  const itens = pendentes.map((p) => {
-    const base: ItemPendencia = {
-      tarefaId: p.tarefaId,
-      tarefaTitulo: p.tarefaTitulo,
-      postId: p.postId,
-      postTitulo: p.postTitulo,
-      postData: p.postData,
-      prazo: p.tarefaPrazo,
-      link: `${env.app.url}/post/${p.postId}?tarefa=${p.tarefaId}`,
-      grupo: grupoDaTarefa(p.tarefaTitulo),
-    };
-    const v = vistas[p.postId];
-    return { ...base, visto: v ? { ultima: v.ultima, total: v.total } : null };
-  });
-
-  return (
-    <EntregasPorEtapa
-      projetoId={id}
-      clienteNome={clienteNome}
-      etapas={etapas}
-      itensCliente={itens}
-      gruposWpp={grupos.map((g) => ({ id: g.id, nome: g.nome, apelido: g.apelido?.trim() || null }))}
-      textos={textos}
-      hojeIso={hojeEmSaoPaulo()}
-    />
-  );
-}
 
 // ---- shell + página --------------------------------------------------------
 
@@ -868,50 +984,85 @@ async function ProjetoShell({
   fimMs: number;
 }) {
   const hoje = hojeEmSaoPaulo();
-  const mesAtual = { year: Number(hoje.slice(0, 4)), month: Number(hoje.slice(5, 7)) };
-  // Calendário usa o mês escolhido; o kanban de Entregas olha os posts em
-  // produção (este mês e os 2 próximos).
-  const mesesPosts =
-    aba === 'calendario'
-      ? [{ year, month }]
-      : aba === 'entregas'
-        ? [0, 1, 2].map((delta) => deslocarMes(mesAtual.year, mesAtual.month, delta))
-        : [];
-  const [d, porMes] = await Promise.all([
+  const [d, postsDoMes, noPortal, customizacao, grupos, capaNotion, todos, postsPorMes] = await Promise.all([
     getProjetoDetalhe(id),
-    Promise.all(mesesPosts.map((m) => listPostsDoMes([id], m.year, m.month).catch(() => []))),
+    listPostsDoMes([id], year, month).catch(() => [] as PostCalendario[]),
+    projetoDoPortal(id),
+    lerCustomizacaoProjeto(id).catch(() => null),
+    getGruposWhatsappDoProjeto(id).catch(() => []),
+    getCapaDoProjetoNotion(id).catch(() => null),
+    listAllProjetos().catch(() => []),
+    getPostsPorMes(id),
   ]);
   if (!d) notFound();
-
-  const posts = porMes.flat();
+  const combinado = { postsPorMes, diasFixos: customizacao?.diasFixos ?? [] };
   const etapas = resumirEtapas(d.tarefas, hoje);
-  const atrasados = etapas.reduce((n, e) => n + e.atrasadas, 0);
-  const mes = mesParam(year, month);
+  const ehTrafego = classificarProjeto(d.nome) === 'Tráfego Pago';
+  const semTr = (x: string) => x.replace(/-/g, '');
+  const eu = todos.find((p) => semTr(p.id) === semTr(id));
+  const clienteId = eu?.clienteId ?? null;
+  // Tráfego: usa o @ do Instagram do mesmo cliente (foto e selo das campanhas).
+  const ig = ehTrafego && eu ? todos.find((p) => p.clienteId === eu.clienteId && classificarProjeto(p.nome) === 'Instagram') : undefined;
+  const foto = await getFotoDoInstagramDoProjeto(ig?.id ?? id, ig?.nome ?? d.nome).catch(() => null);
+  const conta = ehTrafego ? contaMetaDoProjeto(id) : null;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
-      <ProjetoHeader d={d} />
-      <BannerResumo etapas={etapas} id={id} hoje={hoje} />
-      <TabNav id={id} aba={aba} mes={mes} atrasados={atrasados} />
-      <div className="mt-5">
-        {aba === 'calendario' && <CalendarioTab id={id} posts={posts} year={year} month={month} />}
-        {aba === 'entregas' && (
-          <div className="space-y-8">
-            <Suspense
-              fallback={<div className="h-[180px] animate-pulse rounded-md bg-[#F4F4F2]" />}
-            >
-              <EntregasSection id={id} clienteNome={d.clienteNome ?? d.nome} etapas={etapas} />
-            </Suspense>
-            <EntregasKanban posts={posts} hojeIso={hoje} />
-          </div>
-        )}
-        {aba === 'desempenho' && (
-          <Suspense fallback={<div className="h-[320px] animate-pulse rounded-2xl bg-bgSoft" />}>
-            <DesempenhoTab id={id} inicioMs={inicioMs} fimMs={fimMs} config={d.config} />
-          </Suspense>
-        )}
-      </div>
-    </div>
+    <main className="lud-admin mx-auto flex w-full max-w-[1280px] flex-col gap-[18px] px-4 py-7 sm:px-8">
+      <Trilha itens={[{ rotulo: ehTrafego ? 'Projetos · Tráfego Pago' : 'Projetos', href: ehTrafego ? `${rotas.projetos()}?tipo=${encodeURIComponent('Tráfego Pago')}` : rotas.projetos() }, { rotulo: nomeCurtoDoProjeto(d.nome) }]} />
+      <CabecalhoProjeto
+        d={d}
+        capa={capaNotion}
+        coverUrl={customizacao?.coverUrl ?? null}
+        combinado={combinado}
+        noPortal={noPortal}
+        foto={foto}
+        clienteId={clienteId}
+        acoesExtras={
+          ehTrafego ? (
+            <>
+              {conta && (
+                <a href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${conta.replace(/^act_/, '')}`} target="_blank" rel="noreferrer" className="rounded-[11px] border border-[#D6D6D9] bg-white px-3.5 py-2 text-[13px] font-extrabold hover:bg-[#F4F4F5]">
+                  Abrir Gerenciador ↗
+                </a>
+              )}
+              <Link href="/admin/trafego-pago" className="rounded-[11px] border border-[#D6D6D9] bg-white px-3.5 py-2 text-[13px] font-extrabold hover:bg-[#F4F4F5]">
+                Relatório completo
+              </Link>
+            </>
+          ) : undefined
+        }
+      />
+      {!ehTrafego && (
+        <Suspense fallback={<div className="grid grid-cols-1 gap-3 md:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-[132px] animate-pulse rounded-[18px] bg-[#F4F4F5]" />)}</div>}>
+          <SobreProjeto d={d} postsDoMes={postsDoMes} clienteId={clienteId} grupos={grupos} combinado={combinado} />
+        </Suspense>
+      )}
+      <TabNav id={id} aba={aba} />
+      {aba === 'geral' && !ehTrafego && (
+        <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] bg-[#F4F4F5]" />}>
+          <VisaoGeral d={d} etapas={etapas} postsDoMes={postsDoMes} ano={year} mes={month} hoje={hoje} grupos={grupos} />
+        </Suspense>
+      )}
+      {aba === 'geral' && ehTrafego && (
+        <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] bg-[#F4F4F5]" />}>
+          <TrafegoProjeto
+            id={id}
+            hojeIso={hoje}
+            handle={ig ? nomeCurtoDoProjeto(ig.nome) : null}
+            lateral={
+              <Suspense fallback={<div className="h-[300px] animate-pulse rounded-[20px] bg-[#F4F4F5]" />}>
+                <LateralTrafego d={d} hoje={hoje} grupos={grupos} />
+              </Suspense>
+            }
+          />
+        </Suspense>
+      )}
+      {aba === 'desempenho' && (
+        <Suspense fallback={<div className="h-[320px] animate-pulse rounded-[20px] bg-[#F4F4F5]" />}>
+          <DesempenhoTab id={id} inicioMs={inicioMs} fimMs={fimMs} config={d.config} />
+        </Suspense>
+      )}
+    </main>
   );
 }
 
@@ -926,19 +1077,8 @@ export default function ProjetoPage({
   const { year, month } = resolveMes(searchParams.mes);
   const { inicioMs, fimMs } = resolverPeriodo(searchParams);
   return (
-    <div className="min-h-screen bg-bg pb-16">
-      <Suspense
-        key={`${aba}-${inicioMs}-${fimMs}`}
-        fallback={
-          <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
-            <div className="h-[52px] w-64 rounded-xl bg-bgSoft" />
-            <div className="mt-5 h-[140px] animate-pulse rounded-2xl bg-bgSoft" />
-            <div className="mt-6 h-[420px] animate-pulse rounded-2xl bg-bgSoft" />
-          </div>
-        }
-      >
-        <ProjetoShell id={params.id} aba={aba} year={year} month={month} inicioMs={inicioMs} fimMs={fimMs} />
-      </Suspense>
-    </div>
+    <Suspense key={`${aba}-${inicioMs}-${fimMs}`} fallback={<EsqueletoProjeto />}>
+      <ProjetoShell id={params.id} aba={aba} year={year} month={month} inicioMs={inicioMs} fimMs={fimMs} />
+    </Suspense>
   );
 }

@@ -58,7 +58,7 @@ function PostIcon({ icon, tipo }: { icon: string | null; tipo: Tipo }) {
       />
     );
   }
-  const fallback = tipo === 'reels' ? '🎬' : tipo === 'story' ? '📱' : '🖼️';
+  const fallback = tipo === 'reels' ? '📱' : tipo === 'story' ? '⭕' : '🖼️';
   return (
     <span className="shrink-0 text-[12px] leading-none">{icon || fallback}</span>
   );
@@ -256,7 +256,7 @@ export function PostagensView({
       </div>
 
       {/* semana em colunas */}
-      <div className="mt-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
+      <div className="mt-4 overflow-x-auto min-h-fit pb-2 [scrollbar-width:thin]">
         <div className="grid min-w-[920px] grid-cols-7 gap-2">
           {dias.map((d) => {
             const lista = porDia.get(d.iso) ?? [];

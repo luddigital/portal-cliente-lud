@@ -27,8 +27,8 @@ const CHAVE_PREFS = 'kanban-entregas-prefs';
 const TODAS_COLUNAS = COLUNAS_ENTREGA.map((c) => c.id);
 
 function emojiTipo(p: PostCalendario): string {
-  if (p.tipo === 'reels') return '🎬';
-  if (p.tipo === 'story') return '📱';
+  if (p.tipo === 'reels') return '📱';
+  if (p.tipo === 'story') return '⭕';
   return '📄';
 }
 
@@ -275,7 +275,7 @@ export function EntregasKanban({
         </div>
       )}
 
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      <div className="flex gap-3 overflow-x-auto min-h-fit pb-2">
         {colunasNaTela.map((col) => {
           const lista = porColuna.get(col.id) ?? [];
           const done = col.id === 'publicado';

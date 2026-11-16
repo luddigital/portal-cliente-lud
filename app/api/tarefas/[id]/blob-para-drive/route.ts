@@ -105,12 +105,19 @@ export async function POST(
     }
     const nodeStream = Readable.fromWeb(blobRes.body as any);
 
-    const uploaded = await uploadFileFromStream({
-      folderId: folder.folderId,
-      name: nome,
-      mimeType,
-      body: nodeStream,
-    });
+    let uploaded: { id: string; webViewLink: string };
+    try {
+      uploaded = await uploadFileFromStream({
+        folderId: folder.folderId,
+        name: nome,
+        mimeType,
+        body: nodeStream,
+      });
+    } catch (err) {
+      // A tela vai subir o arquivo de novo (novo blob): esse fica órfão, então apaga.
+      await del(blobUrl).catch(() => {});
+      throw err;
+    }
 
     // Blob transferido com sucesso — apaga do storage temporário.
     // Se der erro aqui, o arquivo já está no Drive, então logamos e seguimos.

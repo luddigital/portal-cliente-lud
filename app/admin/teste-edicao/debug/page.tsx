@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSession } from '@/lib/auth';
@@ -43,7 +44,7 @@ export default async function DebugPage() {
 
 async function diagnosticar() {
   const { Client } = await import('@notionhq/client');
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
   const out: any = {
     postagensDbId: env.notion.postagensDbId,

@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { env } from '@/lib/env';
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
   const id = url.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'faltou ?id=POST_ID' }, { status: 400 });
 
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
   const page = (await notion.pages.retrieve({ page_id: id })) as any;
 
   // 1. property "Link do Google Drive" (ou env.notion.postProps.driveLink)

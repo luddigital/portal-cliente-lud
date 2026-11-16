@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { env } from '@/lib/env';
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const filterEmail = url.searchParams.get('filter');
 
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
   const res = await notion.databases.query({
     database_id: env.notion.clientesDbId,
     page_size: 50,

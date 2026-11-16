@@ -9,6 +9,7 @@ import { statusPrazo } from '@/lib/prazoStatus';
 import { compararNoFluxo, ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import { BotaoLembreteWpp } from '@/app/admin/aprovacoes/BotaoLembreteWpp';
 import type { MudancaPrazo, ProgramacaoConfig } from '@/lib/supabase';
+import type { EnvioHistorico, NotaHistorico, TarefaClienteHistorico } from '@/lib/historico-post';
 
 // ============================================================================
 // Status do post — só os chips de troca rápida (o atual fica preenchido)
@@ -386,7 +387,18 @@ function PrazoEditavel({
           ? `Prazo mudou ${mudancas.length}x · última: ${ddmmCurto(ultima.de)} → ${ddmmCurto(ultima.para)} (${ultima.por}, ${fmtQuando(ultima.em)}). Clique pra mudar.`
           : 'Clique pra mudar o prazo'
       }
-      className="group -mx-1 flex w-[54px] shrink-0 items-center gap-1 rounded border border-dashed border-[rgba(21,21,33,0.2)] px-1 py-0.5 font-mono text-[11px] text-t2 transition hover:border-ink/40 hover:bg-bgSoft hover:text-ink"
+      className="group inline-flex h-[22px] shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 text-[11.5px] font-extrabold transition hover:brightness-95"
+      style={(() => {
+        const h = hojeLocal();
+        const d = prazo?.slice(0, 10) ?? null;
+        return !d
+          ? { background: '#F4F4F5', color: '#636369' }
+          : d < h
+            ? { background: '#F6CFCB', color: '#7E211C' }
+            : d === h
+              ? { background: '#F8D5E5', color: '#7A1F4C' }
+              : { background: '#F4F4F5', color: '#46464B' };
+      })()}
     >
       {ddmmCurto(prazo)}
       {mudancas.length > 0 ? (
@@ -433,7 +445,11 @@ export function TodasTarefasCard({
   historico,
   podeEditarPrazo = false,
   semMoldura = false,
+  linkAdmin = false,
+  compacto = false,
 }: {
+  /** Popup: botões de concluir pequenos (círculo, como checkbox). */
+  compacto?: boolean;
   tarefas: TarefaDoPost[];
   /** Notion user id do responsável → id da página do colaborador. */
   colaboradores?: Record<string, string>;
@@ -442,6 +458,8 @@ export function TodasTarefasCard({
   podeEditarPrazo?: boolean;
   /** Dentro do popup: sem o card em volta. */
   semMoldura?: boolean;
+  /** Admin: "abrir tarefa" vai pra página da tarefa (/admin/tarefas/[id]); senão a do cliente. */
+  linkAdmin?: boolean;
 }) {
   const router = useRouter();
   const [tarefas, setTarefas] = useState(iniciais);
@@ -466,10 +484,33 @@ export function TodasTarefasCard({
   const feita = (t: TarefaDoPost) => !t.aberta || !!t.finalizada;
   const abertas = tarefas.filter((t) => !feita(t) || t.tarefaId in agora).sort(porOrdem);
   const concluidas = tarefas.filter((t) => feita(t) && !(t.tarefaId in agora)).sort(porOrdem);
+  // Só a equipe (rota de reabrir é de admin): setinha pra voltar uma concluída pra "Iniciar".
+  const podeReabrir = linkAdmin;
   const atualId = abertas.find((t) => !feita(t))?.tarefaId ?? null;
   const total = tarefas.length;
   const nFeitas = tarefas.filter(feita).length;
   const pct = total > 0 ? Math.round((nFeitas / total) * 100) : 0;
+
+  /** Tarefa concluída por engano: volta pra "Iniciar" no Notion. */
+  async function reabrirConcluida(t: TarefaDoPost) {
+    setSalvando(t.tarefaId);
+    setErro(null);
+    try {
+      const res = await fetch(`/api/tarefas/${t.tarefaId}/reabrir`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'Iniciar' }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+      setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, aberta: true, finalizada: null, status: 'Iniciar' } : x)));
+      atualizarPagina();
+    } catch (e: any) {
+      setErro(e?.message ?? 'Não consegui voltar a tarefa.');
+    } finally {
+      setSalvando(null);
+    }
+  }
 
   async function alternar(t: TarefaDoPost) {
     const desfazer = t.tarefaId in agora;
@@ -543,7 +584,7 @@ export function TodasTarefasCard({
         {podeEditarPrazo && !concluida && !marcada ? (
           <PrazoEditavel prazo={t.prazo} mudancas={doTarefa} onSalvar={(novo) => mudarPrazo(t, novo)} />
         ) : (
-          <span className="w-[54px] shrink-0 font-mono text-[11px] text-t2">{ddmmCurto(t.prazo)}</span>
+          <span className="inline-flex h-[22px] shrink-0 items-center whitespace-nowrap rounded-full bg-[#F4F4F5] px-2 text-[11.5px] font-extrabold text-[#8A8A90]">{ddmmCurto(t.prazo)}</span>
         )}
         <span
           className="flex w-[124px] shrink-0 items-center gap-1 truncate text-[11px] font-semibold"
@@ -584,27 +625,52 @@ export function TodasTarefasCard({
         />
         <TagTipo doCliente={ehTarefaDoCliente(t.titulo)} />
         <Link
-          href={`/tarefa/${t.tarefaId}`}
+          href={linkAdmin ? `/admin/tarefas/${t.tarefaId}` : `/tarefa/${t.tarefaId}`}
           title="Abrir tarefa completa"
           aria-label="Abrir tarefa completa"
           className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded text-[13px] text-t3 transition hover:bg-bgSoft hover:text-ink"
         >
           ↗
         </Link>
-        <button
-          type="button"
-          onClick={() => podeMexer && alternar(t)}
-          disabled={!podeMexer || salvando === t.tarefaId}
-          title={concluida ? 'Concluída' : marcada ? 'Desmarcar' : 'Concluir tarefa'}
-          aria-label={marcada ? `Desmarcar ${t.titulo}` : `Concluir ${t.titulo}`}
-          className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border text-[11px] leading-none transition ${
-            marcada
-              ? 'border-ink bg-ink text-white'
-              : 'border-[rgba(21,21,33,0.25)] bg-white text-transparent hover:border-ink hover:text-t3'
-          } ${concluida ? 'cursor-default' : ''} disabled:opacity-60`}
-        >
-          {salvando === t.tarefaId ? '…' : '✓'}
-        </button>
+        {concluida ? (
+          <span className="flex w-[112px] shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-[12px] text-t3">
+            ✓ feita{t.finalizada ? ` ${ddmmCurto(t.finalizada)}` : ''}
+            {podeReabrir && (
+              <button
+                type="button"
+                onClick={() => reabrirConcluida(t)}
+                disabled={salvando === t.tarefaId}
+                title="Voltar a tarefa pra Iniciar"
+                aria-label={`Voltar ${t.titulo} pra Iniciar`}
+                className="flex h-[22px] w-[22px] items-center justify-center rounded-full border border-[#D6D6D9] bg-white text-[12px] font-extrabold text-[#46464B] hover:bg-[#F4F4F5] disabled:opacity-50"
+              >
+                {salvando === t.tarefaId ? '…' : '↺'}
+              </button>
+            )}
+          </span>
+        ) : marcada ? (
+          <button
+            type="button"
+            onClick={() => alternar(t)}
+            disabled={salvando === t.tarefaId}
+            aria-label={`Desmarcar ${t.titulo}`}
+            title="Desfazer"
+            className={compacto ? 'inline-flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full bg-[#2E5520] text-[12px] font-extrabold text-white hover:opacity-80 disabled:opacity-50' : 'inline-flex h-[30px] min-w-[112px] shrink-0 items-center justify-center rounded-[10px] border border-[#D6D6D9] bg-white px-3 text-[12px] font-extrabold text-[#46464B] hover:bg-[#F4F4F5] disabled:opacity-50'}
+          >
+            {salvando === t.tarefaId ? '…' : compacto ? '✓' : '↺ Desfazer'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => alternar(t)}
+            disabled={salvando === t.tarefaId}
+            aria-label={`Concluir ${t.titulo}`}
+            title="Concluir"
+            className={compacto ? 'group/ok inline-flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-[#B9B9BE] bg-white text-[12px] font-extrabold text-transparent hover:border-[#2E5520] hover:text-[#2E5520] disabled:opacity-50' : 'inline-flex h-[30px] min-w-[112px] shrink-0 items-center justify-center gap-1 rounded-[10px] border border-[#2E7D4F] bg-white px-3 text-[12px] font-extrabold text-[#2E5520] hover:bg-[#F1F8EE] disabled:opacity-50'}
+          >
+            {salvando === t.tarefaId ? '…' : compacto ? '✓' : '✓ Concluir'}
+          </button>
+        )}
         </div>
 
         {aberto && (
@@ -614,7 +680,7 @@ export function TodasTarefasCard({
                 Histórico da tarefa
               </span>
               <Link
-                href={`/tarefa/${t.tarefaId}`}
+                href={linkAdmin ? `/admin/tarefas/${t.tarefaId}` : `/tarefa/${t.tarefaId}`}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-navy transition hover:underline"
               >
                 Abrir tarefa completa →
@@ -666,20 +732,26 @@ export function TodasTarefasCard({
           </div>
 
           {abertas.length > 0 ? (
-            <>
-              <div className="mt-3 flex items-center gap-2.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-t3">
-                <span className="w-[54px] shrink-0">Prazo</span>
-                <span className="w-[124px] shrink-0">Status</span>
-                <span className="min-w-0 flex-1">Tarefa</span>
-                <span className="w-[96px] shrink-0">Responsável</span>
-                <span className="w-[58px] shrink-0" />
-                <span className="w-[18px] shrink-0" />
-                <span className="w-[18px] shrink-0" />
-              </div>
-              <ul className="mt-0.5 divide-y divide-[rgba(21,21,33,0.05)]">
-                {abertas.map((t) => linha(t, false))}
-              </ul>
-            </>
+            (() => {
+              const h = hojeLocal();
+              const grupos: { rot: string; cor: string; ponto: string; lista: TarefaDoPost[] }[] = [
+                { rot: 'Atrasadas', cor: '#7E211C', ponto: '#B42318', lista: abertas.filter((t) => t.prazo && t.prazo.slice(0, 10) < h) },
+                { rot: 'Pra hoje', cor: '#7A1F4C', ponto: '#C2417E', lista: abertas.filter((t) => t.prazo?.slice(0, 10) === h) },
+                { rot: 'Próximas', cor: '#46464B', ponto: '#B4B4B9', lista: abertas.filter((t) => !t.prazo || t.prazo.slice(0, 10) > h) },
+              ];
+              return grupos
+                .filter((g) => g.lista.length > 0)
+                .map((g) => (
+                  <details key={g.rot} open className="group mt-3">
+                    <summary className="flex cursor-pointer list-none items-center gap-1.5 pb-1 text-[11px] font-extrabold uppercase tracking-[0.08em] [&::-webkit-details-marker]:hidden" style={{ color: g.cor }}>
+                      <span className="text-[9px] text-[#8A8A90] transition-transform group-open:rotate-90">▶</span>
+                      <span className="h-2 w-2 rounded-full" style={{ background: g.ponto }} />
+                      {g.rot} · {g.lista.length}
+                    </summary>
+                    <ul className="divide-y divide-[rgba(21,21,33,0.05)]">{g.lista.map((t) => linha(t, false))}</ul>
+                  </details>
+                ));
+            })()
           ) : (
             <p className="mt-3 text-[12px] font-semibold text-[var(--prazo-em-dia)]">Tudo concluído ✨</p>
           )}
@@ -690,21 +762,14 @@ export function TodasTarefasCard({
           )}
 
           {concluidas.length > 0 && (
-            <div className="mt-3 border-t border-[rgba(21,21,33,0.06)] pt-3">
-              <button
-                type="button"
-                onClick={() => setVerConcluidas((v) => !v)}
-                className="text-[12px] font-semibold text-t2 transition hover:text-ink"
-              >
-                {verConcluidas ? '▾' : '▸'} {verConcluidas ? 'Esconder' : 'Ver'} {concluidas.length}{' '}
-                {concluidas.length === 1 ? 'concluída' : 'concluídas'}
-              </button>
-              {verConcluidas && (
-                <ul className="mt-1 divide-y divide-[rgba(21,21,33,0.05)]">
-                  {concluidas.map((t) => linha(t, true))}
-                </ul>
-              )}
-            </div>
+            <details className="group mt-3 border-t border-[rgba(21,21,33,0.06)] pt-3">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 pb-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#2E5520] [&::-webkit-details-marker]:hidden">
+                <span className="text-[9px] text-[#8A8A90] transition-transform group-open:rotate-90">▶</span>
+                <span className="h-2 w-2 rounded-full bg-[#2E7D4F]" />
+                Concluídas · {concluidas.length}
+              </summary>
+              <ul className="divide-y divide-[rgba(21,21,33,0.05)]">{concluidas.map((t) => linha(t, true))}</ul>
+            </details>
           )}
 
           {historico && (
@@ -786,9 +851,9 @@ export function ProgramacaoCard({
       </div>
       <Link
         href={`/programacao/${postId}`}
-        className="ml-auto rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-4 py-1.5 text-[12px] font-semibold text-ink transition hover:bg-bgSoft"
+        className="ml-auto rounded-full bg-[var(--cal-agendado)] px-4 py-1.5 text-[12px] font-semibold text-white transition hover:brightness-95"
       >
-        Programar →
+        📅 Programar no Instagram
       </Link>
     </div>
   );
@@ -799,17 +864,19 @@ export function ProgramacaoCard({
 // ============================================================================
 
 const MOMENTO_LABEL: Record<string, string> = {
-  quinta: 'Envio da semana',
+  quinta: 'Envio pra aprovação (lote da semana)',
+  separado: 'Envio pra aprovação (só este post)',
   sexta: 'Lembrete de sexta',
   segunda_manha: 'Último dia (manhã)',
   segunda_tarde: 'Último dia (tarde)',
   terca: 'Prazo vencido',
   avulso: 'Lembrete avulso',
-  reaprovacao: 'Reaprovação enviada (depois da alteração)',
+  reaprovacao: 'Reaprovação (depois da alteração)',
   geral: 'Mensagem geral do projeto',
 };
 
 const VARIANTE_LABEL: Record<string, string> = {
+  pendencias: 'pendências do cliente',
   viu: 'cliente tinha visto',
   nao_viu: 'cliente não tinha visto',
   no_prazo: 'no prazo',
@@ -836,24 +903,10 @@ export type ComentarioCliente = {
   trecho: string;
 };
 
-/** Item do histórico do post: comentário (cliente ou equipe) ou evento do processo. */
-export type NotaHistorico = {
-  id: string;
-  quando: string;
-  tipo:
-    | 'cliente_comentou'
-    | 'cliente_aprovou'
-    | 'cliente_alteracao'
-    | 'cliente_enviou'
-    | 'equipe'
-    | 'ok'
-    | 'voltou';
-  autor: string | null;
-  titulo: string;
-  corpo: string;
-};
+export type { NotaHistorico, TarefaClienteHistorico } from '@/lib/historico-post';
 
 const ICONE_NOTA: Record<NotaHistorico['tipo'], string> = {
+  interna: '🔒',
   cliente_comentou: '💬',
   cliente_aprovou: '✅',
   cliente_alteracao: '🔁',
@@ -861,6 +914,7 @@ const ICONE_NOTA: Record<NotaHistorico['tipo'], string> = {
   equipe: '📝',
   ok: '✓',
   voltou: '↺',
+  enviado: '📱',
 };
 
 const DO_CLIENTE = new Set<NotaHistorico['tipo']>([
@@ -889,40 +943,64 @@ type LinhaDoTempo = {
   corpo: string;
   quem: string | null;
   cor?: string;
+  /** Envio pro cliente: mostra o prazo que ele recebeu e quanto tempo teve. */
+  envioCliente?: boolean;
 };
 
-/**
- * Histórico do post: comunicação com o cliente numa linha do tempo só:
- * comentários (cliente e equipe), aberturas do portal, lembretes enviados e
- * eventos do processo (alteração concluída, reprovada…).
- */
-export function ComunicacaoCard({
-  historico,
-  lembrete,
-  notas = [],
-}: {
-  /** Comentários do post e eventos do processo, já classificados. */
-  notas?: NotaHistorico[];
-  /** Tarefa que está com o cliente agora (pra mandar lembrete). */
-  lembrete?: { tarefaId: string; titulo: string; clienteNome: string } | null;
-  historico: {
-    visualizacoes: { email: string; vistoEm: string }[];
-    envios: { momento: string; variante: string | null; enviadoEm: string; enviadoPor: string | null }[];
-  };
-}) {
-  const [verTudo, setVerTudo] = useState(false);
-  const [abertos, setAbertos] = useState<Set<string>>(new Set());
+const DIA_SEMANA_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+function diaSp(iso: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso)
+    ? iso
+    : new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(iso));
+}
+
+function diasEntreIso(de: string, ate: string): number {
+  return Math.round((Date.parse(`${ate}T12:00:00Z`) - Date.parse(`${de}T12:00:00Z`)) / 86_400_000);
+}
+
+/** Prazo que o cliente recebeu num envio: a primeira tarefa dele que vence no dia do envio ou depois. */
+function prazoDoEnvio(
+  quando: string,
+  tarefas: TarefaClienteHistorico[],
+): { texto: string; alerta: boolean } | null {
+  const dia = diaSp(quando);
+  const alvo = tarefas
+    .filter((t) => t.prazo && t.prazo >= dia)
+    .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))[0];
+  if (!alvo || !alvo.prazo) return null;
+  const dias = diasEntreIso(dia, alvo.prazo);
+  const ds = DIA_SEMANA_CURTO[new Date(`${alvo.prazo}T12:00:00Z`).getUTCDay()];
+  const tempo = dias === 0 ? 'no mesmo dia' : dias === 1 ? '1 dia' : `${dias} dias`;
+  let texto = `Prazo dado: ${alvo.titulo} até ${ds}, ${alvo.prazo.slice(8, 10)}/${alvo.prazo.slice(5, 7)} · ${tempo}`;
+  if (alvo.concluidaEm) {
+    const resp = diaSp(alvo.concluidaEm);
+    texto += ` · respondeu ${resp.slice(8, 10)}/${resp.slice(5, 7)}`;
+  }
+  return { texto, alerta: dias < 2 };
+}
+
+/** Envios, aberturas e notas numa linha do tempo, do mais recente pro mais antigo. */
+function montarLinhasDoTempo(
+  historico: { visualizacoes: { email: string; vistoEm: string }[]; envios: EnvioHistorico[] },
+  notas: NotaHistorico[],
+): LinhaDoTempo[] {
   const { visualizacoes, envios } = historico;
-  const linhas: LinhaDoTempo[] = [
+  return [
     ...envios.map((e, i) => ({
       id: `envio-${i}-${e.enviadoEm}`,
       quando: e.enviadoEm,
       icone: '📱',
-      titulo: [MOMENTO_LABEL[e.momento] ?? e.momento, e.variante ? VARIANTE_LABEL[e.variante] : null]
+      titulo: [
+        'Enviado no WhatsApp',
+        MOMENTO_LABEL[e.momento] ?? e.momento,
+        e.variante ? VARIANTE_LABEL[e.variante] : null,
+      ]
         .filter(Boolean)
         .join(' · '),
-      corpo: '',
+      corpo: e.texto?.trim() ?? '',
       quem: e.enviadoPor ? `por ${e.enviadoPor.split('@')[0]}` : null,
+      envioCliente: true,
     })),
     ...visualizacoes.map((v, i) => ({
       id: `vista-${i}-${v.vistoEm}`,
@@ -939,6 +1017,7 @@ export function ComunicacaoCard({
       titulo: n.titulo,
       corpo: n.corpo,
       quem: n.autor,
+      envioCliente: n.tipo === 'enviado',
       cor:
         n.tipo === 'ok'
           ? 'var(--prazo-em-dia)'
@@ -947,6 +1026,110 @@ export function ComunicacaoCard({
             : undefined,
     })),
   ].sort((a, b) => ms(b.quando) - ms(a.quando));
+}
+
+/**
+ * Versão curta do histórico (popup de prévia): as últimas atualizações, com
+ * aberturas seguidas do cliente juntas numa linha só.
+ */
+export function HistoricoResumo({
+  historico,
+  notas = [],
+  tarefasCliente = [],
+  max = 4,
+  hrefCompleto,
+}: {
+  historico: { visualizacoes: { email: string; vistoEm: string }[]; envios: EnvioHistorico[] };
+  notas?: NotaHistorico[];
+  tarefasCliente?: TarefaClienteHistorico[];
+  max?: number;
+  hrefCompleto?: string;
+}) {
+  const todas = montarLinhasDoTempo(historico, notas);
+  const linhas: (LinhaDoTempo & { vezes: number })[] = [];
+  for (const l of todas) {
+    const ultima = linhas[linhas.length - 1];
+    if (ultima && ultima.id.startsWith('vista-') && l.id.startsWith('vista-')) {
+      ultima.vezes++;
+      continue;
+    }
+    if (linhas.length >= max) break;
+    linhas.push({ ...l, vezes: 1 });
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">Histórico do post</div>
+        {hrefCompleto && todas.length > 0 && (
+          <a href={hrefCompleto} className="text-[11px] font-semibold text-t3 transition hover:text-ink">
+            ver tudo →
+          </a>
+        )}
+      </div>
+      {linhas.length === 0 ? (
+        <p className="text-[12px] text-t3">Nada por aqui ainda.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {linhas.map((l) => {
+            const p = l.envioCliente ? prazoDoEnvio(l.quando, tarefasCliente) : null;
+            return (
+              <li key={l.id} className="flex items-start gap-2 text-[12px]">
+                <span className="w-[78px] shrink-0 pt-px font-mono text-[10.5px] text-t3">{quandoCurto(l.quando)}</span>
+                <span className="w-4 shrink-0 text-center" style={l.cor ? { color: l.cor } : undefined}>
+                  {l.icone}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-t1" style={l.cor ? { color: l.cor } : undefined} title={l.titulo}>
+                    {l.titulo}
+                    {l.vezes > 1 && <span className="text-t3"> · {l.vezes}x</span>}
+                  </div>
+                  {p && (
+                    <div className={`truncate text-[11px] ${p.alerta ? 'font-semibold text-[var(--prazo-hoje)]' : 'text-t3'}`} title={p.texto}>
+                      {p.texto}
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Histórico do post: comunicação com o cliente numa linha do tempo só:
+ * comentários (cliente e equipe), aberturas do portal, lembretes enviados e
+ * eventos do processo (alteração concluída, reprovada…).
+ */
+export function ComunicacaoCard({
+  historico,
+  lembrete,
+  notas = [],
+  tarefasCliente = [],
+}: {
+  /** Comentários do post e eventos do processo, já classificados. */
+  notas?: NotaHistorico[];
+  /** Tarefas do cliente no post: base do "prazo dado" em cada envio. */
+  tarefasCliente?: TarefaClienteHistorico[];
+  /** Tarefa que está com o cliente agora (pra mandar lembrete). */
+  lembrete?: { tarefaId: string; titulo: string; clienteNome: string } | null;
+  historico: {
+    visualizacoes: { email: string; vistoEm: string }[];
+    envios: {
+      momento: string;
+      variante: string | null;
+      enviadoEm: string;
+      enviadoPor: string | null;
+      texto?: string | null;
+    }[];
+  };
+}) {
+  const [verTudo, setVerTudo] = useState(false);
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
+  const { visualizacoes, envios } = historico;
+  const linhas = montarLinhasDoTempo(historico, notas);
 
   const doCliente = notas.filter((n) => DO_CLIENTE.has(n.tipo)).sort((a, b) => ms(b.quando) - ms(a.quando));
   const visiveis = verTudo ? linhas : linhas.slice(0, 8);
@@ -1022,6 +1205,20 @@ export function ComunicacaoCard({
                       </span>
                       {l.quem && <span className="text-[11px] text-t3">{l.quem}</span>}
                     </div>
+                    {l.envioCliente &&
+                      (() => {
+                        const p = prazoDoEnvio(l.quando, tarefasCliente);
+                        return p ? (
+                          <div
+                            className={`mt-0.5 text-[11.5px] ${
+                              p.alerta ? 'font-semibold text-[var(--prazo-hoje)]' : 'text-t2'
+                            }`}
+                          >
+                            {p.texto}
+                            {p.alerta && ' · pouco tempo'}
+                          </div>
+                        ) : null;
+                      })()}
                     {l.corpo && (
                       <div className="mt-1">
                         <p

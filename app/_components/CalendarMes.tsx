@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { PostCalendario } from '@/lib/notion';
-import { PreviaPostModal } from '@/app/admin/aprovacoes/PreviaPostModal';
+import { PreviaPostModal, prefetchPrevia } from '@/app/admin/aprovacoes/PreviaPostModal';
 
 type CalDay = {
   iso: string;
@@ -65,8 +65,8 @@ function PostIcon({ icon, fallback }: { icon: string | null; fallback: string })
 }
 
 function fallbackEmoji(p: PostCalendario): string {
-  if (p.tipo === 'reels') return '🎬';
-  if (p.tipo === 'story') return '📱';
+  if (p.tipo === 'reels') return '📱';
+  if (p.tipo === 'story') return '⭕';
   return '📄';
 }
 
@@ -75,15 +75,22 @@ export function CalendarMes({
   month,
   posts,
   comPrevia = false,
+  destacarHoje = false,
 }: {
   year: number;
   month: number;
   posts: PostCalendario[];
   /** Área interna: clicar no post abre o popup de prévia em vez da página. */
   comPrevia?: boolean;
+  /** Página do projeto: hoje bem marcado (círculo no número + etiqueta) e dias passados apagados. */
+  destacarHoje?: boolean;
 }) {
   const days = useMemo(() => buildGrid(year, month, posts), [year, month, posts]);
   const [previaId, setPreviaId] = useState<string | null>(null);
+  const hojeIso = useMemo(
+    () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()),
+    [],
+  );
 
   return (
     <div className="hub-cal">
@@ -100,9 +107,20 @@ export function CalendarMes({
         {days.map((d) => (
           <div
             key={d.iso}
-            className={`hub-cal-day ${d.muted ? 'muted' : ''} ${d.today ? 'today' : ''}`}
+            className={`hub-cal-day ${d.muted ? 'muted' : ''} ${d.today ? 'today' : ''} ${
+              destacarHoje && d.today ? 'hoje-forte' : ''
+            } ${destacarHoje && !d.today && d.iso < hojeIso ? 'passado' : ''}`}
           >
-            <div className="hub-cal-day-num">{d.num}</div>
+            {destacarHoje && d.today ? (
+              <div className="flex items-center justify-between gap-1">
+                <span className="hoje-num">{d.num}</span>
+                <span className="hidden rounded-full bg-[#313D65] px-1.5 py-0.5 text-[9px] font-bold tracking-[0.06em] text-white sm:inline">
+                  HOJE
+                </span>
+              </div>
+            ) : (
+              <div className="hub-cal-day-num">{d.num}</div>
+            )}
             {d.posts.slice(0, 4).map((p) => {
               const labelStatus = p.statusGeral ?? p.etapaLabel;
               const conteudo = (
@@ -126,7 +144,7 @@ export function CalendarMes({
                 'block w-full text-left space-y-1 sm:space-y-1.5 rounded-md border border-[rgba(21,21,33,0.12)] bg-white px-1.5 py-1 sm:px-2 sm:py-1.5 text-[10px] sm:text-[11px] leading-tight transition hover:border-navy/40 hover:shadow-sm';
               const titulo = `${p.projetoNome} — ${p.titulo} · ${labelStatus}`;
               return comPrevia ? (
-                <button key={p.id} type="button" onClick={() => setPreviaId(p.id)} className={cls} title={titulo}>
+                <button key={p.id} type="button" onMouseEnter={() => prefetchPrevia(p.id)} onClick={() => setPreviaId(p.id)} className={cls} title={titulo}>
                   {conteudo}
                 </button>
               ) : (

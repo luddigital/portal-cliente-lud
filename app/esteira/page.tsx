@@ -94,6 +94,8 @@ export default async function EsteiraPage() {
   const ehAdmin = env.auth.adminEmails.includes(
     session.email.trim().toLowerCase(),
   );
+  // Admin usa a esteira nova (layout com a sidebar); colaborador continua aqui.
+  if (ehAdmin) redirect('/admin/esteira-copy');
   let ehColaborador = !!session.colaboradorId;
   if (!ehColaborador && !ehAdmin) {
     try {

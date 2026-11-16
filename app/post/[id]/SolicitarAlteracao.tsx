@@ -129,7 +129,7 @@ export function SolicitarAlteracao({
 
   return (
     <section
-      className={`card p-5 ${pedido ? 'border-l-4 border-l-[var(--cal-alteracao)]' : ''}`}
+      className={`card p-5 ${pedido ? '!bg-[var(--cal-alteracao-soft)]' : ''}`}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { getColaboradorByEmail, lerCopyDoPost } from '@/lib/notion';
+import { getColaboradorByEmail, lerCopyDoPost, lerInfoDoPostEsteira } from '@/lib/notion';
 
 export const runtime = 'nodejs';
 
@@ -29,8 +29,11 @@ export async function GET(
     if (!ehAdmin && !ehColaborador)
       return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
 
-    const copy = await lerCopyDoPost(params.postId);
-    return NextResponse.json({ ok: true, copy });
+    const [copy, info] = await Promise.all([
+      lerCopyDoPost(params.postId),
+      lerInfoDoPostEsteira(params.postId).catch(() => null),
+    ]);
+    return NextResponse.json({ ok: true, copy, info });
   } catch (err: any) {
     console.error('[esteira/copy] erro:', err);
     return NextResponse.json(

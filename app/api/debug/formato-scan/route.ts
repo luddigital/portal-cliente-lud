@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { env } from '@/lib/env';
@@ -8,7 +9,7 @@ export async function GET() {
   if (process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'só em dev' }, { status: 403 });
   }
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
   // IG | @roteirosnaafrica projeto id (descoberto antes nos logs)
   const PROJETO_IG = '1e0d04d2-3b4a-8052-ab3f-ffb9f9387db1';

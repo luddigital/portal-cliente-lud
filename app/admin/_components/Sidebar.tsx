@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { BotaoAtualizar } from './BotaoAtualizar';
 
 type Item = {
   label: string;
@@ -11,48 +12,83 @@ type Item = {
   soon?: boolean; // "em breve" — visual mais discreto
 };
 
-// 🏠 Home
-const HOME: Item[] = [
-  { label: 'Dashboard', href: '/admin', icon: 'home' },
-];
+// Menu da proposta NOVA: Dashboard sozinho em cima e um bloco por grupo,
+// cada um recolhível. Cinza e discreto; o grupo da página atual abre sozinho.
+const HOME: Item[] = [{ label: 'Dashboard', href: '/admin', icon: 'home' }];
 
-// 📋 Social Media — o fluxo de produção completo
-const SOCIAL: Item[] = [
-  { label: 'Processo', href: '/admin/processo', icon: 'processo', soon: true },
-  { label: 'Calendário', href: '/admin/calendario', icon: 'calendario', soon: true },
-  { label: 'Esteira Copy', href: '/esteira', icon: 'esteira' },
-  { label: 'Esteira Arte', href: '/admin/esteira-arte', icon: 'arte', soon: true },
-  { label: 'Entregas', href: '/admin/entregas', icon: 'entregas' },
-  { label: 'Programação', href: '/programacao', icon: 'programacao' },
-  { label: 'Aprovações', href: '/admin/aprovacoes', icon: 'aprovacao' },
-  { label: 'Régua da semana', href: '/admin/regua', icon: 'regua' },
+type Grupo = { titulo: string; icon: keyof typeof ICONES; itens: Item[] };
+const GRUPOS: Grupo[] = [
+  {
+    titulo: 'Dia a dia',
+    icon: 'tarefas',
+    itens: [
+      { label: 'Tarefas', href: '/admin/tarefas', icon: 'tarefas' },
+      { label: 'Entregas', href: '/admin/entregas', icon: 'entregas' },
+      { label: 'Postagens', href: '/admin/postagens', icon: 'calendario' },
+      { label: 'Calendários', href: '/admin/calendario', icon: 'calendario' },
+    ],
+  },
+  {
+    titulo: 'Produção',
+    icon: 'esteira',
+    itens: [
+      { label: 'Esteira Copy', href: '/admin/esteira-copy', icon: 'esteira' },
+      { label: 'Esteira Arte', href: '/admin/esteira-arte', icon: 'arte' },
+      { label: 'Aprovações', href: '/admin/aprovacoes', icon: 'aprovacao' },
+      { label: 'Programação', href: '/programacao', icon: 'programacao' },
+    ],
+  },
+  {
+    titulo: 'Clientes',
+    icon: 'clientes',
+    itens: [
+      { label: 'Clientes', href: '/admin/clientes', icon: 'clientes' },
+      { label: 'Projetos', href: '/admin/projetos', icon: 'projetos' },
+      { label: 'Objetivos da semana', href: '/gestao', icon: 'processo' },
+      { label: 'Reuniões', href: '/admin/reunioes', icon: 'calendario' },
+    ],
+  },
+  {
+    titulo: 'Comunicação',
+    icon: 'chat',
+    itens: [
+      { label: 'WhatsApp', href: '/admin/whatsapp', icon: 'chat' },
+      { label: 'Régua da semana', href: '/admin/regua', icon: 'regua' },
+      { label: 'Avisos de aprovação', href: '/admin/aprovacoes/avisos', icon: 'sino' },
+      { label: 'Mensagens padrão', href: '/admin/configuracoes/mensagens', icon: 'chat' },
+      { label: 'Notificações', href: '/admin/notificacoes', icon: 'sino' },
+    ],
+  },
+  {
+    titulo: 'Recursos',
+    icon: 'banco',
+    itens: [
+      { label: 'Contexto dos clientes', href: '/admin/contexto-clientes', icon: 'clientes' },
+      { label: 'Processo', href: '/admin/processo', icon: 'processo' },
+      { label: 'Playbooks', href: '/admin/playbooks', icon: 'tarefas', soon: true },
+      { label: 'Inbox de briefing', href: '/admin/inbox', icon: 'entregas', soon: true },
+      { label: 'Banco de materiais', href: '/admin/banco-de-materiais', icon: 'banco' },
+    ],
+  },
+  {
+    titulo: 'Análise',
+    icon: 'grafico',
+    itens: [
+      { label: 'Analytics IG', href: '/admin/analise', icon: 'grafico' },
+      { label: 'Tráfego pago', href: '/admin/trafego-pago', icon: 'trafego' },
+    ],
+  },
+  {
+    titulo: 'Configurações',
+    icon: 'ajustes',
+    itens: [
+      { label: 'Equipe', href: '/admin/equipe', icon: 'equipe' },
+      { label: 'Sync Notion', href: '/admin/sync', icon: 'sync' },
+      { label: 'Configurações', href: '/admin/configuracoes', icon: 'ajustes' },
+    ],
+  },
 ];
-
-// 👥 Clientes
-const CLIENTES: Item[] = [
-  { label: 'Todos os clientes', href: '/admin/clientes', icon: 'clientes' },
-  { label: 'Projetos', href: '/admin/projetos', icon: 'projetos' },
-];
-
-// 📊 Análise
-const ANALISE: Item[] = [
-  { label: 'Analytics IG', href: '/admin/analise', icon: 'grafico' },
-  { label: 'Tráfego pago', href: '/admin/trafego-pago', icon: 'trafego' },
-];
-
-// 💬 Comunicação
-const COMUNICACAO: Item[] = [
-  { label: 'WhatsApp', href: '/admin/whatsapp', icon: 'chat' },
-  { label: 'Notificações', href: '/admin/notificacoes', icon: 'sino' },
-];
-
-// ⚙️ Configurações
-const CONFIG: Item[] = [
-  { label: 'Equipe', href: '/admin/equipe', icon: 'equipe' },
-  { label: 'Banco de materiais', href: '/admin/banco-de-materiais', icon: 'banco' },
-  { label: 'Sync Notion', href: '/admin/sync', icon: 'sync' },
-  { label: 'Configurações', href: '/admin/configuracoes', icon: 'ajustes' },
-];
+const TODOS_ITENS: Item[] = [...HOME, ...GRUPOS.flatMap((g) => g.itens)];
 
 const ICONES = {
   home: 'M3 10.5 12 3l9 7.5 M5 9.5V21h14V9.5',
@@ -74,6 +110,7 @@ const ICONES = {
   sync: 'M3 12a9 9 0 0 1 15-6.7L21 8 M21 12a9 9 0 0 1-15 6.7L3 16 M17 4v4h4 M7 20v-4H3',
   regua: 'M3 17 17 3l4 4L7 21z M7 13l2 2 M10 10l2 2 M13 7l2 2',
   entregas: 'M3 12h5l2 3h4l2-3h5 M5.5 5h13l2.5 7v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7z',
+  tarefas: 'M10 6h10 M10 12h10 M10 18h10 M4 6l1.5 1.5L8 5 M4 12l1.5 1.5L8 11 M4 18l1.5 1.5L8 17',
   ajustes: 'M4 6h9 M17 6h3 M15 4v4 M4 12h3 M11 12h9 M9 10v4 M4 18h11 M19 18h1 M17 16v4',
 };
 
@@ -99,133 +136,95 @@ function NavIcon({ icon }: { icon: keyof typeof ICONES }) {
 
 function ehAtivo(pathname: string, href: string): boolean {
   if (href === '/admin') return pathname === '/admin';
-  // A página de uma entrega (/admin/entrega/[id]) fica dentro de Entregas.
+  // Endereço antigo da entrega (/admin/entrega/[id]) redireciona pra Entregas.
   if (href === '/admin/entregas' && pathname.startsWith('/admin/entrega/')) return true;
+  if (href === '/admin/configuracoes' && pathname.startsWith('/admin/configuracoes/mensagens')) return false;
   return pathname === href || pathname.startsWith(href + '/');
 }
 
-function ItemLink({ item, ativo }: { item: Item; ativo: boolean }) {
+function ItemLink({ item, ativo, recuo = false }: { item: Item; ativo: boolean; recuo?: boolean }) {
+  // Página que ainda não existe no portal: aparece apagada, sem link.
+  if (item.soon) {
+    return (
+      <span className={`flex cursor-default items-center gap-2 rounded-[9px] py-[7px] pr-2.5 text-[13px] text-[#B4B4B9] ${recuo ? 'pl-[38px]' : 'pl-2.5'}`}>
+        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.06em]">em breve</span>
+      </span>
+    );
+  }
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition ${
-        ativo
-          ? 'bg-[rgba(21,21,33,0.055)] font-semibold text-ink'
-          : 'text-t2 hover:bg-[rgba(21,21,33,0.03)] hover:text-ink'
-      } ${item.soon ? 'opacity-70' : ''}`}
+      className={`flex items-center gap-2 rounded-[9px] py-[7px] pr-2.5 text-[13px] transition ${recuo ? 'pl-[38px]' : 'pl-2.5'} ${
+        ativo ? 'bg-[#F4F4F5] font-bold text-[#111113]' : 'text-[#46464B] hover:bg-[#FAFAFA] hover:text-[#111113]'
+      }`}
     >
-      <span className={ativo ? 'text-navy' : 'text-t3'}>
-        <NavIcon icon={item.icon} />
-      </span>
-      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      {item.badge != null && (
-        <span className="shrink-0 rounded-full bg-hubRed px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-          {item.badge}
+      {!recuo && (
+        <span className={ativo ? 'text-[#111113]' : 'text-[#8A8A90]'}>
+          <NavIcon icon={item.icon} />
         </span>
       )}
-      {item.soon && (
-        <span className="shrink-0 rounded-full bg-bgSoft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-t3">
-          em breve
-        </span>
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {item.badge != null && item.badge > 0 && (
+        <span className="shrink-0 text-[11px] font-bold tabular-nums text-[#8A8A90]">{item.badge}</span>
       )}
     </Link>
   );
 }
 
-function SecaoTitulo({ children }: { children: React.ReactNode }) {
+function BlocoGrupo({ grupo, pathname }: { grupo: Grupo; pathname: string }) {
+  const temAtivo = grupo.itens.some((it) => ehAtivo(pathname, it.href));
   return (
-    <div className="mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-t3">
-      {children}
-    </div>
+    <details open={temAtivo} className="group rounded-[14px] border border-[#EFEFF1] bg-white p-1">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-[10px] px-2 py-1.5 hover:bg-[#FAFAFA] [&::-webkit-details-marker]:hidden">
+        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[7px] bg-[#F4F4F5] text-[#8A8A90]">
+          <NavIcon icon={grupo.icon} />
+        </span>
+        <span className="flex-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#636369]">{grupo.titulo}</span>
+        <span className="text-[9px] text-[#B4B4B9] transition group-open:rotate-90">▶</span>
+      </summary>
+      <div className="mt-0.5 flex flex-col gap-px">
+        {grupo.itens.map((it) => (
+          <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} recuo />
+        ))}
+      </div>
+    </details>
   );
 }
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '';
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[rgba(21,21,33,0.08)] bg-white lg:flex">
-      {/* topo: logo + avatar */}
-      <div className="flex items-center justify-between px-5 py-4">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[17px] font-bold tracking-[-0.02em] text-ink">
-            LudHub
-          </span>
-          <span className="rounded bg-bgSoft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-t3">
-            MVP
-          </span>
-        </div>
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-navy text-[10px] font-bold text-white">
-          LD
-        </span>
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[#E9E9EB] bg-[#FAFAFA] lg:flex">
+      <div className="flex items-center justify-between px-5 pb-3 pt-4">
+        <span className="text-[17px] font-extrabold tracking-[-0.02em] text-[#111113]">LudHub</span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#111113] text-[10px] font-bold text-white">LD</span>
       </div>
-
-      {/* navegação */}
-      <nav className="flex-1 overflow-y-auto px-3 py-2">
-        <div className="space-y-0.5">
+      <div className="px-3 pb-2">
+        <BotaoAtualizar />
+      </div>
+      <nav className="flex flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3 pt-1">
+        <div className="rounded-[14px] border border-[#EFEFF1] bg-white p-1">
           {HOME.map((it) => (
             <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} />
           ))}
         </div>
-
-        <SecaoTitulo>Social Media</SecaoTitulo>
-        <div className="mt-1 space-y-0.5">
-          {SOCIAL.map((it) => (
-            <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} />
-          ))}
-        </div>
-
-        <SecaoTitulo>Clientes</SecaoTitulo>
-        <div className="mt-1 space-y-0.5">
-          {CLIENTES.map((it) => (
-            <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} />
-          ))}
-        </div>
-
-        <SecaoTitulo>Análise</SecaoTitulo>
-        <div className="mt-1 space-y-0.5">
-          {ANALISE.map((it) => (
-            <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} />
-          ))}
-        </div>
-
-        <SecaoTitulo>Comunicação</SecaoTitulo>
-        <div className="mt-1 space-y-0.5">
-          {COMUNICACAO.map((it) => (
-            <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} />
-          ))}
-        </div>
-
-        <SecaoTitulo>Configurações</SecaoTitulo>
-        <div className="mt-1 space-y-0.5">
-          {CONFIG.map((it) => (
-            <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} />
-          ))}
-        </div>
+        {GRUPOS.map((g) => (
+          <BlocoGrupo key={g.titulo} grupo={g} pathname={pathname} />
+        ))}
       </nav>
-
-      {/* sair */}
-      <div className="border-t border-[rgba(21,21,33,0.08)] px-3 py-3">
+      <div className="border-t border-[#E9E9EB] px-3 py-3">
         <form action="/api/auth/logout" method="post">
           <button
             type="submit"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] text-t2 transition hover:bg-[rgba(21,21,33,0.03)] hover:text-ink"
+            className="flex w-full items-center gap-3 rounded-[9px] px-2.5 py-2 text-[13px] text-[#46464B] transition hover:bg-white hover:text-[#111113]"
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="shrink-0 text-t3"
-            >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#8A8A90]">
               <path d="M14 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8" />
               <path d="M17 16l5-4-5-4 M22 12H10" />
             </svg>
-            Sair da Conta
+            Sair da conta
           </button>
         </form>
       </div>
@@ -235,8 +234,8 @@ export function Sidebar() {
 
 /** Barra de topo do admin no mobile (a sidebar fica só no desktop). */
 export function TopbarMobile() {
-  const pathname = usePathname();
-  const todos = [...HOME, ...SOCIAL, ...CLIENTES, ...ANALISE, ...COMUNICACAO, ...CONFIG];
+  const pathname = usePathname() ?? '';
+  const todos = TODOS_ITENS;
   return (
     <div className="sticky top-0 z-30 border-b border-[rgba(21,21,33,0.08)] bg-white lg:hidden">
       <div className="flex items-center justify-between px-4 py-3">
@@ -244,17 +243,17 @@ export function TopbarMobile() {
           <span className="text-[15px] font-bold tracking-[-0.02em] text-ink">
             LudHub
           </span>
-          <span className="rounded bg-bgSoft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-t3">
-            MVP
-          </span>
         </div>
-        <form action="/api/auth/logout" method="post">
-          <button type="submit" className="text-[12px] text-mauve">
-            Sair
-          </button>
-        </form>
+        <div className="flex items-center gap-3">
+          <BotaoAtualizar variante="compacto" />
+          <form action="/api/auth/logout" method="post">
+            <button type="submit" className="text-[12px] text-mauve">
+              Sair
+            </button>
+          </form>
+        </div>
       </div>
-      <div className="flex gap-1 overflow-x-auto px-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-1 overflow-x-auto min-h-fit px-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {todos.map((it) => {
           const ativo = ehAtivo(pathname, it.href);
           return (

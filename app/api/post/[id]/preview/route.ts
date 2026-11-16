@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { getPostComDetalhes, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
+import { lerCopyDoPost, lerInfoDoPostEsteira, getHorarioDoProjeto, getPostComDetalhes, getProjetoNome, lerComentariosDoPost, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
+import { lerHistoricoComunicacao } from '@/lib/supabase';
+import { notasDoPost, tarefasClienteDoHistorico } from '@/lib/historico-post';
 import { compararNoFluxo } from '@/lib/etapas-projeto';
 import { extractDriveFileId, extractDriveFolderId, listFolderFiles } from '@/lib/drive';
 
@@ -23,11 +25,26 @@ export async function GET(
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
 
+  const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+  // Tarefas, equipe e comentários só precisam do id: saem junto com o post
+  // (antes era tudo em fila, um depois do outro). Tarefas internas só pra admin.
+  type Extras = [
+    Awaited<ReturnType<typeof listarTarefasDoPost>>,
+    Awaited<ReturnType<typeof listColaboradores>>,
+    Awaited<ReturnType<typeof lerComentariosDoPost>>,
+  ];
+  const extrasP: Promise<Extras> = ehAdmin
+    ? Promise.all([
+        listarTarefasDoPost(params.id).catch(() => []),
+        listColaboradores().catch(() => []),
+        lerComentariosDoPost(params.id).catch(() => []),
+      ])
+    : Promise.resolve([[], [], []] as Extras);
+
   const post = await getPostComDetalhes(params.id);
   if (!post) return NextResponse.json({ error: 'post não encontrado' }, { status: 404 });
 
   // Permissão: admin bypassa; cliente só vê posts dos próprios projetos.
-  const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
   if (
     !ehAdmin &&
     (!post.projetoId || !session.projetoIds.includes(post.projetoId))
@@ -35,51 +52,53 @@ export async function GET(
     return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   }
 
-  // Resolve arquivos (igual ao fluxo da página do post)
+  // Resolve arquivos (igual ao fluxo da página do post), todas as pastas ao mesmo tempo.
   type Arquivo = {
     id: string;
     name: string;
     mimeType: string;
     webViewLink: string;
   };
-  const arquivos: Arquivo[] = [];
-  for (const link of post.driveLinks) {
+  const arquivosDoLink = async (link: { name: string; url: string }): Promise<Arquivo[]> => {
     const folderId = extractDriveFolderId(link.url);
     if (folderId) {
       try {
         const files = await listFolderFiles(folderId);
-        for (const f of files) {
-          if (f.isFolder) continue;
-          arquivos.push({
-            id: f.id,
-            name: f.name,
-            mimeType: f.mimeType ?? '',
-            webViewLink: f.webViewLink,
-          });
-        }
+        return files
+          .filter((f) => !f.isFolder)
+          .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType ?? '', webViewLink: f.webViewLink }));
       } catch {
-        /* pula pasta com erro */
+        return []; // pula pasta com erro
       }
-      continue;
     }
     const fileId = extractDriveFileId(link.url);
-    if (fileId) {
-      arquivos.push({
-        id: fileId,
-        name: link.name,
-        mimeType: '',
-        webViewLink: link.url,
-      });
-    }
-  }
+    return fileId ? [{ id: fileId, name: link.name, mimeType: '', webViewLink: link.url }] : [];
+  };
 
-  // Tarefas internas só pra admin.
-  const [brutas, colaboradores] = ehAdmin
-    ? await Promise.all([
-        listarTarefasDoPost(post.id).catch(() => []),
-        listColaboradores().catch(() => []),
-      ])
-    : [[], []];
+  const historicoVazio = { visualizacoes: [], envios: [] };
+  // Nome do projeto e horário saem junto (antes eram buscados só no fim, depois de tudo).
+  const projetoP = post.projetoId
+    ? Promise.all([getProjetoNome(post.projetoId).catch(() => null), getHorarioDoProjeto(post.projetoId).catch(() => null)])
+    : Promise.resolve([null, null] as const);
+  // Briefing e copy (só equipe): mesmos blocos da página completa, em versão curta no popup.
+  const briefingP = ehAdmin
+    ? Promise.all([lerInfoDoPostEsteira(params.id).catch(() => null), lerCopyDoPost(params.id).catch(() => null)])
+    : Promise.resolve([null, null] as const);
+  const [listas, historico, [brutas, colaboradores, comentarios], [projetoNome, hora], [info, copy]] = await Promise.all([
+    Promise.all(post.driveLinks.map(arquivosDoLink)),
+    ehAdmin ? lerHistoricoComunicacao(post.id).catch(() => historicoVazio) : Promise.resolve(historicoVazio),
+    extrasP,
+    projetoP,
+    briefingP,
+  ]);
+  const arquivos: Arquivo[] = listas.flat();
+  // Histórico resumido do popup: mesma montagem da página do post.
+  const equipe = new Set([
+    ...env.auth.adminEmails,
+    ...colaboradores.map((c) => (c.email ?? '').trim().toLowerCase()).filter(Boolean),
+  ]);
+  const notas = ehAdmin ? notasDoPost({ comentarios, equipe, tarefas: brutas, envios: historico.envios }) : [];
+  const tarefasCliente = ehAdmin ? tarefasClienteDoHistorico(brutas) : [];
   const tarefas = brutas.map((t) => ({
     ...t,
     aberta: t.aberta && !t.finalizada,
@@ -89,8 +108,11 @@ export async function GET(
   const colaboradorPorPessoa: Record<string, string> = {};
   for (const c of colaboradores) if (c.pessoaUserId) colaboradorPorPessoa[c.pessoaUserId] = c.id;
 
+  // Nome do projeto e horário de postagem (sempre de Brasília) pra prévia.
   return NextResponse.json({
     titulo: post.titulo,
+    projetoNome: projetoNome ?? undefined,
+    hora,
     legenda: post.legenda ?? '',
     formatoTipo: post.formatoTipo,
     dataPostagem: post.data,
@@ -106,5 +128,12 @@ export async function GET(
     arquivos,
     tarefas,
     colaboradores: colaboradorPorPessoa,
+    historico: ehAdmin ? historico : null,
+    notas,
+    tarefasCliente,
+    ideia: info?.ideia ?? null,
+    briefing: info?.briefing ?? null,
+    roteiro: copy?.voice ?? null,
+    cards: copy?.carrossel ?? null,
   });
 }

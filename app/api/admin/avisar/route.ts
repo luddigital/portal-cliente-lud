@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getSession } from '@/lib/auth';
@@ -49,7 +50,7 @@ export async function POST(req: Request): Promise<Response> {
       return body.emails.map((e) => e.trim().toLowerCase());
     }
     // Sem lista: pega todos clientes do banco
-    const notion = new Client({ auth: env.notion.token });
+    const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
     const out: string[] = [];
     let cursor: string | undefined;
     do {

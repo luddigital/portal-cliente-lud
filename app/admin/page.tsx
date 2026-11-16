@@ -1,468 +1,407 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { getSession } from '@/lib/auth';
-import {
-  listAllProjetos,
-  getResumoTarefasCliente,
-  getEntregasDoDia,
-  listPostsNoIntervalo,
-  CATEGORIA_LABEL,
-  type ProjetoListItem,
-  type CategoriaTarefa,
-  type ResumoTarefasCliente,
-  type PostCalendario,
-} from '@/lib/notion';
 import { env } from '@/lib/env';
-import { EntregasResumo } from './_components/EntregasPainel';
-import { CalendarSemana, type DiaSemana } from './_components/CalendarSemana';
-import { AtualizacoesCompacto } from './_components/AtualizacoesCompacto';
-import { ProjetosTabs, type ItemProjeto } from './_components/ProjetosTabs';
-import { classificarProjeto } from '@/lib/projetoServico';
+import {
+  listAllClientes,
+  listAllProjetos,
+  listPostsNoIntervalo,
+  listarTarefasAbertasDeTodos,
+  type PostCalendario,
+  type TarefaDeTodos,
+} from '@/lib/notion';
+import { nomeCurtoDoProjeto, rotas } from '@/lib/rotas';
+import { BotaoAtualizar } from './_components/BotaoAtualizar';
+import { Barra, Cabecalho, Card, Pagina, Ponto, ST, Tag, TituloCard, Vazio, hojeSP, somaDias, type St } from './_ui/lud';
+import { MesDaLud } from './_ui/MesDaLud';
+import { CardProjeto, carregarProjetos } from './_ui/ProjetosCards';
+import { TarefasDoDia } from './_ui/TarefasDoDia';
+import { CalendarioSemanaHome } from './_ui/CalendarioSemanaHome';
+import { montarSemana } from './_ui/semanaHome';
+import { carregarQuadro, type LinhaCliente, type QuadroEntrega } from './entregas/quadro';
+import { entregasDeHoje } from './entregas/HojePrimeiro';
+import { tipoDaEntrega } from '@/lib/entrega-dados';
 
-const DIAS_ABREV = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
+/** Linhas que já venceram: rodadas anteriores + rodada atual com prazo antes de hoje. */
+function linhasAtrasadas(q: { colunas: { linhas: LinhaCliente[] }[] }, hoje: string): LinhaCliente[] {
+  return [...q.colunas[0].linhas, ...q.colunas[1].linhas.filter((l) => !!l.prazoMaisAntigo && l.prazoMaisAntigo < hoje)];
 }
-
-function inicioDaSemana(d: Date): Date {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diff = (x.getDay() + 6) % 7; // dias desde a segunda
-  x.setDate(x.getDate() - diff);
-  return x;
-}
-
-const ORDEM_CATEGORIAS: CategoriaTarefa[] = [
-  'pauta',
-  'previas',
-  'materiais',
-  'post',
-  'stories',
-];
-
-const ETAPA_ABREV: Record<CategoriaTarefa, string> = {
-  pauta: 'Tema',
-  previas: 'Info',
-  materiais: 'Material',
-  post: 'Post',
-  stories: 'Stories',
-};
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminPage({
-  searchParams,
-}: {
-  searchParams: { semana?: string };
-}) {
+const semTraco = (s: string) => s.replace(/-/g, '');
+const NOMES_DIA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+
+function dataPorExtenso(iso: string) {
+  const d = new Date(iso + 'T12:00:00Z');
+  const t = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(d);
+  return t[0].toUpperCase() + t.slice(1).replace('-feira', '');
+}
+
+/** Dashboard da proposta NOVA: entregas do dia, semana, entregas pendentes, mês da Lud. e projetos. */
+export default async function AdminPage({ searchParams }: { searchParams: { semana?: string; dia?: string; tipo?: string } }) {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (!env.auth.adminEmails.includes(session.email.trim().toLowerCase())) {
-    redirect('/');
-  }
-  const semanaParam = searchParams.semana;
+  if (!env.auth.adminEmails.includes(session.email.trim().toLowerCase())) redirect('/');
+  const hoje = hojeSP();
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
-        <div className="mx-auto flex max-w-4xl lg:max-w-none items-center justify-between px-6 lg:px-8 py-4">
-          <div>
-            <div className="text-[20px] font-bold tracking-[-0.02em] text-ink">
-              Portal da Lud<span className="font-light text-mauve">.</span>
-            </div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
-              admin
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <a
-              href="/api/admin/atualizar"
-              title="Limpa cache e puxa dados frescos do Notion"
-              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-navy px-3 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M21 12a9 9 0 1 1-3-6.7" />
-                <path d="M21 3v6h-6" />
-              </svg>
-              Atualizar agora
-            </a>
-            <form action="/api/auth/logout" method="post">
-              <button className="text-[12px] text-mauve transition hover:text-ink">
-                Sair
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-4xl lg:max-w-none px-6 lg:px-8 py-10 space-y-10">
-        <Suspense
-          fallback={
-            <div className="h-[120px] rounded-2xl bg-bgSoft animate-pulse" />
-          }
-        >
-          <BannerHoje />
-        </Suspense>
-
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
-              Calendário da semana
-            </h2>
-            <p className="mt-1 text-[14px] text-t2">
-              Todas as postagens da semana, de todos os clientes.
-            </p>
-          </div>
-          <Suspense
-            key={semanaParam ?? 'atual'}
-            fallback={
-              <div className="h-[220px] rounded-2xl bg-bgSoft animate-pulse" />
-            }
-          >
-            <SemanaCalendario semanaParam={semanaParam} />
-          </Suspense>
-        </section>
-
-        <section>
-          <Suspense
-            fallback={
-              <div className="overflow-hidden rounded-xl border border-[rgba(21,21,33,0.06)] bg-white">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`h-[42px] bg-bgSoft/40 animate-pulse ${
-                      i > 0 ? 'border-t border-[rgba(21,21,33,0.05)]' : ''
-                    }`}
-                  />
-                ))}
-              </div>
-            }
-          >
-            <AtualizacoesCompacto />
-          </Suspense>
-        </section>
-
-        <section>
-          <Suspense fallback={<div className="h-[260px] rounded-2xl bg-bgSoft animate-pulse" />}>
-            <EntregasResumo linkTodas />
-          </Suspense>
-        </section>
-
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">
-              Projetos
-            </h2>
-            <p className="mt-1 text-[14px] text-t2">
-              Clica num card pra ver o projeto, suas pendências e o cliente dono.
-            </p>
-          </div>
-          <Suspense
-            fallback={
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-[100px] rounded-2xl border border-[rgba(21,21,33,0.08)] bg-bgSoft animate-pulse"
-                  />
-                ))}
-              </div>
-            }
-          >
-            <ListaProjetos />
-          </Suspense>
-        </section>
-
-      </main>
-    </div>
+    <Pagina>
+      <Cabecalho eyebrow={dataPorExtenso(hoje)} titulo="Gestão de Projetos" acoes={<BotaoAtualizar variante="compacto" />} />
+      <Suspense fallback={<div className="h-[190px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
+        <EntregasDoDia aba={searchParams.dia === 'atrasos' ? 'atrasos' : 'hoje'} />
+      </Suspense>
+      <Suspense fallback={<div className="h-[380px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
+        <SemanaDosPosts deslocamento={Number(searchParams.semana) || 0} />
+      </Suspense>
+      <Suspense fallback={<div className="h-[420px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
+        <EntregasPendentes />
+      </Suspense>
+      <Suspense fallback={<div className="h-[420px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
+        <MesComNumeros />
+      </Suspense>
+      <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
+        <ProjetosDestaque tipo={searchParams.tipo ?? ''} />
+      </Suspense>
+      <Suspense fallback={<div className="h-[420px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
+        <TarefasDoDiaBloco />
+      </Suspense>
+    </Pagina>
   );
 }
 
-async function ListaProjetos() {
-  const projetos = await listAllProjetos();
-  if (projetos.length === 0) {
-    return (
-      <p className="text-[13px] text-t3">
-        Nenhum projeto cadastrado.
-      </p>
-    );
-  }
-  const itens: ItemProjeto[] = projetos.map((p) => ({
-    id: p.id,
-    servico: classificarProjeto(p.nome),
-    card: <ProjetoCard projeto={p} />,
-  }));
-  return <ProjetosTabs itens={itens} />;
+// ---------------------------------------------------------------- dados
+async function dados() {
+  const [tarefas, projetos] = await Promise.all([
+    listarTarefasAbertasDeTodos().catch(() => [] as TarefaDeTodos[]),
+    listAllProjetos().catch(() => []),
+  ]);
+  const nome = new Map(projetos.map((p) => [semTraco(p.id), p.nome]));
+  const handle = (t: TarefaDeTodos) => (t.projetoId ? nomeCurtoDoProjeto(nome.get(semTraco(t.projetoId))) : null);
+  return { tarefas, handle };
 }
 
-function ProjetoCard({ projeto }: { projeto: ProjetoListItem }) {
-  const detalheHref = `/admin/projetos/${projeto.id}`;
+/** "Aprovação | Post" e "Aprovação | Post 2" viram a mesma etapa. */
+const etapaDe = (titulo: string) => titulo.replace(/\s+\d+$/, '').trim();
+
+// ---------------------------------------------------------------- entregas do dia
+/**
+ * Mesma lógica da página de Entregas: conta ENTREGAS (Aprovação | Post, Arte…),
+ * não tarefas soltas. Hoje = entregas cujo dia é hoje (semanal/mensal no dia fixo).
+ * Atrasos = entregas com rodada passada ainda aberta.
+ */
+async function EntregasDoDia({ aba }: { aba: 'hoje' | 'atrasos' }) {
+  const { hoje, quadros } = await carregarQuadro().catch(() => ({ hoje: hojeSP(), quadros: [] as QuadroEntrega[] }));
+  const dm = (d: string | null) => (d ? `${d.slice(8)}/${d.slice(5, 7)}` : '');
+  const plural = (n: number, un: string) => `${n} ${n === 1 ? un.replace(/s$/, '') : un}`;
+  const handles = (ls: LinhaCliente[]) => {
+    const hs = Array.from(new Set(ls.map((l) => l.handle).filter((h) => h && h !== 'Projeto')));
+    return `${hs.slice(0, 3).join(', ')}${hs.length > 3 ? ` +${hs.length - 3}` : ''}`;
+  };
+  // Conta posts (como no layout); entrega sem post (relatório, reunião) conta tarefas.
+  const contar = (ls: LinhaCliente[]) => {
+    const posts = ls.reduce((s, l) => s + l.posts.length, 0);
+    return posts > 0 ? { n: posts, un: 'posts' } : { n: ls.reduce((s, l) => s + (l.nTarefas || 1), 0), un: 'tarefas' };
+  };
+  const deHoje = entregasDeHoje(quadros, hoje).map((q) => {
+    const faltam = q.colunas[1].linhas.filter((l) => l.prazoMaisAntigo === hoje);
+    const { n, un } = contar(faltam);
+    return { q, faltam, n, un, feita: faltam.length === 0 };
+  });
+  const atrasos = quadros
+    .filter((q) => linhasAtrasadas(q, hoje).length > 0)
+    .map((q) => {
+      const ls = linhasAtrasadas(q, hoje);
+      const venceu = ls.map((l) => l.prazoMaisAntigo).filter((d): d is string => !!d).sort()[0] ?? null;
+      return { q, ls, venceu, ...contar(ls) };
+    })
+    .sort((a, b) => (a.venceu ?? '').localeCompare(b.venceu ?? ''));
+  const feitas = deHoje.filter((e) => e.feita).length;
+  const praHoje = deHoje.length - feitas;
+  const total = deHoje.length + atrasos.length;
+  const pF = total ? (100 * feitas) / total : 0;
+  const pH = total ? (100 * (feitas + praHoje)) / total : 0;
+  const aba_ = (ativa: boolean) =>
+    `rounded-[9px] px-3 py-1.5 text-[12.5px] ${ativa ? 'bg-white font-extrabold shadow-[0_1px_2px_rgba(17,17,19,0.08)]' : 'font-bold text-[#636369]'}`;
   return (
-    <div className="group rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white p-4 transition hover:border-navy/40 hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)]">
-      <a href={detalheHref} className="block">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-semibold tracking-[-0.01em] text-ink truncate">
-              {projeto.nome}
-            </div>
-            <div className="mt-1 text-[11px] text-t3 truncate">
-              {projeto.clienteNome || 'sem cliente'}
-            </div>
-          </div>
-          {projeto.status && (
-            <span className="shrink-0 rounded-full bg-bgSoft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em] text-t2">
-              {projeto.status}
+    <Card>
+      <div className="grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)] lg:items-center">
+        <div className="flex items-center gap-4">
+          <span
+            className="flex h-[92px] w-[92px] shrink-0 items-center justify-center rounded-full"
+            style={{
+              background: total
+                ? `conic-gradient(${ST.ok[2]} 0 ${pF}%, ${ST.hoje[2]} ${pF}% ${pH}%, ${ST.atr[2]} ${pH}% 100%)`
+                : '#E9E9EB',
+            }}
+          >
+            <span className="flex h-[66px] w-[66px] flex-col items-center justify-center rounded-full bg-white">
+              <b className="text-[20px] leading-none">{feitas}/{deHoje.length}</b>
+              <span className="text-[10px] text-[#636369]">feitas</span>
             </span>
-          )}
+          </span>
+          <span className="flex flex-col gap-1 text-[12.5px]">
+            <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#636369]">Entregas do dia</span>
+            <span className="flex items-center gap-1.5"><Ponto st="ok" />{feitas} {feitas === 1 ? 'feita' : 'feitas'}</span>
+            <span className="flex items-center gap-1.5"><Ponto st="hoje" />{praHoje} pra hoje</span>
+            <Link href="/admin?dia=atrasos" scroll={false} className="flex items-center gap-1.5 font-bold text-[#7E211C]"><Ponto st="atr" />{atrasos.length} {atrasos.length === 1 ? 'atraso' : 'atrasos'} de antes</Link>
+          </span>
         </div>
-
-        <Suspense fallback={<ResumoSkeleton />}>
-          <ResumoEtapasProjeto projetoId={projeto.id} />
-        </Suspense>
-      </a>
-
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-[rgba(21,21,33,0.06)] pt-2.5">
-        <a
-          href={detalheHref}
-          className="text-[11px] font-medium text-ink underline-offset-4 hover:underline"
-        >
-          Ver detalhes
-        </a>
-        <div className="flex items-center gap-3">
-          {projeto.clienteId && (
-            <a
-              href={`/api/admin/login-as-cliente?id=${projeto.clienteId}`}
-              className="text-[11px] font-medium text-navy hover:underline"
-            >
-              👁 Ver como cliente
-            </a>
-          )}
-          {projeto.clienteId && (
-            <a
-              href={`/admin/clientes/${projeto.clienteId}`}
-              className="text-[11px] text-mauve hover:text-ink"
-            >
-              Cliente →
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-async function ResumoEtapasProjeto({ projetoId }: { projetoId: string }) {
-  const resumo = await getResumoTarefasCliente([projetoId]);
-  return <ResumoChips resumo={resumo} />;
-}
-
-function ResumoChips({ resumo }: { resumo: ResumoTarefasCliente }) {
-  const total = ORDEM_CATEGORIAS.reduce((s, c) => s + resumo[c], 0);
-  if (total === 0) {
-    return (
-      <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--prazo-em-dia-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--prazo-em-dia)]">
-        ✓ tudo em dia
-      </div>
-    );
-  }
-  return (
-    <div className="mt-3 grid grid-cols-5 gap-1">
-      {ORDEM_CATEGORIAS.map((cat) => {
-        const n = resumo[cat];
-        const active = n > 0;
-        return (
-          <div
-            key={cat}
-            className={`rounded-md px-1 py-1 text-center ${
-              active ? 'bg-[var(--prazo-hoje-soft)]' : 'bg-bgSoft'
-            }`}
-            title={CATEGORIA_LABEL[cat].label}
-          >
-            <div
-              className={`text-[14px] font-semibold leading-none tracking-[-0.02em] ${
-                active ? 'text-[var(--prazo-hoje)]' : 'text-t3'
-              }`}
-            >
-              {n}
+        <div className="flex min-w-0 flex-col gap-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex gap-0.5 rounded-[11px] bg-[#F4F4F5] p-[3px]">
+              <Link href="/admin" scroll={false} className={aba_(aba === 'hoje')}>
+                Hoje · {feitas} de {deHoje.length} {feitas === 1 ? 'feita' : 'feitas'}
+              </Link>
+              <Link href="/admin?dia=atrasos" scroll={false} className={aba_(aba === 'atrasos')}>
+                Atrasos <span className="ml-1 rounded-full bg-[#F6CFCB] px-1.5 text-[11px] font-extrabold text-[#7E211C]">{atrasos.length}</span>
+              </Link>
             </div>
-            <div
-              className={`mt-0.5 text-[8.5px] font-semibold uppercase tracking-[0.04em] ${
-                active ? 'text-[var(--prazo-hoje)]' : 'text-t3'
-              }`}
-            >
-              {ETAPA_ABREV[cat]}
-            </div>
+            <Link href="/admin/entregas" className="text-[12.5px] font-extrabold">Ver todas →</Link>
           </div>
-        );
-      })}
-    </div>
+          {aba === 'hoje' ? (
+            deHoje.length === 0 ? (
+              <Vazio>Nenhuma entrega é pra hoje.</Vazio>
+            ) : (
+              <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                {deHoje.map(({ q, faltam, n, un, feita }) => (
+                  <Link key={q.id} href={rotas.entrega(q.id)} className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-[#E9E9EB] p-3 hover:border-[#B4B4B9]">
+                    <span className="flex items-center justify-between gap-2">
+                      <b className="truncate text-[13.5px]">{q.nome}</b>
+                      <Tag st={feita ? 'ok' : 'hoje'}>{feita ? 'Feita' : 'Pra hoje'}</Tag>
+                    </span>
+                    <span className="text-[12px] font-bold">{feita ? 'Tudo feito' : `Faltam ${plural(n, un)}`}</span>
+                    <span className="truncate text-[11.5px] text-[#636369]">{feita ? 'Rodada fechada' : handles(faltam)}</span>
+                  </Link>
+                ))}
+              </div>
+            )
+          ) : atrasos.length === 0 ? (
+            <Vazio>Nenhuma entrega atrasada.</Vazio>
+          ) : (
+            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+              {atrasos.map(({ q, ls, venceu, n, un }) => (
+                <Link key={q.id} href={rotas.entrega(q.id)} className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-[#E9E9EB] p-3 hover:border-[#B4B4B9]">
+                  <span className="flex items-center justify-between gap-2">
+                    <b className="truncate text-[13.5px]">{q.nome}</b>
+                    <Tag st="atr">{venceu ? `venceu ${dm(venceu)}` : 'Atrasada'}</Tag>
+                  </span>
+                  <span className="text-[12px] font-bold">{plural(n, un)} em atraso</span>
+                  <span className="truncate text-[11.5px] text-[#636369]">{handles(ls)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 }
 
-function ResumoSkeleton() {
+// ---------------------------------------------------------------- semana
+/** Calendário da semana: as setas trocam só o calendário (busca a semana pela API), sem recarregar a página. */
+async function SemanaDosPosts({ deslocamento }: { deslocamento: number }) {
+  const inicial = await montarSemana(deslocamento);
+  return <CalendarioSemanaHome inicial={inicial} />;
+}
+
+// ---------------------------------------------------------------- entregas pendentes
+/** Frequência visual: 7 tracinhos (o dia fixo aceso) ou todos acesos na diária. */
+function SeloFrequencia({ rotulo, cor }: { rotulo: string; cor: string }) {
+  const r = rotulo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const DIAS = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
+  const CURTO = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+  const diaria = /todo dia/.test(r);
+  const mensal = /mes/.test(r);
+  const idx = DIAS.findIndex((d) => r.includes(d));
+  const titulo = diaria ? 'DIÁRIA' : mensal ? 'MENSAL' : 'SEMANAL';
+  const sub = diaria ? 'todo dia' : mensal ? rotulo.replace(/^m[eê]s · /, '') : idx >= 0 ? CURTO[idx] : rotulo;
   return (
-    <div className="mt-3 grid grid-cols-5 gap-1">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="h-9 rounded-md bg-bgSoft animate-pulse" />
-      ))}
-    </div>
+    <span title="Frequência da entrega" className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-white/65 px-2 py-1">
+      {mensal ? (
+        <span className="flex h-[16px] w-[16px] items-center justify-center rounded-[4px] text-[8px] font-extrabold text-white" style={{ background: cor }}>
+          {sub.replace(/\D/g, '').slice(0, 2) || 'M'}
+        </span>
+      ) : (
+        <span className="flex items-end gap-[2px]" aria-hidden="true">
+          {CURTO.map((_, k) => (
+            <span key={k} className="h-3 w-[6px] rounded-[2px]" style={{ background: cor, opacity: diaria || k === idx ? 1 : 0.18 }} />
+          ))}
+        </span>
+      )}
+      <span className="flex flex-col leading-[1.05]">
+        <b className="text-[10px] font-extrabold tracking-[0.06em]">{titulo}</b>
+        <span className="text-[10.5px] font-semibold">{sub}</span>
+      </span>
+    </span>
   );
 }
 
-const DIAS_SEMANA = [
-  'Domingo',
-  'Segunda-feira',
-  'Terça-feira',
-  'Quarta-feira',
-  'Quinta-feira',
-  'Sexta-feira',
-  'Sábado',
-];
-
-const MESES = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
-];
-
-async function SemanaCalendario({ semanaParam }: { semanaParam?: string }) {
-  const base = semanaParam ? new Date(semanaParam + 'T00:00:00') : new Date();
-  const baseValida = Number.isNaN(base.getTime()) ? new Date() : base;
-  const inicio = inicioDaSemana(baseValida);
-  const fim = new Date(inicio);
-  fim.setDate(inicio.getDate() + 6);
-
-  const posts = await listPostsNoIntervalo(ymd(inicio), ymd(fim));
-
-  const hojeISO = ymd(new Date());
-  const porDia = new Map<string, PostCalendario[]>();
-  for (const p of posts) {
-    const iso = p.data.slice(0, 10);
-    if (!porDia.has(iso)) porDia.set(iso, []);
-    porDia.get(iso)!.push(p);
-  }
-
-  const dias: DiaSemana[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(inicio);
-    d.setDate(inicio.getDate() + i);
-    const iso = ymd(d);
-    dias.push({
-      iso,
-      nomeDia: DIAS_ABREV[d.getDay()],
-      num: d.getDate(),
-      hoje: iso === hojeISO,
-      posts: porDia.get(iso) ?? [],
-    });
-  }
-
-  const prev = new Date(inicio);
-  prev.setDate(inicio.getDate() - 7);
-  const next = new Date(inicio);
-  next.setDate(inicio.getDate() + 7);
-  const rotulo = `${inicio.getDate()} de ${MESES[inicio.getMonth()]} – ${fim.getDate()} de ${MESES[fim.getMonth()]}`;
-
+async function EntregasPendentes() {
+  const { hoje, quadros } = await carregarQuadro().catch(() => ({ hoje: hojeSP(), quadros: [] as QuadroEntrega[] }));
+  const em7 = somaDias(hoje, 7);
+  const dm = (d: string) => `${d.slice(8)}/${d.slice(5, 7)}`;
+  // Conta só os posts cujo prazo cai na faixa (atraso, hoje ou próximos 7 dias).
+  const contar = (ls: LinhaCliente[], dentro: (d: string | null) => boolean) => {
+    const comPosts = ls.filter((l) => l.posts.length > 0);
+    const posts = comPosts.reduce((s, l) => s + l.posts.filter((p) => dentro(p.prazo ?? l.prazoMaisAntigo)).length, 0);
+    return posts + ls.filter((l) => l.posts.length === 0).reduce((s, l) => s + (l.nTarefas || 1), 0);
+  };
+  const lista = quadros
+    .map((q) => {
+      const atrL = linhasAtrasadas(q, hoje);
+      const resto = [...q.colunas[1].linhas, ...q.colunas[2].linhas].filter((l) => l.prazoMaisAntigo && l.prazoMaisAntigo >= hoje && l.prazoMaisAntigo <= em7);
+      const hojeL = resto.filter((l) => l.prazoMaisAntigo === hoje);
+      const chegL = resto.filter((l) => l.prazoMaisAntigo! > hoje);
+      const atr = contar(atrL, () => true);
+      const hj = contar(hojeL, (d) => d === hoje);
+      const cheg = contar(chegL, (d) => !!d && d > hoje && d <= em7);
+      const antiga = atrL.map((l) => l.prazoMaisAntigo).filter((d): d is string => !!d).sort()[0] ?? null;
+      const prox = chegL.map((l) => l.prazoMaisAntigo!).sort()[0] ?? null;
+      const comPosts = [...atrL, ...hojeL, ...chegL].some((l) => l.posts.length > 0);
+      const tipo = tipoDaEntrega(q.nome);
+      return { q, atr: atrL.length ? atr : 0, hoje: hojeL.length ? hj : 0, cheg: chegL.length ? cheg : 0, antiga, prox, un: comPosts ? 'posts' : 'tarefas', comCliente: tipo !== 'interna' || /aprova/i.test(q.nome) };
+    })
+    .filter((e) => e.atr + e.hoje + e.cheg > 0)
+    .map((e) => ({ ...e, st: (e.atr ? 'atr' : e.hoje ? 'hoje' : 'cheg') as St }))
+    .sort((a, b) => b.atr - a.atr || b.hoje - a.hoje || b.cheg - a.cheg)
+    .slice(0, 9);
+  const ROT: Record<string, string> = { atr: 'ATRASADA', hoje: 'VENCE HOJE', cheg: 'CHEGANDO' };
   return (
-    <CalendarSemana
-      dias={dias}
-      rotulo={rotulo}
-      prevHref={`/admin?semana=${ymd(prev)}`}
-      nextHref={`/admin?semana=${ymd(next)}`}
-      hojeHref="/admin"
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <h2 className="text-[20px] font-extrabold tracking-[-0.01em]">Entregas pendentes</h2>
+        <span className="flex gap-3 text-[12px] font-bold">
+          {(['atr', 'hoje', 'cheg'] as St[]).map((s) => (
+            <span key={s} className="flex items-center gap-1.5" style={{ color: ST[s][1] }}><Ponto st={s} />{s === 'atr' ? 'atrasada' : s === 'hoje' ? 'vence hoje' : 'chegando'}</span>
+          ))}
+        </span>
+      </div>
+      {lista.length === 0 ? (
+        <Card><Vazio>Nada pendente nos próximos 7 dias.</Vazio></Card>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {lista.map((e) => (
+            <div key={e.q.id} className="flex flex-col gap-3 rounded-[18px] p-4" style={{ background: ST[e.st][0], color: ST[e.st][1] }}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="rounded-full bg-white/65 px-2.5 py-[3px] text-[10.5px] font-extrabold tracking-[0.06em]">{ROT[e.st]}</span>
+                <SeloFrequencia rotulo={e.q.diaRotulo} cor={ST[e.st][2]} />
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
+                <b className="truncate text-[17px]">{e.q.nome}</b>
+                <span className="whitespace-nowrap text-[12px] font-bold">{e.atr + e.hoje + e.cheg} {e.atr + e.hoje + e.cheg === 1 ? e.un.replace(/s$/, '') : e.un}</span>
+              </div>
+              <span className="flex flex-wrap items-center gap-2 text-[12.5px]">
+                <span className={`rounded-full px-2.5 py-[3px] text-[11.5px] font-extrabold text-[#111113] ${e.comCliente ? 'bg-white' : 'bg-[rgba(17,17,19,0.08)]'}`}>
+                  {e.comCliente ? 'com o cliente' : 'interno · Lud.'}
+                </span>
+                <span>{e.antiga ? `o mais antigo venceu ${dm(e.antiga)}` : e.hoje ? `${e.hoje} ${e.hoje === 1 ? 'vence' : 'vencem'} hoje` : e.prox ? `o 1º vence ${dm(e.prox)}` : 'nos próximos 7 dias'}</span>
+              </span>
+              <Barra partes={[{ st: 'atr', valor: e.atr }, { st: 'hoje', valor: e.hoje }, { st: 'cheg', valor: e.cheg }]} />
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ['ATRASO', e.atr],
+                  ['HOJE', e.hoje],
+                  ['CHEGANDO', e.cheg],
+                ].map(([l, n]) => (
+                  <span key={l as string} className="flex flex-col">
+                    <span className="text-[10px] font-extrabold tracking-[0.06em]">{l}</span>
+                    <b className="text-[20px] tabular-nums">{n}</b>
+                  </span>
+                ))}
+              </div>
+              <Link href={rotas.entrega(e.q.id)} className="self-end rounded-[10px] bg-[#111113] px-3 py-1.5 text-[12px] font-extrabold text-white">Abrir entrega</Link>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- projetos
+async function ProjetosDestaque({ tipo }: { tipo: string }) {
+  const todos = await carregarProjetos().catch(() => []);
+  const tipos = Array.from(new Set(todos.map((p) => p.tipo))).sort((a, b) => todos.filter((p) => p.tipo === b).length - todos.filter((p) => p.tipo === a).length);
+  const lista = (tipo ? todos.filter((p) => p.tipo === tipo) : todos).slice().sort((a, b) => b.atr - a.atr || a.nome.localeCompare(b.nome, 'pt-BR'));
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="flex flex-col">
+          <h2 className="text-[20px] font-extrabold tracking-[-0.01em]">Projetos</h2>
+          <span className="text-[12.5px] text-[#636369]">Clique num card pra ver o projeto, as pendências e o cliente.</span>
+        </div>
+        <span className="flex flex-wrap gap-3 text-[12px] font-bold text-[#46464B]">
+          <span className="flex items-center gap-1.5"><Ponto st="atr" />atrasadas</span>
+          <span className="flex items-center gap-1.5"><Ponto st="ok" />em dia</span>
+          <span className="flex items-center gap-1.5"><Ponto st="cheg" />atenção</span>
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {[['', 'Todos', todos.length] as const, ...tipos.map((t) => [t, t, todos.filter((p) => p.tipo === t).length] as const)].map(([k, rot, n]) => (
+          <Link
+            key={rot}
+            href={k ? `/admin?tipo=${encodeURIComponent(k)}` : '/admin'}
+            scroll={false}
+            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[12.5px] font-bold ${k === tipo ? 'bg-[#111113] text-white' : 'border border-[#E9E9EB] bg-white text-[#46464B] hover:border-[#B4B4B9]'}`}
+          >
+            {rot} <span className="opacity-60">{n}</span>
+          </Link>
+        ))}
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {lista.map((p, i) => (
+          <CardProjeto key={p.id} p={p} i={i} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- mês da Lud. com números
+async function MesComNumeros() {
+  const hoje = hojeSP();
+  const ini = hoje.slice(0, 8) + '01';
+  const [y, m] = hoje.split('-').map(Number);
+  const fim = `${hoje.slice(0, 8)}${new Date(Date.UTC(y, m, 0)).getUTCDate()}`;
+  const [clientes, projetos, { tarefas }, posts] = await Promise.all([
+    listAllClientes().catch(() => []),
+    listAllProjetos().catch(() => []),
+    dados(),
+    listPostsNoIntervalo(ini, fim).catch(() => [] as PostCalendario[]),
+  ]);
+  const atr = tarefas.filter((t) => t.prazo && t.prazo < hoje).length;
+  const postados = posts.filter((p) => p.etapa === 'publicado').length;
+  return (
+    <MesDaLud
+      numeros={[
+        { rotulo: 'Clientes ativos', valor: clientes.length },
+        { rotulo: 'Projetos ativos', valor: projetos.length },
+        { rotulo: 'Tarefas em andamento', valor: tarefas.length, sub: 'abertas no Notion' },
+        { rotulo: 'Em atraso', valor: atr, sub: 'tarefas' },
+        { rotulo: 'Posts do mês', valor: posts.length, sub: `${postados} postados` },
+      ]}
     />
   );
 }
 
-async function BannerHoje() {
-  const hoje = new Date();
-  const entregas = await getEntregasDoDia(hoje);
-  const diaNome = DIAS_SEMANA[hoje.getDay()];
-  const dataLabel = `${hoje.getDate()} de ${MESES[hoje.getMonth()]}`;
-  const totalTarefas = entregas.reduce((s, e) => s + (e.atrasadas || 0), 0);
-
-  if (entregas.length === 0) {
-    return (
-      <div
-        className="rounded-2xl px-6 py-5"
-        style={{
-          background: 'linear-gradient(135deg, #EBEFE9 0%, #F8F1D9 100%)',
-        }}
-      >
-        <div
-          className="text-[11px] font-semibold uppercase tracking-[0.1em]"
-          style={{ color: 'var(--prazo-em-dia)' }}
-        >
-          📅 hoje · {dataLabel}
-        </div>
-        <div className="mt-2 text-[20px] font-semibold tracking-[-0.02em] text-ink">
-          {diaNome} sem entregas marcadas
-        </div>
-        <div className="mt-1 text-[13px] text-t2">
-          Nenhuma entrega tem prazo pra hoje. ✨
-        </div>
-      </div>
-    );
-  }
-
-  const nomes = entregas.map((e) => e.nome).join(' · ');
-  const banner = (
-    <div
-      className="rounded-2xl px-6 py-5 flex items-center justify-between gap-6 flex-wrap transition group-hover:shadow-[0_4px_20px_rgba(187,107,58,0.15)]"
-      style={{
-        background: 'linear-gradient(135deg, #F4E8DD 0%, #F8F1D9 100%)',
-      }}
-    >
-      <div className="min-w-0 flex-1">
-        <div
-          className="text-[11px] font-semibold uppercase tracking-[0.1em]"
-          style={{ color: 'var(--cal-aguardando)' }}
-        >
-          📅 hoje · {dataLabel}
-        </div>
-        <div className="mt-2 text-[20px] font-semibold tracking-[-0.02em] text-ink">
-          {diaNome} é dia de{' '}
-          <span style={{ color: 'var(--cal-aguardando)' }}>
-            {entregas.length === 1 ? entregas[0].nome : `${entregas.length} entregas`}
-          </span>
-        </div>
-        <div className="mt-1 line-clamp-2 text-[13px] text-t2">
-          {entregas.length > 1
-            ? nomes
-            : `${totalTarefas} ${totalTarefas === 1 ? 'tarefa pendente' : 'tarefas pendentes'} pra essa entrega.`}
-        </div>
-      </div>
-      <div
-        className="rounded-xl bg-white px-5 py-3 text-center min-w-[110px]"
-        style={{ border: '1px solid rgba(21,21,33,0.08)' }}
-      >
-        <div
-          className="text-[32px] font-semibold leading-none tracking-[-0.03em]"
-          style={{ color: 'var(--cal-aguardando)' }}
-        >
-          {totalTarefas}
-        </div>
-        <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
-          {totalTarefas === 1 ? 'tarefa pendente' : 'tarefas pendentes'}
-        </div>
-      </div>
-    </div>
+// ---------------------------------------------------------------- tarefas do dia
+async function TarefasDoDiaBloco() {
+  const hoje = hojeSP();
+  const { tarefas, handle } = await dados();
+  return (
+    <TarefasDoDia
+      hoje={hoje}
+      rotuloHoje={dataPorExtenso(hoje).split(' de ')[0]}
+      // Só o que está com " Pronto" ligado no Notion (já dá pra fazer).
+      tarefas={tarefas.filter((t) => t.pronto).map((t) => ({
+        id: t.id,
+        titulo: t.titulo,
+        post: t.postTitulo,
+        prazo: t.prazo,
+        pessoa: t.pessoa ?? 'Sem responsável',
+        projeto: handle(t),
+      }))}
+    />
   );
-
-  // 1 entrega → linka direto pra ela. Várias → mantém estático (cards abaixo já são clicáveis)
-  if (entregas.length === 1) {
-    return (
-      <a href={`/admin/entrega/${entregas[0].id}`} className="group block">
-        {banner}
-      </a>
-    );
-  }
-  return banner;
 }

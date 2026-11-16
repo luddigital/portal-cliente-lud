@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { listMateriaisDoBanco, type MaterialBanco } from '@/lib/drive';
 
 export const dynamic = 'force-dynamic';

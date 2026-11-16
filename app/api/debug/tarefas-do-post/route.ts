@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { env } from '@/lib/env';
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
   const postId = url.searchParams.get('postId');
   if (!postId) return NextResponse.json({ error: 'faltou ?postId=' }, { status: 400 });
 
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
   const post = (await notion.pages.retrieve({ page_id: postId })) as any;
   const titleProp = Object.values(post.properties).find((p: any) => p.type === 'title') as any;
   const tarefasRel = post.properties[env.notion.postProps.tarefas]?.relation ?? [];

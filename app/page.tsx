@@ -7,6 +7,7 @@ import {
   listPostsDoMes,
   getNomeDoCliente,
   findProjetosByEmail,
+  projetosOcultosDoCliente,
   type CategoriaTarefa,
 } from '@/lib/notion';
 import { ProjetoSwitcher } from './_components/ProjetoSwitcher';
@@ -61,14 +62,30 @@ export default async function Dashboard({
   // Cliente com 2+ projetos: pré-seleciona via Instagram (ou primeiro da
   // lista) e seta o cookie via /api/projetos/escolher. Switcher no header
   // permite trocar depois — sem página intermediária de escolha.
-  let projetoIdsAtivos = session.projetoIds;
+  // Cliente: os projetos vêm da lista ATUAL (só Ativos e sem os escondidos na
+  // página do cliente), não da sessão — a sessão dura até 1 ano e guarda os
+  // projetos de quando ela entrou (inclusive os que já foram concluídos).
+  const [ocultos, listaAtual] = await Promise.all([
+    projetosOcultosDoCliente(),
+    ehEquipe ? Promise.resolve([]) : findProjetosByEmail(session.email).catch(() => []),
+  ]);
+  const idsDaSessao =
+    listaAtual.length > 0
+      ? listaAtual.map((p) => p.id)
+      : session.projetoIds.filter((id) => !ocultos.has(id.replace(/-/g, '')));
+  if (!ehEquipe) {
+    console.info(`[home-cliente] sessão ${session.projetoIds.length} projetos → visíveis ${idsDaSessao.join(',')}`);
+  }
+  let projetoIdsAtivos = idsDaSessao;
   const projetoAtivo = getProjetoAtivo();
-  const multiplos = session.projetoIds.length > 1;
+  const multiplos = idsDaSessao.length > 1;
   const projetosCliente = multiplos
-    ? await findProjetosByEmail(session.email)
+    ? listaAtual.length > 0
+      ? listaAtual
+      : await findProjetosByEmail(session.email)
     : [];
   if (multiplos) {
-    if (!projetoAtivo || !session.projetoIds.includes(projetoAtivo)) {
+    if (!projetoAtivo || !idsDaSessao.includes(projetoAtivo)) {
       const escolhido =
         escolherProjetoPadrao(projetosCliente) ?? projetosCliente[0];
       if (!escolhido) redirect('/login?err=notfound');

@@ -383,7 +383,7 @@ function Dashboard({ relatorio }: { relatorio: RelatorioAds }) {
 
       <div>
         <SecTitle>Conjuntos de anúncios</SecTitle>
-        <div className="mt-3 overflow-x-auto rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white">
+        <div className="mt-3 overflow-x-auto min-h-fit rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white">
           <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-[rgba(21,21,33,0.06)] text-[10px] font-semibold uppercase tracking-[0.06em] text-t3">

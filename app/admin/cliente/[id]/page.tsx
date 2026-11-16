@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { getSession } from '@/lib/auth';
 import {
   getClienteById,
@@ -31,7 +31,7 @@ const CATEGORIA_EMOJI: Record<CategoriaTarefa, string> = {
   previas: '✍️',
   materiais: '📷',
   post: '✅',
-  stories: '📱',
+  stories: '⭕',
 };
 
 export default async function ClienteAdminPage({ params }: { params: { id: string } }) {

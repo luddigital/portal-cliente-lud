@@ -138,6 +138,7 @@ export function AnaliseAdmin({
           a={data}
           insightsQuery={insightsQuery}
           projetoId={projetoId}
+          admin
         />
       )}
     </div>

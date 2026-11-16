@@ -113,8 +113,18 @@ export function PostPreview({
   const [pausadoEm, setPausadoEm] = useState<number | null>(null);
   const [textoPausa, setTextoPausa] = useState('');
 
-  // Textarea inline pra comentário do card ATIVO (só carrossel)
-  const [textoCardAtivo, setTextoCardAtivo] = useState('');
+  // Comentário do card ATIVO (só carrossel): o campo escreve direto na
+  // marcação do card — uma fonte só. Antes tinha um texto à parte + um
+  // auto-save atrasado que, depois do "+ adicionar" (que limpava o campo),
+  // apagava o comentário do card. Os pedidos por card sumiam antes do envio.
+  const textoCardAtivo = marcacoes.find((m) => m.t === ativo)?.texto ?? '';
+  function escreverNoCardAtivo(valor: string) {
+    setMarcacoes((m) => {
+      const outros = m.filter((x) => x.t !== ativo);
+      if (!valor.trim()) return outros;
+      return [...outros, { t: ativo, texto: valor }].sort((a, b) => a.t - b.t);
+    });
+  }
 
   const [loading, setLoading] = useState(false);
   const [modo, setModo] = useState<Modo>('idle');
@@ -246,48 +256,11 @@ export function PostPreview({
     }
   }
 
-  // Adicionar/atualizar comentário no card ativo (carrossel). Chamado
-  // pelo botão + adicionar / Enter — limpa o textarea depois.
-  function salvarCardAtivo() {
-    const texto = textoCardAtivo.trim();
-    if (!texto) return;
-    setMarcacoes((m) => {
-      const outros = m.filter((x) => x.t !== ativo);
-      return [...outros, { t: ativo, texto }].sort((a, b) => a.t - b.t);
-    });
-    setTextoCardAtivo('');
-  }
-
-  // Auto-save do textoCardAtivo — cada tecla, debounced 500ms. Assim se o
-  // cliente digita e sai sem apertar "+ adicionar", não perde o comentário.
-  const cardAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!isCarrossel) return;
-    if (cardAutoSaveRef.current) clearTimeout(cardAutoSaveRef.current);
-    cardAutoSaveRef.current = setTimeout(() => {
-      const texto = textoCardAtivo.trim();
-      setMarcacoes((m) => {
-        const outros = m.filter((x) => x.t !== ativo);
-        if (!texto) return outros;
-        return [...outros, { t: ativo, texto }].sort((a, b) => a.t - b.t);
-      });
-    }, 500);
-    return () => {
-      if (cardAutoSaveRef.current) clearTimeout(cardAutoSaveRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [textoCardAtivo, ativo, isCarrossel]);
-
-  // Limpa estado de pausa ao trocar de slide; pré-carrega comentário existente
-  // desse card na textarea inline (se houver)
+  // Limpa estado de pausa ao trocar de slide (o campo do card já mostra o
+  // comentário daquele card, direto das marcações).
   useEffect(() => {
     setPausadoEm(null);
     setTextoPausa('');
-    if (isCarrossel) {
-      const existente = marcacoes.find((m) => m.t === ativo);
-      setTextoCardAtivo(existente?.texto ?? '');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ativo, isCarrossel]);
 
   function adicionarMarcacao() {
@@ -311,8 +284,8 @@ export function PostPreview({
         marcacoes
           .map((m) =>
             isCarrossel
-              ? `Card ${m.t + 1}: ${m.texto}`
-              : `[${fmtTime(m.t)}] ${m.texto}`,
+              ? `Card ${m.t + 1}: ${m.texto.trim()}`
+              : `[${fmtTime(m.t)}] ${m.texto.trim()}`,
           )
           .join('\n'),
       );
@@ -579,10 +552,7 @@ export function PostPreview({
                   <span className="max-w-[200px] truncate">{m.texto}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      removerMarcacao(i);
-                      if (isCarrossel && m.t === ativo) setTextoCardAtivo('');
-                    }}
+                    onClick={() => removerMarcacao(i)}
                     className="text-t3 transition hover:text-hubRed"
                     aria-label="Remover marcação"
                   >
@@ -609,23 +579,25 @@ export function PostPreview({
                 <input
                   type="text"
                   value={textoCardAtivo}
-                  onChange={(e) => setTextoCardAtivo(e.target.value)}
+                  onChange={(e) => escreverNoCardAtivo(e.target.value)}
                   placeholder="O que ajustar nesse card?"
                   className="input flex-1 text-[12px]"
                   onKeyDown={(e) => {
+                    // Enter: já está anotado; vai pro próximo card.
                     if (e.key === 'Enter' && textoCardAtivo.trim()) {
                       e.preventDefault();
-                      salvarCardAtivo();
+                      setAtivo((a) => Math.min(arquivos.length - 1, a + 1));
                     }
                   }}
                 />
                 <button
                   type="button"
-                  onClick={salvarCardAtivo}
-                  disabled={!textoCardAtivo.trim()}
+                  onClick={() => setAtivo((a) => Math.min(arquivos.length - 1, a + 1))}
+                  disabled={!textoCardAtivo.trim() || ativo >= arquivos.length - 1}
                   className="btn-ghost shrink-0 text-[12px] disabled:opacity-40"
+                  title="O comentário já fica salvo nesse card"
                 >
-                  {marcacoes.some((m) => m.t === ativo) ? 'atualizar' : '+ adicionar'}
+                  {textoCardAtivo.trim() ? (ativo < arquivos.length - 1 ? '✓ anotado · próximo card' : '✓ anotado') : '+ adicionar'}
                 </button>
               </div>
             </div>
@@ -1021,7 +993,12 @@ function Carousel({
   }
 
   return (
-    <div className="space-y-3 lg:mx-auto lg:w-full lg:max-w-[min(85vh,720px)]">
+    // A mídia sempre cabe inteira na altura da tela (vertical 9:16 ou quadrado), em qualquer tamanho de tela.
+    <div
+      className={`mx-auto w-full space-y-3 ${
+        aspect.includes('9/16') ? 'max-w-[calc((100svh-120px)*0.5625)]' : 'max-w-[min(calc(100svh-120px),720px)]'
+      }`}
+    >
       <div className="relative">
         <div
           ref={trackRef}
@@ -1030,7 +1007,7 @@ function Carousel({
           onPointerUp={finalizarArrasto}
           onPointerLeave={finalizarArrasto}
           onDragStart={(e) => e.preventDefault()}
-          className={`flex snap-x snap-mandatory overflow-x-auto rounded-2xl border border-[rgba(21,21,33,0.08)] ${bg} [scroll-behavior:smooth] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+          className={`flex snap-x snap-mandatory overflow-x-auto min-h-fit rounded-2xl border border-[rgba(21,21,33,0.08)] ${bg} [scroll-behavior:smooth] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
             arquivos.length > 1 ? 'cursor-grab active:cursor-grabbing select-none' : ''
           }`}
         >

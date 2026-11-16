@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getSession } from '@/lib/auth';
@@ -17,7 +18,7 @@ export async function GET(
   const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
   if (!ehAdmin) return NextResponse.json({ error: 'só admin' }, { status: 403 });
 
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
   // Query todos os blocos direto (com paginação)
   const blocks: any[] = [];

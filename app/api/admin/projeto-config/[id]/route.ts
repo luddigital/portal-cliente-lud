@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { salvarProjetoConfig, type ProjetoConfig } from '@/lib/notion';
+import { salvarPostsPorMes, salvarProjetoConfig, type ProjetoConfig } from '@/lib/notion';
+import { salvarDiasFixosProjeto } from '@/lib/supabase';
 import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -20,6 +21,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const body = (await req.json().catch(() => ({}))) as {
       projetoNome?: string;
       config?: ProjetoConfig;
+      /** Combinado com o cliente: posts por mês (campo N do Notion) e dias fixos. */
+      combinado?: { postsPorMes: number | null; diasFixos: number[] };
     };
     if (!body.config) {
       return NextResponse.json({ error: 'config faltando' }, { status: 400 });
@@ -30,6 +33,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       body.projetoNome ?? 'Projeto',
       body.config,
     );
+    if (body.combinado) {
+      const n = body.combinado.postsPorMes;
+      await salvarPostsPorMes(params.id, typeof n === 'number' && n >= 0 ? Math.round(n) : null);
+      const ok = await salvarDiasFixosProjeto(params.id, body.combinado.diasFixos ?? [], session.email);
+      if (!ok) return NextResponse.json({ error: 'Salvei os posts por mês, mas não deu pra salvar os dias fixos.' }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     console.error('[projeto-config] erro:', err);

@@ -1,13 +1,15 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import {
   getEmpresaDetalhe,
   listAcessosDoCliente,
+  projetosOcultosDoCliente,
   type EmpresaDetalhe,
 } from '@/lib/notion';
 import { BotaoCopiarLink } from '../../BotaoCopiarLink';
 import { AcessosManager } from './AcessosManager';
+import { VisibilidadeProjeto } from './VisibilidadeProjeto';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,9 +30,10 @@ function SecTitle({ children }: { children: React.ReactNode }) {
 }
 
 async function Conteudo({ id }: { id: string }) {
-  const [empresa, acessos] = await Promise.all([
+  const [empresa, acessos, ocultos] = await Promise.all([
     getEmpresaDetalhe(id),
     listAcessosDoCliente(id),
+    projetosOcultosDoCliente(),
   ]);
   if (!empresa) notFound();
 
@@ -93,9 +96,11 @@ async function Conteudo({ id }: { id: string }) {
             ) : (
               <div className="mt-3 space-y-2.5">
                 {empresa.projetos.map((p) => (
-                  <div
+                  // Cliente › projeto (hierarquia do portal).
+                  <Link
                     key={p.id}
-                    className="flex items-center gap-3.5 rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white px-4 py-3.5"
+                    href={`/admin/projetos/${p.id}`}
+                    className="flex items-center gap-3.5 rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white px-4 py-3.5 transition hover:bg-bgSoft/60"
                   >
                     <span
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[18px]"
@@ -113,7 +118,12 @@ async function Conteudo({ id }: { id: string }) {
                         </div>
                       )}
                     </div>
-                  </div>
+                    {/* O que a cliente vê no portal: só projetos Ativos e com essa chave ligada. */}
+                    {p.status === 'Ativo' && (
+                      <VisibilidadeProjeto projetoId={p.id} visivelInicial={!ocultos.has(p.id.replace(/-/g, ''))} />
+                    )}
+                    <span className="shrink-0 text-[14px] text-t3">›</span>
+                  </Link>
                 ))}
               </div>
             )}

@@ -23,12 +23,12 @@ type PostChip = {
 };
 
 const COR_CHIP: Record<PostChip['cor'], { bg: string; fg: string; dot: string }> = {
-  publicado:  { bg: '#EBEFE9', fg: '#4F6B4A', dot: '#4F6B4A' },
-  agendado:   { bg: '#E6EDF2', fg: '#3B6789', dot: '#3B6789' },
-  aprovacao:  { bg: '#F5EFD9', fg: '#B68A2E', dot: '#B68A2E' },
-  alteracao:  { bg: '#F3E7E7', fg: '#6E2A2C', dot: '#6E2A2C' },
-  aguardando: { bg: '#F4E8DD', fg: '#BB6B3A', dot: '#BB6B3A' },
-  rascunho:   { bg: '#EEF0F4', fg: '#9A9AA6', dot: '#9A9AA6' },
+  publicado:  { bg: '#E4EBDF', fg: '#3B4A33', dot: '#3B4A33' },
+  agendado:   { bg: '#DCE8F3', fg: '#436F95', dot: '#436F95' },
+  aprovacao:  { bg: '#E8EBF5', fg: '#313D65', dot: '#313D65' },
+  alteracao:  { bg: '#FFD5D6', fg: '#642223', dot: '#642223' },
+  aguardando: { bg: '#FFD5D6', fg: '#642223', dot: '#642223' },
+  rascunho:   { bg: '#EEF0F4', fg: '#6A7464', dot: '#6A7464' },
 };
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];

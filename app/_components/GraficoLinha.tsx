@@ -31,7 +31,7 @@ export type MarcadorPost = { dia: string; titulo: string; tipo: string };
 
 function emojiTipo(t: string): string {
   const u = (t || '').toUpperCase();
-  if (u.includes('REEL') || u.includes('VIDEO')) return '🎬';
+  if (u.includes('REEL') || u.includes('VIDEO')) return '📱';
   if (u.includes('CAROUSEL') || u.includes('ALBUM')) return '🎠';
   if (u.includes('IMAGE') || u.includes('PHOTO')) return '🖼️';
   return '📄';
@@ -118,7 +118,7 @@ export function GraficoLinha({
             <span className="flex items-center gap-1">
               <span
                 className="inline-block h-2 w-2 rounded-full"
-                style={{ background: '#E8663D' }}
+                style={{ background: '#90181A' }}
               />
               dia com post
             </span>
@@ -163,7 +163,7 @@ export function GraficoLinha({
                   cx={pt.x}
                   cy={pt.y}
                   r="4"
-                  fill="#E8663D"
+                  fill="#90181A"
                   stroke="#fff"
                   strokeWidth="1.5"
                 />

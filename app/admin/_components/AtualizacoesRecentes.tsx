@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LinkPrevia } from './LinkPrevia';
 import { listAtualizacoesRecentes, type AtualizacaoRecente } from '@/lib/notion';
 
 function tempoRelativo(iso: string): string {
@@ -43,7 +44,7 @@ function corDoStatus(status: string | null): {
     return { bg: 'var(--cal-aprovacao-soft)', txt: 'var(--cal-aprovacao)' };
   }
   if (s.includes('produ') || s.includes('andamento')) {
-    return { bg: '#FFF4DA', txt: '#B07A14' };
+    return { bg: '#F1EBE5', txt: '#B07A14' };
   }
   if (s.includes('alteraç') || s.includes('alterac') || s.includes('ajuste')) {
     return { bg: 'var(--cal-alteracao-soft)', txt: 'var(--cal-alteracao)' };
@@ -123,8 +124,9 @@ function LinhaAtualizacao({ a }: { a: AtualizacaoRecente }) {
         ? 'var(--prazo-em-dia-soft)'
         : 'var(--cal-agendado-soft)';
   return (
-    <Link
-      href={`/post/${a.postId}`}
+    // Post abre a prévia primeiro (regra do admin).
+    <LinkPrevia
+      postId={a.postId}
       className="flex items-start gap-3.5 px-4 py-3.5 transition hover:bg-bgSoft sm:px-5"
     >
       {/* Coluna da data — sempre à esquerda */}
@@ -189,7 +191,7 @@ function LinhaAtualizacao({ a }: { a: AtualizacaoRecente }) {
           )}
         </div>
       </div>
-    </Link>
+    </LinkPrevia>
   );
 }
 

@@ -1,6 +1,31 @@
 import { Client } from '@notionhq/client';
+import { fetchDoNotion } from './notionFetch';
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { env } from './env';
+import { lerProjetosOcultosDoCliente } from './supabase';
+import {
+  ehPostDoPortal,
+  ehTarefaDoPortal,
+  getPostDoPortal,
+  getTarefaDoPortal,
+  listarTarefasDoPortal,
+  listarPostsDoPortal,
+  listarProjetosDoPortal,
+  atualizarPostDoPortal,
+  atualizarTarefaDoPortal,
+  concluirTarefaDoPortal,
+  reabrirTarefaDoPortal,
+  comentarPostDoPortal,
+  lerComentariosDoPortal,
+  criarTarefas as criarTarefasDoPortal,
+  tarefaAberta as tarefaDoPortalAberta,
+  tarefaDoClienteAgora,
+  paraPostDetalhado,
+  paraTarefaDoPost,
+  paraTarefaPendente,
+  type PostPortal,
+  type TarefaPortal,
+} from './conteudo-portal';
 
 // Tags pra cache do Next — usadas pra invalidar quando algo muda no Notion
 const TAG_TAREFAS = 'tarefas-pendentes';
@@ -8,6 +33,7 @@ const TAG_POSTS = 'posts-do-mes';
 const TAG_RESUMO = 'resumo-clientes';
 const TAG_CLIENTES = 'clientes';
 const TAG_EQUIPE = 'equipe-prestadores';
+const TAG_PROJETOS_OCULTOS = 'projetos-ocultos-do-cliente';
 
 /**
  * Invalida os caches do Next.js relacionados a dados que mudaram.
@@ -23,8 +49,18 @@ export function invalidarCachesAposMudanca() {
 }
 
 /**
- * Limpa TODOS os caches — usado pelo /api/admin/atualizar pra forçar o
- * portal a reler tudo do Notion na hora.
+ * Botão "Atualizar": relê na hora o que muda o tempo todo (tarefas, posts,
+ * páginas). Listas de clientes, projetos e equipe ficam (renovam sozinhas a
+ * cada 5 min, sem travar a tela) — jogar elas fora deixava a próxima página
+ * lenta, refazendo uma consulta por cliente.
+ */
+export function invalidarDadosDoDia() {
+  invalidarCachesAposMudanca();
+  pageCache.clear();
+}
+
+/**
+ * Limpa TODOS os caches — /api/sincronizar e o GET de /api/admin/atualizar.
  */
 export function invalidarTudo() {
   revalidateTag(TAG_TAREFAS);
@@ -39,7 +75,7 @@ export function invalidarTudo() {
   pageCache.clear();
 }
 
-const _notionRaw = new Client({ auth: env.notion.token });
+const _notionRaw = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
 /**
  * Wrapper de retry em torno das operações do Notion mais usadas.
@@ -49,12 +85,17 @@ const _notionRaw = new Client({ auth: env.notion.token });
  * "Application error: server-side exception". Agora retentamos até 4× com
  * backoff exponencial + jitter (200ms, 500ms, 1.2s, 3s).
  */
-async function comRetry<T>(fn: () => Promise<T>, max = 4): Promise<T> {
+async function comRetry<T>(fn: () => Promise<T>, max = 4, rotulo = 'notion'): Promise<T> {
   const delays = [200, 500, 1200, 3000];
   let ultimoErro: any;
+  const inicio = Date.now();
   for (let tent = 0; tent <= max; tent++) {
     try {
-      return await fn();
+      const r = await fn();
+      // Medição de lentidão: aparece nos logs da Vercel (consulta lenta ou que precisou repetir).
+      const ms = Date.now() - inicio;
+      if (ms > 1500 || tent > 0) console.warn(`[notion-lento] ${rotulo} ${ms}ms${tent ? ` (${tent + 1} tentativas)` : ''}`);
+      return r;
     } catch (err: any) {
       ultimoErro = err;
       const code = err?.code as string | undefined;
@@ -97,13 +138,55 @@ export function semTarefasDePost(args: any): any {
   return { ...args, filter: { and: [f, SEM_TAREFAS_DE_POST] } };
 }
 
+/**
+ * Tarefas "tipo Entrega" (tipo original = ENTREGA, a tarefa-mãe que junta as
+ * filhas, ex.: "Calendário outubro") também não aparecem no portal. O filtro do
+ * Notion não aceita mais um nível de "ou", então tiramos do resultado.
+ */
+function semTarefasDeEntrega<R>(r: R): R {
+  const lista = (r as any)?.results;
+  if (!Array.isArray(lista)) return r;
+  const filtrada = lista.filter((pg: any) => pg?.properties?.['tipo original']?.select?.name !== 'ENTREGA');
+  return filtrada.length === lista.length ? r : ({ ...(r as any), results: filtrada } as R);
+}
+
+/**
+ * Mede quanto uma leitura grande leva quando NÃO está no cache (o que roda
+ * dentro do unstable_cache). Aparece nos logs da Vercel como [tempo].
+ */
+function medido<A extends any[], R>(nome: string, fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return async (...args: A) => {
+    const inicio = Date.now();
+    try {
+      return await fn(...args);
+    } finally {
+      const ms = Date.now() - inicio;
+      if (ms > 800) console.warn(`[tempo] ${nome} ${ms}ms (sem cache)`);
+    }
+  };
+}
+
+/** Nome curto da base pros logs de lentidão. */
+function nomeDaBase(id: string | undefined): string {
+  if (!id) return '?';
+  const n = (x: string | undefined) => (x ?? '').replace(/-/g, '');
+  const i = n(id);
+  if (i === n(env.notion.tarefasDbId)) return 'Tarefas';
+  if (i === n(env.notion.postagensDbId)) return 'Postagens';
+  if (i === n(env.notion.projetosDbId)) return 'Projetos';
+  if (i === n(env.notion.clientesDbId)) return 'Clientes';
+  return i.slice(0, 6);
+}
+
 const notion = {
   ..._notionRaw,
   databases: {
     ..._notionRaw.databases,
     query: ((args: any) =>
-      comRetry(() =>
-        _notionRaw.databases.query(semTarefasDePost(args)),
+      comRetry(
+        () => _notionRaw.databases.query(semTarefasDePost(args)).then(semTarefasDeEntrega),
+        4,
+        `query ${nomeDaBase(args?.database_id)}${args?.start_cursor ? ' (próxima página)' : ''}`,
       )) as typeof _notionRaw.databases.query,
     retrieve: ((args: any) =>
       comRetry(() =>
@@ -115,7 +198,7 @@ const notion = {
   pages: {
     ..._notionRaw.pages,
     retrieve: ((args: any) =>
-      comRetry(() => _notionRaw.pages.retrieve(args))) as typeof _notionRaw.pages.retrieve,
+      comRetry(() => _notionRaw.pages.retrieve(args), 4, 'página')) as typeof _notionRaw.pages.retrieve,
     update: _notionRaw.pages.update.bind(_notionRaw.pages),
     create: _notionRaw.pages.create.bind(_notionRaw.pages),
   },
@@ -124,9 +207,7 @@ const notion = {
     children: {
       ..._notionRaw.blocks.children,
       list: ((args: any) =>
-        comRetry(() =>
-          _notionRaw.blocks.children.list(args),
-        )) as typeof _notionRaw.blocks.children.list,
+        comRetry(() => _notionRaw.blocks.children.list(args), 4, 'blocos')) as typeof _notionRaw.blocks.children.list,
       append: _notionRaw.blocks.children.append.bind(_notionRaw.blocks.children),
     },
     update: _notionRaw.blocks.update.bind(_notionRaw.blocks),
@@ -250,6 +331,8 @@ export type TarefaPendente = {
   objetivo: RelacaoItem[];
   formatoTipo: 'post' | 'reels' | 'story' | 'desconhecido';
   formatoNome: string | null;
+  /** Aprovação nova depois de uma alteração (Ordem (1) = 03). */
+  reaprovacao?: boolean;
 };
 
 export const TAREFAS_DO_CLIENTE = [
@@ -450,7 +533,7 @@ async function _listAllClientesUncached(): Promise<ClienteResumo[]> {
 }
 
 const _listAllClientesCached = unstable_cache(
-  _listAllClientesUncached,
+  medido('lista de clientes', _listAllClientesUncached),
   ['list-all-clientes-v3-ativos'],
   { revalidate: 300, tags: [TAG_CLIENTES] }, // 5 min
 );
@@ -578,6 +661,7 @@ export async function getEmpresaDetalhe(
             (p: any) => p.type === 'title',
           ) as any;
           const projStatus =
+            getProp(proj, 'Status Manual')?.status?.name ??
             getProp(proj, 'Status Manual')?.select?.name ??
             getProp(proj, 'Status')?.status?.name ??
             null;
@@ -758,13 +842,37 @@ async function _listAllProjetosUncached(): Promise<ProjetoListItem[]> {
 }
 
 const _listAllProjetosCached = unstable_cache(
-  _listAllProjetosUncached,
+  medido('lista de projetos', _listAllProjetosUncached),
   ['list-all-projetos-v2-ativos'],
   { revalidate: 300, tags: [TAG_CLIENTES] }, // 5 min — bate com clientes
 );
 
 export async function listAllProjetos(): Promise<ProjetoListItem[]> {
   return _listAllProjetosCached();
+}
+
+/**
+ * Capa da página do projeto no Notion (a mesma que aparece lá em cima no
+ * Notion). Imagem enviada pro Notion vem com link assinado que expira em 1h,
+ * por isso o cache é de 30 min. Retorna null se o projeto não tiver capa.
+ */
+const _capaDoProjetoCached = unstable_cache(
+  async (projetoId: string): Promise<string | null> => {
+    try {
+      const p = (await notion.pages.retrieve({ page_id: projetoId })) as any;
+      const c = p?.cover;
+      if (!c) return null;
+      return c.type === 'external' ? c.external?.url ?? null : c.file?.url ?? null;
+    } catch {
+      return null;
+    }
+  },
+  ['capa-projeto-notion-v1'],
+  { revalidate: 1800 },
+);
+
+export async function getCapaDoProjetoNotion(projetoId: string): Promise<string | null> {
+  return _capaDoProjetoCached(projetoId);
 }
 
 /**
@@ -796,6 +904,8 @@ export type TarefaDoProjeto = {
   id: string;
   titulo: string;
   pessoa: string | null;
+  /** Foto do responsável no Notion (quando a busca traz). */
+  pessoaAvatar?: string | null;
   status: string | null;
   /** Data Entrega (ou Data Inicial) no fuso de São Paulo, YYYY-MM-DD. */
   prazo: string | null;
@@ -805,6 +915,8 @@ export type TarefaDoProjeto = {
   /** "Ordem" e "Ordem (1)" do Notion: a ordem do processo dentro do post. */
   ordem?: string | null;
   ordemUm?: string | null;
+  /** Entrega do Notion a que a tarefa pertence (página /admin/entregas/[id]). */
+  entregaId?: string | null;
 };
 
 /** Título e data dos posts recentes do projeto, numa consulta só. */
@@ -863,11 +975,18 @@ async function _getProjetoDetalheUncached(
               { property: 'Projeto', relation: { contains: projetoId } },
               // Projetos antigos acumulam centenas de tarefas abertas esquecidas
               // (2025, título "Post"); só interessa o que vence de 90 dias pra cá.
+              // Tarefa que não é de post (e-book, site, reunião…) entra mesmo mais
+              // antiga: costuma ser pouca e é justamente o que ficou pra trás.
               {
-                property: 'Data Entrega',
-                date: {
-                  on_or_after: new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10),
-                },
+                or: [
+                  {
+                    property: 'Data Entrega',
+                    date: {
+                      on_or_after: new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10),
+                    },
+                  },
+                  { property: env.notion.taskProps.post, relation: { is_empty: true } },
+                ],
               },
               ...STATUS_TAREFA_FECHADOS.map((s) => ({
                 property: env.notion.taskProps.status,
@@ -937,6 +1056,7 @@ async function _getProjetoDetalheUncached(
         postData: post?.data ?? null,
         ordem: getProp(t, 'Ordem')?.select?.name ?? null,
         ordemUm: getProp(t, 'Ordem (1)')?.select?.name ?? null,
+        entregaId: getProp(t, 'Entregas')?.relation?.[0]?.id ?? null,
       });
     }
 
@@ -947,8 +1067,8 @@ async function _getProjetoDetalheUncached(
 }
 
 const _getProjetoDetalheCached = unstable_cache(
-  _getProjetoDetalheUncached,
-  ['get-projeto-detalhe-v4-ordem'],
+  medido('projeto', _getProjetoDetalheUncached),
+  ['get-projeto-detalhe-v6-entrega'],
   { revalidate: 120, tags: [TAG_TAREFAS, TAG_CLIENTES] }, // 2 min
 );
 
@@ -984,7 +1104,32 @@ const _findProjetosByEmailCached = unstable_cache(
 
 export async function findProjetosByEmail(email: string): Promise<ProjetoCliente[]> {
   const emailNorm = email.trim().toLowerCase();
-  return projetosByEmailCache.get(emailNorm, () => _findProjetosByEmailCached(emailNorm));
+  const [lista, ocultos] = await Promise.all([
+    projetosByEmailCache.get(emailNorm, () => _findProjetosByEmailCached(emailNorm)),
+    projetosOcultosDoCliente(),
+  ]);
+  // Projeto marcado "não aparece pro cliente" (página do cliente no admin) sai da lista.
+  return lista.filter((p) => !ocultos.has(p.id.replace(/-/g, '')));
+}
+
+const _projetosOcultosCached = unstable_cache(
+  async () => [...(await lerProjetosOcultosDoCliente())],
+  ['projetos-ocultos-do-cliente-v1'],
+  { revalidate: 300, tags: [TAG_PROJETOS_OCULTOS] },
+);
+
+/** Ids (sem traço) dos projetos escondidos da área do cliente. Sem banco: nenhum. */
+export async function projetosOcultosDoCliente(): Promise<Set<string>> {
+  try {
+    return new Set(await _projetosOcultosCached());
+  } catch {
+    return new Set();
+  }
+}
+
+/** Depois de mudar a visibilidade de um projeto. */
+export function invalidarProjetosOcultos() {
+  revalidateTag(TAG_PROJETOS_OCULTOS);
 }
 
 async function findProjetosByEmailUncached(emailNorm: string): Promise<ProjetoCliente[]> {
@@ -1191,6 +1336,7 @@ export async function listTarefasPendentesDoCliente(projetoIds: string[]): Promi
         return {
           tarefaId: tarefa.id,
           tarefaTitulo: txt(tarefaTitleProp?.title) || '',
+          reaprovacao: getProp(tarefa, 'Ordem (1)')?.select?.name === '03',
           tarefaPrazo:
             getProp(tarefa, 'Data Entrega')?.date?.start ??
             getProp(tarefa, 'Data Inicial')?.date?.start ??
@@ -1212,6 +1358,8 @@ export async function listTarefasPendentesDoCliente(projetoIds: string[]): Promi
     }),
   );
   for (const t of enriquecidas) if (t) out.push(t);
+  // Pendências de projetos que rodam no portal (ex.: aprovação de pauta).
+  out.push(...(await tarefasPendentesDoPortal(projetoIds).catch(() => [])));
 
   // Ordenar por data do post
   return out.sort((a, b) => {
@@ -1250,7 +1398,7 @@ async function _listTarefasPendentesPorCategoriaUncached(
 
 const _listTarefasCached = unstable_cache(
   _listTarefasPendentesPorCategoriaUncached,
-  ['tarefas-pendentes-v3'],
+  ['tarefas-pendentes-v4-portal'],
   { revalidate: 300, tags: [TAG_TAREFAS] },
 );
 
@@ -1335,7 +1483,7 @@ async function _listEntregasUncached(): Promise<EntregaItem[]> {
 }
 
 const _listEntregasCached = unstable_cache(
-  _listEntregasUncached,
+  medido('lista de entregas', _listEntregasUncached),
   ['entregas-v3-dia'],
   { revalidate: 300, tags: [TAG_TAREFAS] },
 );
@@ -1402,12 +1550,18 @@ export type TarefaDaEntrega = {
   tarefaId: string;
   titulo: string;
   status: string | null;
+  /** "Ordem (1)": 01 original, 02 alteração, 03 nova aprovação (reaprovação). */
+  ordemUm?: string | null;
   prazo: string | null;
   finalizada: string | null;
   /** Fórmula "Pronto" do Notion: tarefa liberada (etapa anterior concluída). */
   pronto?: boolean;
   postId: string | null;
   postTitulo: string | null;
+  /** Data Postagem do post (página da entrega por projeto: "posta", folga). */
+  postData?: string | null;
+  /** Pessoa da tarefa no Notion (responsável da Lud.). */
+  pessoa?: string | null;
   projetoId: string | null;
   projetoNome: string | null;
   clienteNome: string | null;
@@ -1424,6 +1578,8 @@ export type EntregaDetalhe = EntregaItem & {
 async function _getEntregaDetalheUncached(
   entregaId: string,
   todas = false,
+  /** Só as tarefas desse projeto (página da entrega do projeto: bem menos leituras). */
+  projetoId?: string,
 ): Promise<EntregaDetalhe | null> {
   try {
     const entrega = (await cachedPageRetrieve(entregaId)) as any;
@@ -1453,6 +1609,7 @@ async function _getEntregaDetalheUncached(
         filter: {
           and: [
             { property: 'Entregas', relation: { contains: entregaId } },
+            ...(projetoId ? [{ property: 'Projeto', relation: { contains: projetoId } }] : []),
             // Padrão: só tarefas "prontas" (fórmula Pronto). `todas`: inclui as
             // ainda não liberadas, numa janela de datas (página da entrega).
             ...(todas
@@ -1548,8 +1705,11 @@ async function _getEntregaDetalheUncached(
             prazo,
             finalizada,
             pronto: !!getProp(t, env.notion.taskProps.pronto)?.formula?.boolean,
+            ordemUm: t.properties['Ordem (1)']?.select?.name ?? null,
             postId: postRel[0]?.id ?? null,
             postTitulo,
+            postData: postPage ? getProp(postPage, env.notion.postProps.data)?.date?.start?.slice(0, 10) ?? null : null,
+            pessoa: getProp(t, 'Pessoa')?.people?.[0]?.name ?? null,
             projetoId: projetoRel[0]?.id ?? null,
             projetoNome,
             clienteNome,
@@ -1582,26 +1742,42 @@ async function _getEntregaDetalheUncached(
       atrasadas,
       tarefasRelacionadas,
     };
-  } catch {
-    return null;
+  } catch (err: any) {
+    // Só "não existe" vira null. Timeout/erro do Notion sobe (assim o cache não guarda
+    // um null por 60s e a página não mostra "não achei" quando o Notion só demorou).
+    if (err?.code === 'object_not_found' || err?.status === 404) return null;
+    throw err;
   }
 }
 
 const _getEntregaDetalheCached = unstable_cache(
   _getEntregaDetalheUncached,
-  ['get-entrega-detalhe-v1'],
+  ['get-entrega-detalhe-v3-postdata'],
   { revalidate: 60, tags: [TAG_TAREFAS] }, // 1 min
 );
 
 const _getEntregaCompletaCached = unstable_cache(
-  (entregaId: string) => _getEntregaDetalheUncached(entregaId, true),
-  ['get-entrega-completa-v2'],
+  medido('entrega (todos)', (entregaId: string) => _getEntregaDetalheUncached(entregaId, true)),
+  ['get-entrega-completa-v4-postdata'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
 );
 
 /** Todas as tarefas abertas da entrega (prontas ou não), de 45 dias atrás a 10 dias à frente. */
 export async function getEntregaCompleta(entregaId: string): Promise<EntregaDetalhe | null> {
-  return _getEntregaCompletaCached(entregaId);
+  // Um null guardado no cache (de quando o Notion deu timeout) não vira "não achei":
+  // confere direto no Notion antes de desistir.
+  return (await _getEntregaCompletaCached(entregaId)) ?? _getEntregaDetalheUncached(entregaId, true);
+}
+
+const _getEntregaDoProjetoCached = unstable_cache(
+  medido('entrega (projeto)', (entregaId: string, projetoId: string) => _getEntregaDetalheUncached(entregaId, true, projetoId)),
+  ['get-entrega-do-projeto-v1'],
+  { revalidate: 60, tags: [TAG_TAREFAS] },
+);
+
+/** Mesmo recorte de getEntregaCompleta, só com as tarefas de um projeto. */
+export async function getEntregaDoProjeto(entregaId: string, projetoId: string): Promise<EntregaDetalhe | null> {
+  return (await _getEntregaDoProjetoCached(entregaId, projetoId)) ?? _getEntregaDetalheUncached(entregaId, true, projetoId);
 }
 
 export async function getEntregaDetalhe(
@@ -1793,7 +1969,7 @@ async function _listarTarefasDoPostUncached(
 }
 
 const _listarTarefasDoPostCached = unstable_cache(
-  _listarTarefasDoPostUncached,
+  medido('tarefas do post', _listarTarefasDoPostUncached),
   ['listar-tarefas-do-post-v5'],
   { revalidate: 30, tags: [TAG_TAREFAS] },
 );
@@ -1801,6 +1977,7 @@ const _listarTarefasDoPostCached = unstable_cache(
 export async function listarTarefasDoPost(
   postId: string,
 ): Promise<TarefaDoPost[]> {
+  if (ehPostDoPortal(postId)) return (await listarTarefasDoPortal([postId])).map(paraTarefaDoPost);
   return _listarTarefasDoPostCached(postId);
 }
 
@@ -1810,7 +1987,7 @@ export async function listarTarefasDoPost(
 // da entrega no Notion (mesma query). Filtra só social media.
 // ============================================================
 
-export type ColunaEsteira = 'fila' | 'produzindo' | 'revisar' | 'pronto';
+export type ColunaEsteira = 'fila' | 'produzindo' | 'revisar' | 'reaprovacao' | 'pronto';
 
 export type CardEsteiraNotion = {
   tarefaId: string;
@@ -1828,6 +2005,8 @@ export type CardEsteiraNotion = {
   finalizada: string | null;
   entregaNome: string; // "Briefing & Copy", "Aprovação | Post", etc
   coluna: ColunaEsteira;
+  /** Nome do formato do post (Reels, Carrossel…), pro emoji na lista da esteira. */
+  formatoNome?: string | null;
 };
 
 // Fonte de cards da Esteira. v1 = só Briefing & Copy + sua aprovação.
@@ -1852,6 +2031,10 @@ const TAREFAS_AVULSAS_ESTEIRA: Array<{
   {
     tituloExato: 'Aprovação | Briefing & Copy',
     coluna: 'revisar',
+  },
+  {
+    tituloExato: 'Alteração | Briefing & Copy',
+    coluna: 'reaprovacao',
   },
 ];
 
@@ -2009,12 +2192,17 @@ async function _listarTarefasDaEsteiraUncached(): Promise<CardEsteiraNotion[]> {
     await Promise.all(
       det.tarefasRelacionadas.map(async (t) => {
         if (!t.postId) return;
-        try {
-          const c = await lerCopyDoPost(t.postId);
-          jaProduzidos.set(t.postId, !!(c.legenda || c.carrossel || c.voice));
-        } catch {
-          jaProduzidos.set(t.postId, false);
+        // Tenta de novo se o Notion limitar: um erro aqui não pode tirar o post de Aprovação.
+        for (let tentativa = 0; tentativa < 3; tentativa++) {
+          try {
+            const c = await lerCopyDoPost(t.postId);
+            jaProduzidos.set(t.postId, !!(c.legenda || c.carrossel || c.voice));
+            return;
+          } catch {
+            await new Promise((r) => setTimeout(r, 1500 * (tentativa + 1)));
+          }
         }
+        jaProduzidos.set(t.postId, false);
       }),
     );
     for (const t of det.tarefasRelacionadas) {
@@ -2077,12 +2265,26 @@ async function _listarTarefasDaEsteiraUncached(): Promise<CardEsteiraNotion[]> {
     if (!b.prazo) return -1;
     return a.prazo.localeCompare(b.prazo);
   });
+  // Formato de cada post (relação "Formato"), pro emoji na lista. Um erro aqui não derruba a esteira.
+  const formatoPorPost = new Map<string, string | null>();
+  await Promise.all(
+    [...new Set(cards.map((c) => c.postId))].map(async (postId) => {
+      try {
+        const page = await cachedPageRetrieve(postId);
+        const ids = (getProp(page, 'Formato')?.relation ?? []).map((r: any) => r.id);
+        formatoPorPost.set(postId, (await resolverFormato(ids))?.name ?? null);
+      } catch {
+        formatoPorPost.set(postId, null);
+      }
+    }),
+  );
+  for (const c of cards) c.formatoNome = formatoPorPost.get(c.postId) ?? null;
   return cards;
 }
 
 const _listarTarefasDaEsteiraCached = unstable_cache(
   _listarTarefasDaEsteiraUncached,
-  ['listar-tarefas-da-esteira-v4'],
+  ['listar-tarefas-da-esteira-v6'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
 );
 
@@ -2274,7 +2476,7 @@ async function getFormatoMap(): Promise<Map<string, { name: string; tipo: 'post'
 }
 
 const _listPostsDoMesCached = unstable_cache(
-  listPostsDoMesUncached,
+  medido('posts do mês', listPostsDoMesUncached),
   ['posts-do-mes-v4-agendado'],
   { revalidate: 300, tags: [TAG_POSTS] },
 );
@@ -2286,8 +2488,10 @@ export async function listPostsDoMes(
 ): Promise<PostCalendario[]> {
   if (projetoIds.length === 0) return [];
   const cacheKey = `${[...projetoIds].sort().join(',')}-${year}-${month}`;
-  return postsDoMesCache.get(cacheKey, () =>
-    _listPostsDoMesCached(projetoIds, year, month),
+  const inicioMes = `${year}-${String(month).padStart(2, '0')}-01`;
+  const fimMes = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  return postsDoMesCache.get(cacheKey, async () =>
+    mesclarComPortal(await _listPostsDoMesCached(projetoIds, year, month), { projetoIds, inicio: inicioMes, fim: fimMes }),
   );
 }
 
@@ -2501,17 +2705,19 @@ async function listPostsNoIntervaloUncached(
   let cursor: string | undefined;
 
   do {
-    const res = await notion.databases.query({
-      database_id: env.notion.postagensDbId,
-      start_cursor: cursor,
-      filter: {
-        and: [
-          { property: env.notion.postProps.data, date: { on_or_after: onOrAfter } },
-          { property: env.notion.postProps.data, date: { on_or_before: onOrBefore } },
-        ],
-      },
-      sorts: [{ property: env.notion.postProps.data, direction: 'ascending' }],
-    });
+    const res = await comRetry(() =>
+      notion.databases.query({
+        database_id: env.notion.postagensDbId,
+        start_cursor: cursor,
+        filter: {
+          and: [
+            { property: env.notion.postProps.data, date: { on_or_after: onOrAfter } },
+            { property: env.notion.postProps.data, date: { on_or_before: onOrBefore } },
+          ],
+        },
+        sorts: [{ property: env.notion.postProps.data, direction: 'ascending' }],
+      }),
+    );
 
     const pageFormats = await Promise.all(
       (res.results as any[]).map(async (page) => {
@@ -2611,8 +2817,8 @@ async function listPostsNoIntervaloUncached(
 }
 
 const _listPostsNoIntervaloCached = unstable_cache(
-  listPostsNoIntervaloUncached,
-  ['posts-intervalo-v3-agendado'],
+  medido('posts do período', listPostsNoIntervaloUncached),
+  ['posts-intervalo-v4-agendado'],
   { revalidate: 300, tags: [TAG_POSTS] },
 );
 
@@ -2620,7 +2826,10 @@ export async function listPostsNoIntervalo(
   onOrAfter: string,
   onOrBefore: string,
 ): Promise<PostCalendario[]> {
-  return _listPostsNoIntervaloCached(onOrAfter, onOrBefore);
+  return mesclarComPortal(await _listPostsNoIntervaloCached(onOrAfter, onOrBefore), {
+    inicio: onOrAfter.slice(0, 10),
+    fim: onOrBefore.slice(0, 10),
+  });
 }
 
 export type PostDetalhado = {
@@ -2823,6 +3032,12 @@ async function lerLegendaDoPost(postId: string): Promise<string | null> {
  * útil pra exibir a "ideia" no fluxo de aprovação de pauta.
  */
 export async function lerBodyDePagina(pageId: string): Promise<string | null> {
+  // Conteúdo do portal: tarefa não tem corpo; o post mostra a ideia e o briefing.
+  if (ehTarefaDoPortal(pageId)) return null;
+  if (ehPostDoPortal(pageId)) {
+    const p = await getPostDoPortal(pageId);
+    return p ? [p.ideia, p.briefing].filter((x) => x.trim()).join('\n\n') || null : null;
+  }
   return lerBodyCompletoDoPost(pageId);
 }
 
@@ -2837,6 +3052,15 @@ export async function lerSecaoEntre(
   inicio: string,
   fim: string[],
 ): Promise<string | null> {
+  // Conteúdo do portal: as seções são campos do post.
+  if (ehPostDoPortal(pageId)) {
+    const p = await getPostDoPortal(pageId);
+    if (!p) return null;
+    const alvo = inicio.toLowerCase();
+    if (alvo.includes('materiais')) return p.materiaisNecessarios.trim() || null;
+    if (alvo.includes('informa')) return p.informacoesNecessarias.trim() || null;
+    return null;
+  }
   try {
     const blocks = await coletarBlocosRecursivo(pageId);
     const normalize = (s: string) =>
@@ -3005,69 +3229,111 @@ export type CopyDoPost = {
   legenda: string | null;
 };
 
-async function _lerCopyDoPostUncached(postId: string): Promise<CopyDoPost> {
-  // Estratégia: as copies produzidas ficam nos SLOTS DO TEMPLATE marcadas
-  // por sub-headings "🤖 Copy Produzida — v[N] · [Campo]" ou
-  // "🤖 Reescrita Claude — v[N] · [Campo]". Pega a versão de maior N.
-  const out: CopyDoPost = { voice: null, carrossel: null, legenda: null };
-  out.voice = await pegarCampoMaisRecente(postId, /voice\s*over/i);
-  out.carrossel = await pegarCampoMaisRecente(postId, /carrossel/i);
-  out.legenda = await pegarCampoMaisRecente(postId, /^legenda$/i);
-  return out;
-}
+type NoCopy = { block: any; index: number; siblings: any[]; parentId: string };
 
-async function pegarCampoMaisRecente(
-  postId: string,
-  campoRegex: RegExp,
-): Promise<string | null> {
-  type NodeFlat = { block: any; parentId: string; index: number; siblings: any[] };
-  const todosNodes: NodeFlat[] = [];
-
+/** Percorre a página do post uma vez só (até 4 níveis: abas, callouts, colunas). */
+async function nosDaPagina(postId: string): Promise<NoCopy[]> {
+  const nos: NoCopy[] = [];
   async function descer(parentId: string, depth = 0): Promise<void> {
     if (depth > 4) return;
     let cursor: string | undefined;
     const siblings: any[] = [];
     do {
-      const res = await notion.blocks.children.list({
-        block_id: parentId,
-        page_size: 100,
-        start_cursor: cursor,
-      });
+      const res = await comRetry(() => notion.blocks.children.list({ block_id: parentId, page_size: 100, start_cursor: cursor }));
       siblings.push(...(res.results as any[]));
       cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
     } while (cursor);
     for (let i = 0; i < siblings.length; i++) {
-      const b = siblings[i];
-      todosNodes.push({ block: b, parentId, index: i, siblings });
-      if (b.has_children) await descer(b.id, depth + 1);
+      nos.push({ block: siblings[i], index: i, siblings, parentId });
+      if (siblings[i].has_children) await descer(siblings[i].id, depth + 1);
     }
   }
   await descer(postId);
+  return nos;
+}
 
-  const marcadorRegex =
-    /(?:copy\s*produzida|reescrita\s*claude)\s*[—-]\s*v(\d+)\s*[·•]\s*([^·]+)/i;
+export type InfoDoPostEsteira = { formato: string | null; ideia: string | null; briefing: string | null; skills: string[] };
 
-  let melhor: { node: NodeFlat; versao: number } | null = null;
-  for (const n of todosNodes) {
+/** Formato, ideia do post e briefing pra equipe (abas Briefing ou Lud), pra prévia da esteira. */
+async function _lerInfoDoPostEsteira(postId: string): Promise<InfoDoPostEsteira> {
+  const [pagina, nos] = await Promise.all([
+    comRetry(() => notion.pages.retrieve({ page_id: postId })) as Promise<any>,
+    nosDaPagina(postId),
+  ]);
+  const formatoIds = (getProp(pagina, 'Formato')?.relation ?? []).map((r: any) => r.id);
+  const formato = (await resolverFormato(formatoIds).catch(() => null))?.name ?? null;
+  const ehTitulo = (b: any) => b.type === 'heading_1' || b.type === 'heading_2' || b.type === 'heading_3';
+  const filhosDe = (id: string) => nos.filter((n) => n.parentId === id).map((n) => n.block);
+  function secao(regex: RegExp): string | null {
+    const no = nos.find((n) => ehTitulo(n.block) && regex.test(rtTexto(n.block).trim()));
+    if (!no) return null;
+    const partes: string[] = [];
+    for (let i = no.index + 1; i < no.siblings.length; i++) {
+      const b = no.siblings[i];
+      if (ehTitulo(b) || b.type === 'divider') break;
+      const t = rtTexto(b);
+      if (t) partes.push(b.type === 'bulleted_list_item' || b.type === 'numbered_list_item' ? `• ${t}` : t);
+      // Callout/toggle: o texto fica nos filhos.
+      if (b.has_children && (b.type === 'callout' || b.type === 'toggle')) {
+        for (const f of filhosDe(b.id)) {
+          const tf = rtTexto(f);
+          if (tf) partes.push(f.type === 'bulleted_list_item' ? `• ${tf}` : tf);
+        }
+      }
+    }
+    return partes.join('\n').trim() || null;
+  }
+  const skillsTxt = secao(/^skills usadas/i);
+  return {
+    formato,
+    ideia: secao(/^ideia do post/i),
+    briefing: secao(/^briefing( do post)?$/i),
+    skills: skillsTxt ? skillsTxt.split(/[,\n→>]+/).map((x) => x.replace(/^[•\-\s]+/, '').trim()).filter(Boolean) : [],
+  };
+}
+
+const _lerInfoDoPostEsteiraCached = unstable_cache(_lerInfoDoPostEsteira, ['info-do-post-esteira-v2'], { revalidate: 60, tags: [TAG_POSTS] });
+export const lerInfoDoPostEsteira = (postId: string) => _lerInfoDoPostEsteiraCached(postId);
+
+async function _lerCopyDoPostUncached(postId: string): Promise<CopyDoPost> {
+  // 1) Copies produzidas pela esteira: sub-headings "🤖 Copy Produzida — v[N] · [Campo]"
+  //    ou "🤖 Reescrita Claude — v[N] · [Campo]". Vale a versão de maior N.
+  // 2) Se não tiver marcador: as seções padrão do template, como a skill
+  //    criar-copy-completo escreve ("Copy para Carrossel", "Roteiro do Reel", "Legenda").
+  const nos = await nosDaPagina(postId);
+  const out: CopyDoPost = {
+    voice: campoMaisRecente(nos, /voice\s*over/i),
+    carrossel: campoMaisRecente(nos, /carrossel/i),
+    legenda: campoMaisRecente(nos, /^legenda$/i),
+  };
+  if (!out.voice && !out.carrossel && !out.legenda) {
+    out.carrossel = secaoDoTemplate(nos, /^copy\s*para\s*carrossel/i, false);
+    out.voice = secaoDoTemplate(nos, /^roteiro\s*do\s*reel/i, false);
+    out.legenda = secaoDoTemplate(nos, /^legenda$/i, true);
+  }
+  return out;
+}
+
+const MARCADOR_COPY = /(?:copy\s*produzida|reescrita\s*claude)\s*[—-]\s*v(\d+)\s*[·•]\s*([^·]+)/i;
+
+function campoMaisRecente(nos: NoCopy[], campoRegex: RegExp): string | null {
+  let melhor: { node: NoCopy; versao: number } | null = null;
+  for (const n of nos) {
     if (!ehHeading(n.block)) continue;
-    const t = rtTexto(n.block);
-    const m = t.match(marcadorRegex);
+    const m = rtTexto(n.block).match(MARCADOR_COPY);
     if (!m) continue;
-    const nomeCampo = m[2].trim();
-    if (!campoRegex.test(nomeCampo)) continue;
+    if (!campoRegex.test(m[2].trim())) continue;
     const versao = parseInt(m[1], 10);
     if (!melhor || versao > melhor.versao) melhor = { node: n, versao };
   }
-
   if (!melhor) return null;
-
   const { siblings, index } = melhor.node;
   const partes: string[] = [];
   for (let i = index + 1; i < siblings.length; i++) {
     const b = siblings[i];
     if (b.type === 'divider') break;
     if (b.type === 'heading_1' || b.type === 'heading_2') break;
-    if (ehHeading(b) && marcadorRegex.test(rtTexto(b))) break;
+    if (ehHeading(b) && MARCADOR_COPY.test(rtTexto(b))) break;
     const t = rtTexto(b);
     if (ehHeading(b) && t) {
       if (partes.length > 0) partes.push('');
@@ -3079,9 +3345,30 @@ async function pegarCampoMaisRecente(
   return partes.join('\n').trim() || null;
 }
 
+/** Texto de uma seção do template até o próximo título. pararNoDivisor: a legenda
+ *  termina no "---"; no carrossel o "---" só separa as lâminas. */
+function secaoDoTemplate(nos: NoCopy[], regex: RegExp, pararNoDivisor: boolean): string | null {
+  const ehTitulo = (b: any) => b.type === 'heading_1' || b.type === 'heading_2' || b.type === 'heading_3';
+  const no = nos.find((n) => ehTitulo(n.block) && regex.test(rtTexto(n.block).trim()));
+  if (!no) return null;
+  const partes: string[] = [];
+  for (let i = no.index + 1; i < no.siblings.length; i++) {
+    const b = no.siblings[i];
+    if (ehTitulo(b)) break;
+    if (b.type === 'divider') {
+      if (pararNoDivisor) break;
+      if (partes.length && partes[partes.length - 1] !== '') partes.push('');
+      continue;
+    }
+    const t = rtTexto(b);
+    if (t) partes.push(t);
+  }
+  return partes.join('\n').trim() || null;
+}
+
 const _lerCopyDoPostCached = unstable_cache(
   _lerCopyDoPostUncached,
-  ['ler-copy-do-post-v7'],
+  ['ler-copy-do-post-v8'],
   { revalidate: 30, tags: [TAG_POSTS] },
 );
 
@@ -3159,6 +3446,10 @@ export async function atualizarLegendaDoPost(
   postId: string,
   novaLegenda: string,
 ): Promise<void> {
+  if (ehPostDoPortal(postId)) {
+    await atualizarPostDoPortal(postId, { legenda: (novaLegenda ?? '').trim() }, null);
+    return;
+  }
   const texto = (novaLegenda ?? '').trim();
   const blocks = await coletarBlocosRecursivo(postId);
 
@@ -3217,6 +3508,10 @@ export async function atualizarIdeiaDoPost(
   postId: string,
   novoTexto: string,
 ): Promise<void> {
+  if (ehPostDoPortal(postId)) {
+    await atualizarPostDoPortal(postId, { ideia: (novoTexto ?? '').trim() }, null);
+    return;
+  }
   const texto = (novoTexto ?? '').trim();
   const blocks = await coletarBlocosRecursivo(postId);
 
@@ -3288,6 +3583,7 @@ export async function atualizarIdeiaDoPost(
 }
 
 export async function getPostComDetalhes(postId: string): Promise<PostDetalhado | null> {
+  if (ehPostDoPortal(postId)) return portalPostDetalhado(postId);
   try {
     const page = (await cachedPageRetrieve(postId)) as any;
     if (page.archived) return null;
@@ -3417,6 +3713,7 @@ export async function getPostComDetalhes(postId: string): Promise<PostDetalhado 
 }
 
 export async function aprovarTarefa(tarefaId: string, comentario?: string): Promise<void> {
+  if (ehTarefaDoPortal(tarefaId)) return portalAprovarTarefa(tarefaId, comentario);
   const tarefa = (await notion.pages.retrieve({ page_id: tarefaId })) as any;
   const postRel = getProp(tarefa, env.notion.taskProps.post)?.relation ?? [];
   const postId = postRel[0]?.id as string | undefined;
@@ -3569,10 +3866,15 @@ function montarPropsHerdadas(
   return props;
 }
 
+// Entregas do Notion usadas nas alterações (mesmo padrão do botão de reprovar).
+const ENTREGA_ALTERACAO = '2bcd04d23b4a8088bb31fb2d83e29fbf';
+const ENTREGA_APROVACAO_ALTERACAO = '2e9d04d23b4a80a68ea9d1602cf286f9';
+
 export async function pedirAlteracao(tarefaId: string, comentario: string): Promise<void> {
   if (!comentario || comentario.trim().length < 3) {
     throw new Error('comentario obrigatório e com pelo menos 3 caracteres');
   }
+  if (ehTarefaDoPortal(tarefaId)) return portalPedirAlteracao(tarefaId, comentario);
   const tarefa = (await notion.pages.retrieve({ page_id: tarefaId })) as any;
 
   const postRel = getProp(tarefa, env.notion.taskProps.post)?.relation ?? [];
@@ -3611,6 +3913,8 @@ export async function pedirAlteracao(tarefaId: string, comentario: string): Prom
         postId,
         prazoIso,
         pessoaIds: gestorIds.length > 0 ? gestorIds : undefined,
+        // A aprovação do cliente fechou: a alteração vai pra entrega Alterações.
+        entregaId: ENTREGA_ALTERACAO,
       }),
     })) as any;
     alteracaoId = altRes.id;
@@ -3630,6 +3934,8 @@ export async function pedirAlteracao(tarefaId: string, comentario: string): Prom
           maeId: alteracaoId,
           postId,
           prazoIso,
+          // A reaprovação depois da alteração entra na entrega Aprovações.
+          entregaId: ENTREGA_APROVACAO_ALTERACAO,
         }),
       })) as any;
       if (aprovRes.id) await aplicarTemplateNovaTarefa(aprovRes.id);
@@ -3646,9 +3952,6 @@ export async function pedirAlteracao(tarefaId: string, comentario: string): Prom
 }
 
 
-// Entregas do Notion usadas nas alterações (mesmo padrão do botão de reprovar).
-const ENTREGA_ALTERACAO = '2bcd04d23b4a8088bb31fb2d83e29fbf';
-const ENTREGA_APROVACAO_ALTERACAO = '2e9d04d23b4a80a68ea9d1602cf286f9';
 
 export type TipoAlteracao = 'arte' | 'copy';
 const BASE_DA_ALTERACAO: Record<TipoAlteracao, string> = {
@@ -3805,6 +4108,7 @@ export async function solicitarAlteracaoDoPost(params: {
 export async function getTarefaComPost(tarefaId: string): Promise<{
   tarefa: TarefaPendente;
 } | null> {
+  if (ehTarefaDoPortal(tarefaId)) return portalTarefaComPost(tarefaId);
   try {
     const tarefa = (await notion.pages.retrieve({ page_id: tarefaId })) as any;
     if (tarefa.archived) return null;
@@ -3986,6 +4290,7 @@ export async function findTarefaClienteProntaDoPost(
   opts: { exigirPronto?: boolean } = {},
 ): Promise<{ tarefaId: string; titulo: string } | null> {
   const exigirPronto = opts.exigirPronto ?? true;
+  if (ehPostDoPortal(postId)) return portalTarefaClientePronta(postId, exigirPronto);
   const post = await getPost(postId);
   if (!post) return null;
 
@@ -4020,6 +4325,10 @@ export async function findTarefaClienteProntaDoPost(
 
 /** Desfaz uma conclusão: volta pro status anterior e limpa "Finalizada em". */
 export async function reabrirTarefa(tarefaId: string, status: string): Promise<void> {
+  if (ehTarefaDoPortal(tarefaId)) {
+    await reabrirTarefaDoPortal(tarefaId, status);
+    return;
+  }
   await notion.pages.update({
     page_id: tarefaId,
     properties: {
@@ -4030,6 +4339,10 @@ export async function reabrirTarefa(tarefaId: string, status: string): Promise<v
 }
 
 export async function concluirTarefa(tarefaId: string): Promise<void> {
+  if (ehTarefaDoPortal(tarefaId)) {
+    await concluirTarefaDoPortal(tarefaId);
+    return;
+  }
   // Com hora: o histórico do post mostra quando foi concluída.
   const agora = new Date().toISOString();
   await notion.pages.update({
@@ -4050,6 +4363,7 @@ export async function atualizarPrazoTarefa(
   tarefaId: string,
   novaData: string,
 ): Promise<{ anterior: string | null; titulo: string; postId: string | null }> {
+  if (ehTarefaDoPortal(tarefaId)) return portalAtualizarPrazo(tarefaId, novaData);
   const page: any = await comRetry(() => notion.pages.retrieve({ page_id: tarefaId }));
   const atual = getProp(page, 'Data Entrega')?.date ?? null;
   const anterior = dataEmSaoPaulo(atual?.start ?? getProp(page, 'Data Inicial')?.date?.start);
@@ -4112,6 +4426,7 @@ export async function atualizarStatusPost(
 }
 
 export async function comentarPost(postId: string, texto: string): Promise<void> {
+  if (ehPostDoPortal(postId)) return comentarPostDoPortal(postId, texto, null);
   // Notion limita cada rich_text item em 2000 chars — quebramos em pedaços.
   const LIMITE = 1900;
   const pedacos: string[] = [];
@@ -4143,6 +4458,7 @@ export type ComentarioPost = {
 export async function lerComentariosDoPost(
   postId: string,
 ): Promise<ComentarioPost[]> {
+  if (ehPostDoPortal(postId)) return lerComentariosDoPortal(postId);
   try {
     const out: ComentarioPost[] = [];
     let cursor: string | undefined;
@@ -4248,7 +4564,8 @@ async function _listOpcoesRelationUncached(propriedade: string): Promise<OpcaoRe
     for (const p of res.results as any[]) {
       if (p.archived) continue;
       const titleProp = Object.values(p.properties).find((x: any) => x.type === 'title') as any;
-      const nome = txt(titleProp?.title) || '';
+      // Algumas bases (ex.: Etapa Funil) têm título vazio e só o emoji no ícone.
+      const nome = txt(titleProp?.title).trim() || (p.icon?.type === 'emoji' ? p.icon.emoji : '') || '';
       if (nome) out.push({ id: p.id, nome });
     }
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
@@ -4258,7 +4575,7 @@ async function _listOpcoesRelationUncached(propriedade: string): Promise<OpcaoRe
 
 const _listOpcoesRelationCached = unstable_cache(
   _listOpcoesRelationUncached,
-  ['list-opcoes-relation-v1'],
+  ['list-opcoes-relation-v2'],
   { revalidate: 600, tags: [TAG_POSTS] },
 );
 
@@ -5355,6 +5672,14 @@ export async function registrarMateriaisNoPost(
   url: string,
   legenda: string,
 ): Promise<boolean> {
+  if (ehPostDoPortal(postId)) {
+    const post = await getPostDoPortal(postId);
+    if (!post) return false;
+    const semQuery = url.split('?')[0];
+    if (post.materiaisLinks.some((l) => l.url.split('?')[0] === semQuery)) return true;
+    await atualizarPostDoPortal(postId, { materiaisLinks: [...post.materiaisLinks, { name: legenda, url }] }, null);
+    return true;
+  }
   const blocos = await blocosDaPaginaSemCache(postId);
   const norm = (s: string) => s.toLowerCase().replace(/[:.\s]+/g, ' ').trim();
   const idx = blocos.findIndex((b) => ehHeading(b) && norm(rtTexto(b)) === 'materiais');
@@ -5392,7 +5717,17 @@ export async function listarTarefasAbertasDosPosts(
   postIds: string[],
 ): Promise<Map<string, TarefaDoProjeto[]>> {
   const out = new Map<string, TarefaDoProjeto[]>();
-  const unicos = [...new Set(postIds)];
+  // Posts do portal: tarefas abertas vêm do banco do portal.
+  const doPortal = [...new Set(postIds.filter(ehPostDoPortal))];
+  if (doPortal.length > 0) {
+    for (const t of await listarTarefasDoPortal(doPortal)) {
+      if (!tarefaDoPortalAberta(t)) continue;
+      const lista = out.get(t.postId) ?? [];
+      lista.push(portalTarefaDoProjeto(t));
+      out.set(t.postId, lista);
+    }
+  }
+  const unicos = [...new Set(postIds.filter((id) => !ehPostDoPortal(id)))];
   for (let i = 0; i < unicos.length; i += 25) {
     const lote = unicos.slice(i, i + 25);
     let cursor: string | undefined;
@@ -5425,6 +5760,7 @@ export async function listarTarefasAbertasDosPosts(
           id: t.id,
           titulo: txt(tt?.title) || 'Tarefa',
           pessoa: getProp(t, 'Pessoa')?.people?.[0]?.name ?? null,
+          pessoaAvatar: getProp(t, 'Pessoa')?.people?.[0]?.avatar_url ?? null,
           status: getProp(t, env.notion.taskProps.status)?.status?.name ?? null,
           prazo: dataEmSaoPaulo(
             getProp(t, 'Data Entrega')?.date?.start ?? getProp(t, 'Data Inicial')?.date?.start,
@@ -5441,4 +5777,787 @@ export async function listarTarefasAbertasDosPosts(
     } while (cursor);
   }
   return out;
+}
+
+// ============================================================================
+// Ponte com o conteúdo do portal (ids lud_ / ludt_ — ver lib/conteudo-portal.ts)
+// ============================================================================
+
+const semTracos = (id: string) => id.replace(/-/g, '').toLowerCase();
+
+/** Nome do projeto como no Notion ("IG | @…"), pra bater com as outras telas. */
+async function nomesDosProjetos(): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  try {
+    for (const p of await listAllProjetos()) out.set(semTracos(p.id), p.nome);
+  } catch {
+    /* sem nomes: cai no da tabela do portal */
+  }
+  for (const p of await listarProjetosDoPortal()) {
+    if (!out.has(semTracos(p.projetoId)) && p.nome) out.set(semTracos(p.projetoId), p.nome);
+  }
+  return out;
+}
+
+async function nomeDoProjetoPortal(projetoId: string): Promise<string> {
+  return (await nomesDosProjetos()).get(semTracos(projetoId)) ?? 'Projeto';
+}
+
+async function portalPostDetalhado(postId: string): Promise<PostDetalhado | null> {
+  const post = await getPostDoPortal(postId);
+  if (!post || post.status === 'Cancelado') return null;
+  const tarefas = await listarTarefasDoPortal([postId]);
+  return paraPostDetalhado(post, await nomeDoProjetoPortal(post.projetoId), tarefas.map((t) => t.id));
+}
+
+async function portalTarefaComPost(tarefaId: string): Promise<{ tarefa: TarefaPendente } | null> {
+  const t = await getTarefaDoPortal(tarefaId);
+  if (!t) return null;
+  const post = await getPostDoPortal(t.postId);
+  if (!post) return null;
+  return { tarefa: paraTarefaPendente(t, post, await nomeDoProjetoPortal(post.projetoId)) };
+}
+
+/** Primeira tarefa do cliente aberta na ordem; "pronta" = tudo antes dela já fechou. */
+async function portalTarefaClientePronta(
+  postId: string,
+  exigirPronto: boolean,
+): Promise<{ tarefaId: string; titulo: string } | null> {
+  const t = tarefaDoClienteAgora(await listarTarefasDoPortal([postId]), exigirPronto);
+  return t ? { tarefaId: t.id, titulo: t.titulo } : null;
+}
+
+/** Pendências do cliente que vivem no portal (entram na home dele junto com as do Notion). */
+async function tarefasPendentesDoPortal(projetoIds: string[]): Promise<TarefaPendente[]> {
+  const projetos = (await listarProjetosDoPortal()).filter((p) =>
+    projetoIds.some((id) => semTracos(id) === semTracos(p.projetoId)),
+  );
+  if (projetos.length === 0) return [];
+  const posts = await listarPostsDoPortal({ projetoIds: projetos.map((p) => p.projetoId) });
+  if (posts.length === 0) return [];
+  const tarefas = await listarTarefasDoPortal(posts.map((p) => p.id));
+  const nomes = await nomesDosProjetos();
+  const out: TarefaPendente[] = [];
+  for (const p of posts) {
+    const t = tarefaDoClienteAgora(tarefas.filter((x) => x.postId === p.id));
+    if (t) out.push(paraTarefaPendente(t, p, nomes.get(semTracos(p.projetoId)) ?? 'Projeto'));
+  }
+  return out;
+}
+
+async function portalAprovarTarefa(tarefaId: string, comentario?: string): Promise<void> {
+  const t = await getTarefaDoPortal(tarefaId);
+  if (!t) throw new Error('tarefa não encontrada');
+  await concluirTarefaDoPortal(tarefaId);
+  const linhas = [`✅ ${t.titulo} — aprovado pelo cliente.`];
+  if (comentario && comentario.trim()) linhas.push('', comentario.trim());
+  await comentarPostDoPortal(t.postId, linhas.join('\n'), null, tarefaId);
+}
+
+/** Próximo dia útil às 17h de Brasília (prazo padrão de alteração). */
+function proximoDiaUtil17h(): string {
+  const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  const d = new Date(`${hoje}T12:00:00Z`);
+  do d.setUTCDate(d.getUTCDate() + 1);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  return `${d.toISOString().slice(0, 10)}T17:00:00-03:00`;
+}
+
+async function portalPedirAlteracao(tarefaId: string, comentario: string): Promise<void> {
+  const t = await getTarefaDoPortal(tarefaId);
+  if (!t) throw new Error('tarefa não encontrada');
+  await atualizarTarefaDoPortal(tarefaId, { status: 'Reprovado', finalizadaEm: new Date().toISOString() });
+  const base = t.titulo.replace(/^(Alteração|Aprovação) \| /, '');
+  const prazo = proximoDiaUtil17h();
+  await criarTarefasDoPortal(t.postId, [
+    { titulo: `Alteração | ${base}`, ordem: t.ordem, ordemUm: '02', maeId: t.id, prazo },
+    { titulo: `Aprovação | ${base}`, ordem: t.ordem, ordemUm: '03', maeId: t.id, prazo },
+  ]);
+  await comentarPostDoPortal(
+    t.postId,
+    `🔁 ${t.titulo} — alteração solicitada pelo cliente.\n\n${comentario.trim()}`,
+    null,
+    tarefaId,
+  );
+}
+
+async function portalAtualizarPrazo(
+  tarefaId: string,
+  novaData: string,
+): Promise<{ anterior: string | null; titulo: string; postId: string | null }> {
+  const t = await getTarefaDoPortal(tarefaId);
+  if (!t) throw new Error('tarefa não encontrada');
+  const hora = t.prazo
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Sao_Paulo',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date(t.prazo))
+    : '17:00';
+  await atualizarTarefaDoPortal(tarefaId, { prazo: `${novaData}T${hora}:00-03:00` });
+  return { anterior: dataEmSaoPaulo(t.prazo), titulo: t.titulo, postId: t.postId };
+}
+
+function portalTarefaDoProjeto(t: TarefaPortal): TarefaDoProjeto {
+  return {
+    id: t.id,
+    titulo: t.titulo,
+    pessoa: t.responsavelNome,
+    status: t.status,
+    prazo: dataEmSaoPaulo(t.prazo),
+    postId: t.postId,
+    postTitulo: null,
+    postData: null,
+    ordem: String(t.ordem).padStart(2, '0'),
+    ordemUm: t.ordemUm,
+  };
+}
+
+function portalPostCalendario(p: PostPortal, tarefas: TarefaPortal[], nome: string): PostCalendario {
+  const atual = tarefas.find(tarefaDoPortalAberta) ?? null;
+  const etapa: EtapaPost =
+    p.status === 'Postado' ? 'publicado' : atual ? tituloParaEtapa(atual.titulo) : 'rascunho';
+  const out: PostCalendario = {
+    id: p.id,
+    titulo: p.titulo,
+    data: p.dataPostagem ?? '',
+    status: p.status,
+    formato: [],
+    formatoNome: p.formato,
+    tipo: /reel/i.test(p.formato ?? '') ? 'reels' : /stor/i.test(p.formato ?? '') ? 'story' : 'post',
+    projetoId: p.projetoId,
+    projetoNome: nome,
+    cor: ETAPA_INFO[etapa].cor,
+    etapa,
+    etapaLabel: ETAPA_INFO[etapa].label,
+    tarefaAtualTitulo: atual?.titulo ?? null,
+    demanda: null,
+    statusGeral: atual?.titulo ?? (p.status === 'Postado' ? 'Postado' : null),
+    icon: null,
+  };
+  ajustarAgendado(out);
+  out.cor = ETAPA_INFO[out.etapa].cor;
+  out.etapaLabel = ETAPA_INFO[out.etapa].label;
+  return out;
+}
+
+/**
+ * Listas de posts (calendário, home, entregas): entram os posts do portal e
+ * saem as posições do Notion de projetos que já rodam no portal (a partir
+ * da data `desde`), pra não aparecer em dobro.
+ */
+async function mesclarComPortal(
+  posts: PostCalendario[],
+  f: { projetoIds?: string[]; inicio: string; fim: string },
+): Promise<PostCalendario[]> {
+  const projetos = await listarProjetosDoPortal();
+  if (projetos.length === 0) return posts;
+  const desdePor = new Map(projetos.map((p) => [semTracos(p.projetoId), p.desde]));
+  // Depois que o projeto passou pro portal, o post do Notion só fica se já andou lá
+  // (produção ou postado): a equipe às vezes segue a produção no Notion, e aí o
+  // Notion é que está certo. Nesse caso a cópia do portal (mesma data e título) sai.
+  const andouNoNotion = (p: PostCalendario) =>
+    p.status === 'Postado' || (!!p.statusGeral && !/pauta|ideia|novo post/i.test(p.statusGeral));
+  const filtrados = posts.filter((p) => {
+    const desde = desdePor.get(semTracos(p.projetoId));
+    return !desde || !p.data || p.data.slice(0, 10) < desde || andouNoNotion(p);
+  });
+  const normal = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const gemeo = new Set(filtrados.map((p) => `${semTracos(p.projetoId)}|${(p.data ?? '').slice(0, 10)}|${normal(p.titulo)}`));
+  const alvo = f.projetoIds
+    ? projetos.filter((p) => f.projetoIds!.some((id) => semTracos(id) === semTracos(p.projetoId)))
+    : projetos;
+  if (alvo.length === 0) return filtrados;
+  const doPortal = await listarPostsDoPortal({
+    projetoIds: alvo.map((p) => p.projetoId),
+    inicio: f.inicio,
+    fim: f.fim,
+  });
+  if (doPortal.length === 0) return filtrados;
+  const tarefas = await listarTarefasDoPortal(doPortal.map((p) => p.id));
+  const nomes = await nomesDosProjetos();
+  const extras = doPortal
+    .filter((p) => !gemeo.has(`${semTracos(p.projetoId)}|${(p.dataPostagem ?? '').slice(0, 10)}|${normal(p.titulo ?? '')}`))
+    .map((p) =>
+    portalPostCalendario(
+      p,
+      tarefas.filter((t) => t.postId === p.id),
+      nomes.get(semTracos(p.projetoId)) ?? 'Projeto',
+    ),
+  );
+  return [...filtrados, ...extras].sort((a, b) => (a.data ?? '').localeCompare(b.data ?? ''));
+}
+
+/**
+ * Posições que o Notion ainda tem pro projeto no mês (ex.: os "Novo Post" de
+ * dezembro). Lê direto do Notion, sem a mescla com o portal — serve pra
+ * importar as datas pro calendário do portal.
+ */
+export async function posicoesDoNotionNoMes(
+  projetoId: string,
+  year: number,
+  month: number,
+): Promise<{ id: string; titulo: string; data: string; formatoNome: string | null }[]> {
+  const posts = await _listPostsDoMesCached([projetoId], year, month);
+  return posts
+    .filter((p) => semTracos(p.projetoId) === semTracos(projetoId) && p.data)
+    .map((p) => ({ id: p.id, titulo: p.titulo, data: p.data.slice(0, 10), formatoNome: p.formatoNome }));
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard: tarefas abertas de todos os projetos
+// ---------------------------------------------------------------------------
+
+export type TarefaDeTodos = TarefaDoProjeto & { projetoId: string | null; pronto?: boolean; tipoOriginal?: string | null };
+
+/**
+ * Tarefas abertas de todos os projetos que vencem entre 90 dias atrás e 31
+ * dias pra frente — base do dashboard (esta semana, próximos 30 dias e lista
+ * de projetos). Duas consultas paginadas (tarefas + posts) em vez de uma por
+ * projeto, pra não estourar o limite do Notion. Datas no fuso de São Paulo.
+ */
+async function _listarTarefasAbertasDeTodosUncached(): Promise<TarefaDeTodos[]> {
+  const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  const desloca = (n: number) => new Date(Date.parse(`${hoje}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+  const desde = desloca(-90);
+  const ate = desloca(31);
+
+  const brutas: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const r = await notion.databases.query({
+      database_id: env.notion.tarefasDbId,
+      page_size: 100,
+      start_cursor: cursor,
+      filter: {
+        and: [
+          { property: 'Data Entrega', date: { on_or_after: desde } },
+          { property: 'Data Entrega', date: { on_or_before: `${ate}T23:59:59-03:00` } },
+          ...STATUS_TAREFA_FECHADOS.map((s) => ({
+            property: env.notion.taskProps.status,
+            status: { does_not_equal: s },
+          })),
+        ],
+      },
+    });
+    brutas.push(...(r.results as any[]));
+    cursor = r.has_more ? r.next_cursor ?? undefined : undefined;
+  } while (cursor && brutas.length < 2000);
+
+  // Títulos e datas dos posts numa consulta só (todos os projetos).
+  const posts = new Map<string, { titulo: string; data: string | null }>();
+  cursor = undefined;
+  try {
+    do {
+      const r = await notion.databases.query({
+        database_id: env.notion.postagensDbId,
+        page_size: 100,
+        start_cursor: cursor,
+        filter: {
+          and: [
+            { property: env.notion.postProps.data, date: { on_or_after: desloca(-120) } },
+            { property: env.notion.postProps.data, date: { on_or_before: desloca(90) } },
+          ],
+        },
+      });
+      for (const p of r.results as any[]) {
+        const tp = Object.values(p.properties).find((x: any) => x.type === 'title') as any;
+        posts.set(p.id, {
+          titulo: txt(tp?.title) || 'Post sem título',
+          data: getProp(p, env.notion.postProps.data)?.date?.start ?? null,
+        });
+      }
+      cursor = r.has_more ? r.next_cursor ?? undefined : undefined;
+    } while (cursor && posts.size < 3000);
+  } catch (err: any) {
+    console.warn('[dashboard] títulos dos posts:', err?.message);
+  }
+
+  return brutas.map((t) => {
+    const tt = Object.values(t.properties).find((x: any) => x.type === 'title') as any;
+    const postId = ((getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id as string) ?? null;
+    const post = postId ? posts.get(postId) : undefined;
+    return {
+      id: t.id,
+      titulo: (txt(tt?.title) || 'Tarefa').trim(),
+      pessoa: getProp(t, 'Pessoa')?.people?.[0]?.name ?? null,
+      pessoaAvatar: getProp(t, 'Pessoa')?.people?.[0]?.avatar_url ?? null,
+      status: getProp(t, env.notion.taskProps.status)?.status?.name ?? null,
+      prazo: dataEmSaoPaulo(getProp(t, 'Data Entrega')?.date?.start),
+      postId,
+      postTitulo: post?.titulo ?? null,
+      postData: post?.data ?? null,
+      ordem: getProp(t, 'Ordem')?.select?.name ?? null,
+      ordemUm: getProp(t, 'Ordem (1)')?.select?.name ?? null,
+      entregaId: getProp(t, 'Entregas')?.relation?.[0]?.id ?? null,
+      projetoId: ((getProp(t, 'Projeto')?.relation ?? [])[0]?.id as string) ?? null,
+      pronto: formulaVerdadeira(getProp(t, env.notion.taskProps.pronto)),
+      tipoOriginal: getProp(t, 'tipo original')?.select?.name ?? null,
+    };
+  });
+}
+
+/** Fórmula " Pronto" do Notion: liga quando a tarefa já pode ser feita. */
+function formulaVerdadeira(prop: any): boolean {
+  const f = prop?.formula;
+  if (!f) return false;
+  if (f.type === 'boolean') return f.boolean === true;
+  if (f.type === 'string') return !!f.string && !/^(false|não|nao|0)$/i.test(f.string.trim());
+  if (f.type === 'number') return (f.number ?? 0) > 0;
+  return false;
+}
+
+const _listarTarefasAbertasDeTodosCached = unstable_cache(
+  medido('tarefas de todos', _listarTarefasAbertasDeTodosUncached),
+  ['tarefas-abertas-de-todos-v3'],
+  { revalidate: 120, tags: [TAG_TAREFAS] },
+);
+
+export async function listarTarefasAbertasDeTodos(): Promise<TarefaDeTodos[]> {
+  return _listarTarefasAbertasDeTodosCached();
+}
+
+// ---------------------------------------------------------------------------
+// Página da tarefa (/admin/tarefas/[id])
+// ---------------------------------------------------------------------------
+
+export type TarefaDetalhe = {
+  id: string;
+  titulo: string;
+  status: string | null;
+  aberta: boolean;
+  prazo: string | null;
+  finalizada: string | null;
+  pessoa: { id: string | null; nome: string; avatar: string | null } | null;
+  postId: string | null;
+  postTitulo: string | null;
+  postData: string | null;
+  projetoId: string | null;
+  projetoNome: string | null;
+  entregaId: string | null;
+  entregaNome: string | null;
+  ordem: string | null;
+  ordemUm: string | null;
+  notionUrl: string | null;
+};
+
+/** Uma tarefa com o projeto, a entrega e o post dela (a hierarquia da página). */
+export async function getTarefaDetalhe(tarefaId: string): Promise<TarefaDetalhe | null> {
+  if (ehTarefaDoPortal(tarefaId)) {
+    const r = await portalTarefaComPost(tarefaId).catch(() => null);
+    if (!r) return null;
+    const t = r.tarefa;
+    return {
+      id: t.tarefaId,
+      titulo: t.tarefaTitulo,
+      status: null,
+      aberta: true,
+      prazo: dataEmSaoPaulo(t.tarefaPrazo),
+      finalizada: null,
+      pessoa: null,
+      postId: t.postId,
+      postTitulo: t.postTitulo,
+      postData: t.postData,
+      projetoId: t.projetoId || null,
+      projetoNome: t.projetoNome,
+      entregaId: null,
+      entregaNome: null,
+      ordem: null,
+      ordemUm: null,
+      notionUrl: null,
+    };
+  }
+  try {
+    const t = (await notion.pages.retrieve({ page_id: tarefaId })) as any;
+    if (t.archived) return null;
+    const titulo =
+      txt((Object.values(t.properties).find((p: any) => p.type === 'title') as any)?.title) || 'Tarefa';
+    const postId = (getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id ?? null;
+    const entregaId = (getProp(t, 'Entregas')?.relation ?? [])[0]?.id ?? null;
+    const [post, entrega] = await Promise.all([
+      postId ? (cachedPageRetrieve(postId).catch(() => null) as Promise<any>) : Promise.resolve(null),
+      entregaId ? (cachedPageRetrieve(entregaId).catch(() => null) as Promise<any>) : Promise.resolve(null),
+    ]);
+    const projetoId =
+      (getProp(t, 'Projeto')?.relation ?? [])[0]?.id ??
+      (post ? (getProp(post, env.notion.postProps.projeto)?.relation ?? [])[0]?.id : null) ??
+      null;
+    const projeto = projetoId ? ((await cachedPageRetrieve(projetoId).catch(() => null)) as any) : null;
+    const tituloDe = (pg: any) =>
+      pg ? txt((Object.values(pg.properties).find((p: any) => p.type === 'title') as any)?.title) || null : null;
+    const status = getProp(t, env.notion.taskProps.status)?.status?.name ?? null;
+    const pessoa = getProp(t, 'Pessoa')?.people?.[0] ?? null;
+    return {
+      id: t.id,
+      titulo,
+      status,
+      aberta: !STATUS_TAREFA_FECHADOS.includes(status ?? ''),
+      prazo: dataEmSaoPaulo(getProp(t, 'Data Entrega')?.date?.start ?? getProp(t, 'Data Inicial')?.date?.start),
+      finalizada: getProp(t, 'Finalizada em ')?.date?.start ?? null,
+      pessoa: pessoa ? { id: pessoa.id ?? null, nome: pessoa.name ?? 'Sem nome', avatar: pessoa.avatar_url ?? null } : null,
+      postId,
+      postTitulo: tituloDe(post),
+      postData: post ? getProp(post, env.notion.postProps.data)?.date?.start?.slice(0, 10) ?? null : null,
+      projetoId,
+      projetoNome: tituloDe(projeto),
+      entregaId,
+      entregaNome: tituloDe(entrega),
+      ordem: getProp(t, 'Ordem')?.select?.name ?? null,
+      ordemUm: getProp(t, 'Ordem (1)')?.select?.name ?? null,
+      notionUrl: t.url ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+
+/** Posts contratados por mês: propriedade numérica "N" da página do projeto no Notion. */
+export async function getPostsPorMes(projetoId: string): Promise<number | null> {
+  try {
+    const pg: any = await comRetry(() => notion.pages.retrieve({ page_id: projetoId }));
+    const n = pg.properties?.['N']?.number;
+    return typeof n === 'number' ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Grava os posts contratados por mês na propriedade "N" do projeto. */
+export async function salvarPostsPorMes(projetoId: string, n: number | null): Promise<void> {
+  await comRetry(() =>
+    notion.pages.update({ page_id: projetoId, properties: { N: { number: n } } as any }),
+  );
+}
+
+/** Posts da Esteira com copy gerada pelo portal (blocos com o marcador), pra revisão/limpeza. */
+export async function listarCopiasDoPortalNaEsteira(): Promise<
+  { postId: string; postTitulo: string; projetoNome: string; blocos: number }[]
+> {
+  const cards = await listarTarefasDaEsteira();
+  const unicos = [...new Map(cards.filter((c) => c.postId).map((c) => [c.postId, c])).values()];
+  const out: { postId: string; postTitulo: string; projetoNome: string; blocos: number }[] = [];
+  // De 6 em 6, pra não estourar o limite do Notion nem o tempo da função.
+  for (let i = 0; i < unicos.length; i += 6) {
+    await Promise.all(
+      unicos.slice(i, i + 6).map(async (c) => {
+        const nos = await nosDaPagina(c.postId).catch(() => [] as NoCopy[]);
+        const n = nos.filter((x) => ehHeading(x.block) && MARCADOR_COPY.test(rtTexto(x.block))).length;
+        if (n) out.push({ postId: c.postId, postTitulo: c.postTitulo, projetoNome: c.projetoNome, blocos: n });
+      }),
+    );
+  }
+  return out.sort((a, b) => a.projetoNome.localeCompare(b.projetoNome, 'pt-BR'));
+}
+
+/**
+ * Apaga dos posts as copies geradas pelo portal: cada sub-título com o marcador
+ * "🤖 Copy Produzida — v" / "🤖 Reescrita Claude — v" e o texto embaixo dele, até
+ * o próximo título grande, divisor ou outro marcador (mesma regra da limpeza que
+ * o próprio portal fazia). simular = só lista o que sairia.
+ */
+export async function apagarCopiasDoPortal(
+  postIds: string[],
+  simular: boolean,
+): Promise<{ postId: string; blocos: number; depoisDoDivisor: string | null; amostra: string[] }[]> {
+  const out: { postId: string; blocos: number; depoisDoDivisor: string | null; amostra: string[] }[] = [];
+  for (const postId of postIds) {
+    const nos = await nosDaPagina(postId);
+    const apagar: any[] = [];
+    let depoisDoDivisor: string | null = null;
+    const amostra: string[] = [];
+    for (const n of nos) {
+      if (!ehHeading(n.block) || !MARCADOR_COPY.test(rtTexto(n.block))) continue;
+      apagar.push(n.block);
+      amostra.push(rtTexto(n.block).slice(0, 80));
+      // Só os blocos criados JUNTO com o marcador (mesmo autor, até 5 min depois).
+      // Assim não sai a copy da skill nem o template que vêm logo em seguida.
+      const autor = n.block.created_by?.id;
+      const t0 = Date.parse(n.block.created_time);
+      let i = n.index + 1;
+      for (; i < n.siblings.length; i++) {
+        const b = n.siblings[i];
+        if (b.type === 'heading_1' || b.type === 'heading_2' || b.type === 'divider') break;
+        if (ehHeading(b) && MARCADOR_COPY.test(rtTexto(b))) break;
+        const mesmoLote = b.created_by?.id === autor && Math.abs(Date.parse(b.created_time) - t0) <= 5 * 60_000;
+        if (!mesmoLote) break;
+        apagar.push(b);
+      }
+      // O que vem logo depois do divisor (pra conferir se sobrou copy depois dele).
+      // O que fica logo depois do trecho apagado (pra conferir).
+      const prox = n.siblings[i];
+      if (prox) depoisDoDivisor = `${prox.type}: ${rtTexto(prox).slice(0, 60)}`;
+    }
+    const unicos = [...new Map(apagar.map((b) => [b.id, b])).values()];
+    if (!simular) {
+      for (const b of unicos) {
+        await comRetry(() => notion.blocks.delete({ block_id: b.id })).catch(() => null);
+      }
+    }
+    out.push({ postId, blocos: unicos.length, depoisDoDivisor, amostra });
+  }
+  return out;
+}
+
+
+// ─── Feedback da aprovação da Esteira Copy ─────────────────────────────────
+
+const FEEDBACKS_COPY_DB_ID = 'd78e1abf9eca4d069aa7aa57fbae5a17';
+const REGEX_CAMPO_COPY: Record<'voice' | 'carrossel' | 'legenda', RegExp> = {
+  voice: /^roteiro\s*do\s*reel/i,
+  carrossel: /^copy\s*para\s*carrossel/i,
+  legenda: /^legenda$/i,
+};
+const ROTULO_CAMPO_COPY = { voice: 'Voice over', carrossel: 'Carrossel', legenda: 'Legenda' } as const;
+export type CampoCopy = keyof typeof ROTULO_CAMPO_COPY;
+
+const rtPlano = (t: string) =>
+  (t.match(/[\s\S]{1,1900}/g) ?? ['']).map((c) => ({ type: 'text', text: { content: c } }));
+const TIPOS_TEXTO = new Set(['paragraph', 'bulleted_list_item', 'numbered_list_item', 'quote', 'callout', 'heading_3', 'to_do']);
+
+/**
+ * Edita a copy direto na seção do post no Notion.
+ * frase: troca o trecho no bloco que o contém. geral: atualiza bloco a bloco
+ * (mesmo número de linhas) ou refaz a seção com parágrafos.
+ */
+export async function editarCopyNoPost(postId: string, campo: CampoCopy, original: string, novo: string, modo: 'frase' | 'geral'): Promise<void> {
+  const nos = await nosDaPagina(postId);
+  const ehTitulo = (b: any) => b.type === 'heading_1' || b.type === 'heading_2' || b.type === 'heading_3';
+  const no = nos.find((n) => ehTitulo(n.block) && REGEX_CAMPO_COPY[campo].test(rtTexto(n.block).trim()));
+  if (!no) throw new Error(`Não achei a seção ${ROTULO_CAMPO_COPY[campo]} no post.`);
+  const blocos: any[] = [];
+  for (let i = no.index + 1; i < no.siblings.length; i++) {
+    const b = no.siblings[i];
+    if (ehTitulo(b)) break;
+    if (b.type === 'divider' && campo === 'legenda') break;
+    blocos.push(b);
+  }
+  const atualizar = (b: any, texto: string) =>
+    comRetry(() => notion.blocks.update({ block_id: b.id, [b.type]: { rich_text: rtPlano(texto) } } as any));
+
+  if (modo === 'frase') {
+    // Trecho = uma frase, uma linha ou várias linhas seguidas (um card inteiro). O novo pode ter
+    // outro número de linhas, ou vir vazio (apagar).
+    const linhasOrig = original.split('\n').map((l) => l.trim()).filter(Boolean);
+    const linhasNovas = novo.split('\n').map((l) => l.trim()).filter(Boolean);
+    const apagar = (b: any) => comRetry(() => notion.blocks.delete({ block_id: b.id }));
+    const inserirDepois = (b: any, linhas: string[]) =>
+      linhas.length
+        ? comRetry(() =>
+            notion.blocks.children.append({
+              block_id: no.parentId,
+              after: b.id,
+              children: linhas.map((l) => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: rtPlano(l) } })),
+            } as any),
+          )
+        : Promise.resolve(null);
+    if (linhasOrig.length <= 1) {
+      const alvo = blocos.find((b) => TIPOS_TEXTO.has(b.type) && rtTexto(b).includes(original.trim()));
+      if (!alvo) throw new Error('Não achei essa frase no post (ela pode ter mudado no Notion).');
+      const resto = rtTexto(alvo).replace(original.trim(), linhasNovas[0] ?? '').trim();
+      if (!resto) await apagar(alvo);
+      else await atualizar(alvo, resto);
+      await inserirDepois(alvo, linhasNovas.slice(1));
+      return;
+    }
+    const comTexto = blocos.filter((b) => TIPOS_TEXTO.has(b.type) && rtTexto(b).trim());
+    const ini = comTexto.findIndex((_, i) => linhasOrig.every((l, k) => rtTexto(comTexto[i + k] ?? { type: 'x' }).trim() === l));
+    if (ini < 0) throw new Error('Não achei esse trecho no post (ele pode ter mudado no Notion).');
+    const trecho = comTexto.slice(ini, ini + linhasOrig.length);
+    for (let k = 0; k < Math.min(trecho.length, linhasNovas.length); k++) {
+      if (rtTexto(trecho[k]).trim() !== linhasNovas[k]) await atualizar(trecho[k], linhasNovas[k]);
+    }
+    if (linhasNovas.length > trecho.length) await inserirDepois(trecho[trecho.length - 1], linhasNovas.slice(trecho.length));
+    for (const b of trecho.slice(linhasNovas.length)) await apagar(b);
+    return;
+  }
+  const comTexto = blocos.filter((b) => TIPOS_TEXTO.has(b.type) && rtTexto(b));
+  const linhas = novo.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (linhas.length === comTexto.length) {
+    for (let i = 0; i < linhas.length; i++) {
+      if (rtTexto(comTexto[i]) !== linhas[i]) await atualizar(comTexto[i], linhas[i]);
+    }
+    return;
+  }
+  // Número de linhas mudou: refaz a seção (apaga os blocos de texto e escreve parágrafos).
+  for (const b of comTexto) await comRetry(() => notion.blocks.delete({ block_id: b.id })).catch(() => null);
+  await comRetry(() =>
+    notion.blocks.children.append({
+      block_id: no.parentId,
+      after: no.block.id,
+      children: linhas.map((l) => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: rtPlano(l) } })),
+    } as any),
+  );
+}
+
+export async function salvarFeedbackCopy(f: {
+  tipo: 'Copy geral' | 'Post inteiro' | 'Frase' | 'Edição da copy' | 'Edição da frase';
+  campo: CampoCopy | null;
+  texto: string;
+  cliente: string;
+  post: string;
+  postId: string;
+  link: string;
+  original: string | null;
+  novo: string | null;
+  skills: string[];
+}): Promise<void> {
+  const rt = (v: string | null) => ({ rich_text: v ? rtPlano(v) : [] });
+  const titulo = (f.texto || (f.novo ? `Editou: ${f.novo}` : f.tipo)).slice(0, 180);
+  await comRetry(() =>
+    notion.pages.create({
+      parent: { database_id: FEEDBACKS_COPY_DB_ID },
+      properties: {
+        Feedback: { title: [{ type: 'text', text: { content: titulo } }] },
+        Tipo: { select: { name: f.tipo } },
+        ...(f.campo ? { Campo: { select: { name: ROTULO_CAMPO_COPY[f.campo] } } } : {}),
+        Cliente: rt(f.cliente),
+        Post: rt(f.post),
+        'Post ID': rt(f.postId),
+        'Link do post': { url: f.link },
+        'Trecho original': rt(f.original),
+        'Trecho novo': rt(f.novo),
+        'Skills usadas': rt(f.skills.join(', ')),
+        Status: { select: { name: 'Novo' } },
+      } as any,
+      children: f.texto ? [{ object: 'block', type: 'paragraph', paragraph: { rich_text: rtPlano(f.texto) } }] : [],
+    } as any),
+  );
+}
+
+/**
+ * Post aprovado na Esteira Copy: os feedbacks "Novo" dele viram "Post aprovado".
+ * A rodada diária da melhoria contínua só processa esses (feedback de post ainda
+ * em ajuste fica de fora). Devolve quantos foram marcados.
+ */
+export async function marcarFeedbacksDoPostAprovado(postId: string): Promise<number> {
+  const sem = postId.replace(/-/g, '');
+  const com = sem.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+  const res: any = await comRetry(() =>
+    notion.databases.query({
+      database_id: FEEDBACKS_COPY_DB_ID,
+      page_size: 100,
+      filter: {
+        and: [
+          { property: 'Status', select: { equals: 'Novo' } },
+          { or: [sem, com].map((v) => ({ property: 'Post ID', rich_text: { equals: v } })) },
+        ],
+      },
+    } as any),
+  );
+  const paginas = (res.results as any[]) ?? [];
+  for (const pg of paginas) {
+    await comRetry(() => notion.pages.update({ page_id: pg.id, properties: { Status: { select: { name: 'Post aprovado' } } } } as any));
+  }
+  return paginas.length;
+}
+
+// ─── Fila de copy (botão "Produzir copy" da Esteira) ───────────────────────
+
+const FILA_COPY_DB_ID = '5c022436a85d4ec5b6ef2a43179f9429';
+export type ItemFilaCopy = { tarefaId: string; postId: string; status: string };
+
+/** Pedidos de copy ainda abertos (Na fila / Produzindo / Erro). */
+export async function lerFilaDeCopy(): Promise<ItemFilaCopy[]> {
+  const res: any = await comRetry(() =>
+    notion.databases.query({
+      database_id: FILA_COPY_DB_ID,
+      page_size: 100,
+      filter: { or: ['Na fila', 'Produzindo', 'Erro'].map((s) => ({ property: 'Status', select: { equals: s } })) },
+    } as any),
+  );
+  return (res.results as any[]).map((p) => ({
+    tarefaId: txt(p.properties['Tarefa ID']?.rich_text) || '',
+    postId: txt(p.properties['Post ID']?.rich_text) || '',
+    status: p.properties['Status']?.select?.name ?? 'Na fila',
+  }));
+}
+
+/** Coloca o post na fila da skill criar-copy-completo e marca a tarefa B&C em andamento. */
+export async function pedirCopyDaSkill(p: { tarefaId: string; postId: string; titulo: string; handle: string; link: string }): Promise<void> {
+  const fila = await lerFilaDeCopy().catch(() => [] as ItemFilaCopy[]);
+  const semTraco = (x: string) => x.replace(/-/g, '');
+  if (fila.some((f) => semTraco(f.postId) === semTraco(p.postId) && f.status !== 'Erro')) return;
+  await comRetry(() =>
+    notion.pages.create({
+      parent: { database_id: FILA_COPY_DB_ID },
+      properties: {
+        Post: { title: [{ type: 'text', text: { content: p.titulo.slice(0, 180) } }] },
+        'Post ID': { rich_text: [{ type: 'text', text: { content: p.postId } }] },
+        'Tarefa ID': { rich_text: [{ type: 'text', text: { content: p.tarefaId } }] },
+        Cliente: { rich_text: [{ type: 'text', text: { content: p.handle } }] },
+        'Link do post': { url: p.link },
+        Status: { select: { name: 'Na fila' } },
+      } as any,
+    } as any),
+  );
+  await comRetry(() =>
+    notion.pages.update({ page_id: p.tarefaId, properties: { [env.notion.taskProps.status]: { status: { name: 'Em Andamento' } } } as any }),
+  ).catch(() => null);
+}
+
+/** Feedbacks anteriores da Luiza pra um cliente (pra o ajuste na hora respeitar). */
+export async function feedbacksAnterioresDoCliente(cliente: string, limite = 15): Promise<string[]> {
+  if (!cliente) return [];
+  const res: any = await comRetry(() =>
+    notion.databases.query({
+      database_id: FEEDBACKS_COPY_DB_ID,
+      page_size: limite,
+      filter: { property: 'Cliente', rich_text: { equals: cliente } },
+      sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+    } as any),
+  ).catch(() => ({ results: [] }));
+  return (res.results as any[])
+    .map((p) => {
+      const t = txt(p.properties?.Feedback?.title);
+      const novo = txt(p.properties?.['Trecho novo']?.rich_text);
+      const orig = txt(p.properties?.['Trecho original']?.rich_text);
+      return novo && orig ? `trocou "${orig.slice(0, 120)}" por "${novo.slice(0, 120)}"` : t;
+    })
+    .filter((x) => x && !/^TESTE/i.test(x));
+}
+
+/** Troca o formato do post (relation "Formato") pela opção escolhida na Esteira. */
+export async function mudarFormatoDoPost(postId: string, formatoId: string): Promise<void> {
+  await comRetry(() =>
+    notion.pages.update({ page_id: postId, properties: { Formato: { relation: [{ id: formatoId }] } } as any }),
+  );
+}
+
+/**
+ * Card da Esteira de uma tarefa só, lendo direto do Notion (sem montar a esteira
+ * inteira). Usado na página de revisão, que precisa abrir rápido mesmo com o
+ * cache frio.
+ */
+export async function cardDaEsteiraPorTarefa(tarefaId: string): Promise<CardEsteiraNotion | null> {
+  const base = await getTarefaComPost(tarefaId);
+  if (!base) return null;
+  const t = base.tarefa;
+  const pagina: any = await comRetry(() => notion.pages.retrieve({ page_id: tarefaId }));
+  const status = (getProp(pagina, 'Status')?.status?.name as string | undefined) ?? null;
+  const finalizada = (getProp(pagina, 'Finalizada em ')?.date?.start as string | undefined) ?? null;
+  const titulo = t.tarefaTitulo || 'Briefing & Copy';
+  let coluna: ColunaEsteira = /^altera/i.test(titulo) ? 'reaprovacao' : /^aprova/i.test(titulo) ? 'revisar' : 'fila';
+  if (coluna === 'fila') {
+    const c = await lerCopyDoPost(t.postId).catch(() => null);
+    if (c && (c.legenda || c.carrossel || c.voice)) coluna = 'revisar';
+  }
+  return {
+    tarefaId: t.tarefaId,
+    postId: t.postId,
+    postTitulo: t.postTitulo,
+    postData: t.postData,
+    projetoId: t.projetoId,
+    projetoNome: t.projetoNome,
+    clienteNome: null,
+    responsavelId: null,
+    responsavelNome: null,
+    responsavelAvatar: null,
+    prazo: t.tarefaPrazo,
+    status,
+    finalizada,
+    entregaNome: titulo,
+    coluna,
+  };
 }

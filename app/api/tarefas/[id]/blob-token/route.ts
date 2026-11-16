@@ -58,9 +58,9 @@ export async function POST(
             'application/pdf',
             'application/octet-stream',
           ],
-          // Teto de 5 GB por arquivo — Vercel Blob suporta bem mais mas
-          // acima disso a transfer pro Drive fica muito lenta.
-          maximumSizeInBytes: 5 * 1024 * 1024 * 1024,
+          // Mesmo teto da tela (450 MB) com folga: acima disso a transferência
+          // pro Drive passa dos 5 min da função e falha. Maior que isso vai por link.
+          maximumSizeInBytes: 500 * 1024 * 1024,
           // Nome único no Blob (ex: IMG_2246-abc123.MOV) pra evitar colisão
           // quando a cliente retenta ou tem 2 arquivos com mesmo nome.
           // Nome final no Drive continua o original (item.file.name) porque

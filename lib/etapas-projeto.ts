@@ -34,7 +34,10 @@ export function etapaDaTarefa(titulo: string): EtapaProjeto | null {
   if (/pauta|produzir post/.test(t)) return 'pauta';
   if (/pr[ée]vi|conte[úu]do/.test(t)) return 'previos';
   if (/briefing|copy|roteiro/.test(t)) return 'briefing';
-  if (/materia/.test(t)) return 'materiais';
+  // "Solicitação Produção" (ordem 13 do fluxo do portal) é a tarefa interna da
+  // equipe que fecha o briefing e abre o ciclo de produção. Semanticamente é
+  // o pedido dos materiais pro cliente — cai junto com "Materiais pra Produção".
+  if (/materia|solicita[çc][ãa]o\s*produ/.test(t)) return 'materiais';
   if (/\barte\b/.test(t)) return 'arte';
   if (/enviar post|aprova[çc][ãa]o\s*\|\s*(post|geral)|altera[çc][ãa]o\s*\|\s*post/.test(t)) return 'aprovacao';
   if (/programar|conferir postagem/.test(t)) return 'programacao';
@@ -203,31 +206,14 @@ function hojeSp(): string {
  * Rótulo de onde o post está. `prazo` (YYYY-MM-DD) da tarefa ajusta o que
  * depende do dia: "Conferir Postagem" com data futura ainda é agendado.
  */
-export function rotuloDaTarefaAtual(titulo: string, prazo?: string | null, hoje: string = hojeSp()): string {
-  const t = titulo.toLowerCase().trim();
-  if (t === 'arte') return 'Arte em produção';
-  if (/aprova[çc][ãa]o\s*\|\s*arte/.test(t)) return 'Aguardando aprovação de arte';
-  if (/altera[çc][ãa]o\s*\|\s*arte/.test(t)) return 'Arte em alteração';
-  if (/aprova[çc][ãa]o\s*\|\s*geral/.test(t)) return 'Aguardando aprovação geral (interna)';
-  if (/enviar post/.test(t)) return 'Pronto pra enviar ao cliente';
-  if (/aprova[çc][ãa]o\s*\|\s*post/.test(t)) return 'Com o cliente pra aprovar';
-  if (/altera[çc][ãa]o\s*\|\s*post/.test(t)) return 'Alteração pedida pelo cliente';
-  if (/programar/.test(t)) return 'Aprovado · falta programar';
-  if (/conferir postagem/.test(t)) {
-    const dia = prazo ? prazo.slice(0, 10) : null;
-    if (dia && dia > hoje) return `Agendado · posta ${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
-    if (dia && dia === hoje) return 'Posta hoje · conferir';
-    return 'Publicado · conferir postagem';
-  }
-  if (/aprova[çc][ãa]o\s*\|\s*materia/.test(t)) return 'Conferir materiais recebidos';
-  if (/materia/.test(t)) return 'Esperando materiais do cliente';
-  if (/pr[ée]vi|conte[úu]do/.test(t)) return 'Esperando informações prévias';
-  if (/aprova[çc][ãa]o\s*\|\s*(briefing|copy)/.test(t)) return 'Aguardando aprovação do briefing';
-  if (/briefing|copy/.test(t)) return 'Briefing & copy em produção';
-  if (/aprova[çc][ãa]o\s*\|\s*(pauta|cria)/.test(t)) return 'Pauta em aprovação';
-  if (/pauta|produzir post/.test(t)) return 'Pauta em criação';
-  if (/direcionamento|stories/.test(t)) return 'Direcionamento de stories';
-  return titulo;
+/**
+ * Tag da etapa do post: o nome da tarefa atual, igual ao "Status Post" do Notion
+ * ("Aprovação | Post", "Alteração | Arte", "Materiais para Produção"…).
+ * `prazo` e `hoje` ficam na assinatura por compatibilidade.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function rotuloDaTarefaAtual(titulo: string, _prazo?: string | null, _hoje?: string): string {
+  return titulo.replace(/\s+/g, ' ').trim() || 'Tarefa';
 }
 
 export type StatusReal = {
@@ -244,16 +230,24 @@ function chaveTitulo(t: string): string {
 }
 
 /** Onde o post está de verdade, comparado com a entrega `tituloEntrega`. */
+/** Tarefa "Post" (ou sem título) sem Ordem: é o modelo do Notion, não uma etapa. */
+export function ehTarefaModeloDoPost(t: { titulo: string; ordem?: string | null }): boolean {
+  return !t.ordem && /^(post|tarefa)?$/i.test((t.titulo ?? '').trim());
+}
+
 export function statusRealDoPost(
   abertas: TarefaDoProjeto[],
   tituloEntrega: string,
   hoje: string = hojeSp(),
 ): StatusReal {
-  const ordenadas = [...abertas].sort(compararNoFluxo);
+  // A tarefa-modelo "Post" (sem Ordem, criada junto com as outras) fica aberta pra sempre no Notion:
+  // não é etapa do post, então não conta. Sem ela, post com tudo concluído aparece como concluído.
+  const etapas = abertas.filter((t) => !ehTarefaModeloDoPost(t));
+  const ordenadas = [...etapas].sort(compararNoFluxo);
   const atual = ordenadas[0] ?? null;
   if (!atual) return { atual: null, rotulo: 'Concluído', relacao: 'concluido', comCliente: false };
 
-  const daEntrega = abertas.find((t) => chaveTitulo(t.titulo) === chaveTitulo(tituloEntrega));
+  const daEntrega = etapas.find((t) => chaveTitulo(t.titulo) === chaveTitulo(tituloEntrega));
   let relacao: StatusReal['relacao'];
   if (chaveTitulo(atual.titulo) === chaveTitulo(tituloEntrega)) relacao = 'aqui';
   else if (daEntrega) relacao = 'antes';

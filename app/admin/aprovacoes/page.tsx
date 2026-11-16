@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { getSession } from '@/lib/auth';
 import { getAprovacoesAgrupadas, type TarefaDaEntrega } from '@/lib/notion';
 import { env } from '@/lib/env';
@@ -82,6 +82,8 @@ async function Conteudo({ abaAtiva }: { abaAtiva: AbaValida }) {
   // Separa cliente vs interno dentro de cada grupo.
   type GrupoSeparado = {
     categoria: string;
+    entregaId: string;
+    entregaNome: string;
     cliente: TarefaDaEntrega[];
     interno: TarefaDaEntrega[];
   };
@@ -92,7 +94,7 @@ async function Conteudo({ abaAtiva }: { abaAtiva: AbaValida }) {
       if (ehAprovacaoDoCliente(t.titulo)) cliente.push(t);
       else interno.push(t);
     }
-    return { categoria: g.categoria, cliente, interno };
+    return { categoria: g.categoria, entregaId: g.entregaId, entregaNome: g.entregaNome, cliente, interno };
   });
   const totalCliente = grupos2.reduce((s, g) => s + g.cliente.length, 0);
   const totalInterno = grupos2.reduce((s, g) => s + g.interno.length, 0);
@@ -170,7 +172,7 @@ async function Conteudo({ abaAtiva }: { abaAtiva: AbaValida }) {
                   fg: 'var(--prazo-hoje)',
                 }}
                 grupos={grupos2
-                  .map((g) => ({ categoria: g.categoria, tarefas: g.cliente }))
+                  .map((g) => ({ categoria: g.categoria, entregaId: g.entregaId, entregaNome: g.entregaNome, tarefas: g.cliente }))
                   .filter((g) => g.tarefas.length > 0)}
                 mostrarBotaoWpp
                 visualizacoes={visualizacoes}
@@ -188,7 +190,7 @@ async function Conteudo({ abaAtiva }: { abaAtiva: AbaValida }) {
                 fg: 'var(--cal-aprovacao)',
               }}
               grupos={grupos2
-                .map((g) => ({ categoria: g.categoria, tarefas: g.interno }))
+                .map((g) => ({ categoria: g.categoria, entregaId: g.entregaId, entregaNome: g.entregaNome, tarefas: g.interno }))
                 .filter((g) => g.tarefas.length > 0)}
             />
           )}
@@ -249,7 +251,7 @@ function SecaoAprovacoes({
 }: {
   descricao: string;
   toneCor: { bg: string; fg: string };
-  grupos: { categoria: string; tarefas: TarefaDaEntrega[] }[];
+  grupos: { categoria: string; entregaId: string; entregaNome: string; tarefas: TarefaDaEntrega[] }[];
   mostrarBotaoWpp?: boolean;
   visualizacoes?: Record<string, Visualizacao>;
 }) {
@@ -261,7 +263,14 @@ function SecaoAprovacoes({
           <div key={g.categoria} className="space-y-2.5">
             <div className="flex items-center gap-2">
               <h3 className="text-[14px] font-semibold tracking-[-0.01em] text-ink">
-                {g.categoria}
+                {/* Grupo = uma entrega: leva pra página dela (todos os clientes). */}
+                {g.entregaId ? (
+                  <Link href={`/admin/entregas/${g.entregaId}`} className="hover:underline" title={`Abrir a entrega ${g.entregaNome}`}>
+                    {g.categoria} ›
+                  </Link>
+                ) : (
+                  g.categoria
+                )}
               </h3>
               <span
                 className="rounded-full px-2 py-0.5 text-[10px] font-bold"

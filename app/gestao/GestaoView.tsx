@@ -83,7 +83,7 @@ export function GestaoView({
               📊 Análise
             </Link>
             <Link
-              href="/admin/entrega"
+              href="/admin/entregas"
               className="rounded-full bg-bgSoft px-3 py-1.5 text-ink transition hover:bg-white"
             >
               🚚 Entregas
@@ -176,7 +176,7 @@ export function GestaoView({
               {entregasAtrasadas.map((e) => (
                 <Link
                   key={e.id}
-                  href={`/admin/entrega/${e.id}`}
+                  href={`/admin/entregas/${e.id}`}
                   className="card group flex items-start gap-3 p-3 transition hover:shadow-[0_4px_20px_rgba(21,21,33,0.06)]"
                 >
                   <div
@@ -223,7 +223,7 @@ export function GestaoView({
               {entregasSemana.map((e) => (
                 <Link
                   key={e.id}
-                  href={`/admin/entrega/${e.id}`}
+                  href={`/admin/entregas/${e.id}`}
                   className="group flex items-center gap-3 p-3 transition hover:bg-bgSoft/60"
                 >
                   <div

@@ -128,7 +128,7 @@ const ETAPAS: Etapa[] = [
 
 const COR_RESP: Record<string, { bg: string; fg: string }> = {
   'Social Media': { bg: 'var(--cal-agendado-soft)', fg: 'var(--cal-agendado)' },
-  'Gestão de Projetos': { bg: '#E7EBF2', fg: '#313D65' },
+  'Gestão de Projetos': { bg: '#E8EBF5', fg: '#313D65' },
   Copy: { bg: 'var(--cal-publicado-soft)', fg: 'var(--cal-publicado)' },
   Design: { bg: 'var(--cal-alteracao-soft)', fg: 'var(--cal-alteracao)' },
   'Time interno': { bg: '#EEF0F4', fg: '#8485A3' },

@@ -20,18 +20,35 @@ const METRICAS: { chave: Metrica; label: string }[] = [
   { chave: 'alcance', label: 'Alcance' },
 ];
 
+/** Seg → dom; o valor é o dia da semana do JS (0 = domingo). */
+const DIAS_SEMANA = [
+  { v: 1, l: 'Seg' },
+  { v: 2, l: 'Ter' },
+  { v: 3, l: 'Qua' },
+  { v: 4, l: 'Qui' },
+  { v: 5, l: 'Sex' },
+  { v: 6, l: 'Sáb' },
+  { v: 0, l: 'Dom' },
+];
+
+export type Combinado = { postsPorMes: number | null; diasFixos: number[] };
+
 export function EditarProjeto({
   projetoId,
   projetoNome,
   configInicial,
+  combinadoInicial,
 }: {
   projetoId: string;
   projetoNome: string;
   configInicial: ProjetoConfig;
+  combinadoInicial: Combinado;
 }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const [c, setC] = useState<ProjetoConfig>(configInicial);
+  const [postsMes, setPostsMes] = useState<string>(combinadoInicial.postsPorMes != null ? String(combinadoInicial.postsPorMes) : '');
+  const [dias, setDias] = useState<number[]>(combinadoInicial.diasFixos);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +78,11 @@ export function EditarProjeto({
       const res = await fetch(`/api/admin/projeto-config/${projetoId}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ projetoNome, config: c }),
+        body: JSON.stringify({
+          projetoNome,
+          config: c,
+          combinado: { postsPorMes: postsMes.trim() === '' ? null : Number(postsMes), diasFixos: dias },
+        }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? `Erro ${res.status}`);
@@ -79,6 +100,8 @@ export function EditarProjeto({
         type="button"
         onClick={() => {
           setC(configInicial);
+          setPostsMes(combinadoInicial.postsPorMes != null ? String(combinadoInicial.postsPorMes) : '');
+          setDias(combinadoInicial.diasFixos);
           setError(null);
           setAberto(true);
         }}
@@ -116,6 +139,52 @@ export function EditarProjeto({
             </div>
 
             <div className="space-y-4 px-5 py-4">
+              {/* combinado com o cliente */}
+              <div className="rounded-xl bg-bgSoft p-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">
+                  Combinado com o cliente
+                </div>
+                <div className="mt-2 flex flex-wrap items-end gap-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-ink">Posts por mês</span>
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={postsMes}
+                      onChange={(e) => setPostsMes(e.target.value)}
+                      placeholder="Ex.: 16"
+                      className="input w-[96px] px-2 py-1.5 text-[13px]"
+                      disabled={loading}
+                    />
+                  </label>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-ink">Dias fixos de post</span>
+                    <div className="flex flex-wrap gap-1">
+                      {DIAS_SEMANA.map((d) => {
+                        const on = dias.includes(d.v);
+                        return (
+                          <button
+                            key={d.v}
+                            type="button"
+                            disabled={loading}
+                            onClick={() => setDias((ds) => (on ? ds.filter((x) => x !== d.v) : [...ds, d.v]))}
+                            className={`h-[30px] w-[42px] rounded-[8px] text-[12px] font-semibold transition ${
+                              on ? 'bg-ink text-white' : 'border border-[rgba(21,21,33,0.14)] bg-white text-t2'
+                            }`}
+                          >
+                            {d.l}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-t3">
+                  É o que foi fechado no início: a nova pauta usa esses dias pra montar o mês.
+                </p>
+              </div>
+
               {/* objetivo */}
               <div>
                 <label className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">

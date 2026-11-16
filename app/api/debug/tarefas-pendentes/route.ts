@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { env } from '@/lib/env';
@@ -9,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: 'só em dev' }, { status: 403 });
   }
 
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
   const TITLES = ['Envio de Conteúdos Prévios', 'Materiais para Produção'];
   const counters: Record<string, { total: number; pronto: number; concluidas: number; outros_status: Record<string, number> }> = {};

@@ -73,7 +73,7 @@ export function ProjetosTabs({ itens }: { itens: ItemProjeto[] }) {
   return (
     <div className="space-y-4">
       {/* Tabs */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-1.5 overflow-x-auto min-h-fit pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <TabBtn
           ativo={ativo === 'todos'}
           onClick={() => escolher('todos')}

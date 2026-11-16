@@ -12,11 +12,12 @@
  * leitura existente. Pode rodar a qualquer hora sem efeitos colaterais.
  */
 import { Client } from '@notionhq/client';
+import { fetchDoNotion } from './notionFetch';
 import { env } from './env';
 import { semTarefasDePost } from './notion';
 import { supabaseAdmin } from './supabase';
 
-const notion = new Client({ auth: env.notion.token });
+const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
 function txt(rich: any[] | undefined): string {
   if (!Array.isArray(rich)) return '';

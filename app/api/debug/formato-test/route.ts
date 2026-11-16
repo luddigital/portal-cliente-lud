@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { env } from '@/lib/env';
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   }
   const url = new URL(req.url);
   const id = url.searchParams.get('id') ?? '328d04d2-3b4a-8014-9110-eaac7ac8e7b9';
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
   try {
     const post = (await notion.pages.retrieve({ page_id: id })) as any;

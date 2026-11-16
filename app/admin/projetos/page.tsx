@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { listAllProjetos } from '@/lib/notion';
 
 export const dynamic = 'force-dynamic';

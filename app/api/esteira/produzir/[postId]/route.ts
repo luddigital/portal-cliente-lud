@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getSession } from '@/lib/auth';
@@ -34,7 +35,7 @@ export async function POST(
     if (!ehAdmin && !ehColaborador)
       return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
 
-    const notion = new Client({ auth: env.notion.token });
+    const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
     // Puxa título + cliente
     const page = (await notion.pages.retrieve({

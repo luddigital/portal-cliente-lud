@@ -145,7 +145,7 @@ function CabecalhoSeguidores({ a }: { a: IgAnalytics }) {
 }
 
 // === OBJETIVO & METAS DO MÊS (topo, todas as abas) ===
-function MetasObjetivo({ projetoId, a }: { projetoId?: string; a: IgAnalytics }) {
+function MetasObjetivo({ projetoId, a, admin = false }: { projetoId?: string; a: IgAnalytics; admin?: boolean }) {
   const [config, setConfig] = useState<ProjetoConfig | null>(null);
 
   useEffect(() => {
@@ -194,7 +194,8 @@ function MetasObjetivo({ projetoId, a }: { projetoId?: string; a: IgAnalytics })
         </div>
         <p className="mt-1.5 text-[13px] text-t2">
           Esse projeto ainda não tem objetivo e metas definidos.
-          {projetoId ? (
+          {/* Link só pra equipe: o cliente não entra no admin. */}
+          {projetoId && admin ? (
             <>
               {' '}
               <a
@@ -1025,7 +1026,7 @@ function BlocoAnalise({
 }) {
   if (!texto) return null;
   return (
-    <div className="mt-5" style={{ borderLeft: `3px solid ${cor}`, paddingLeft: 14 }}>
+    <div className="mt-5" style={{ background: '#F8F8F8', borderRadius: 12, padding: '12px 14px' }}>
       <div
         className="text-[11px] font-bold uppercase tracking-[0.1em]"
         style={{ color: cor }}
@@ -1133,7 +1134,7 @@ function AbaInsights({
           <BlocoAnalise icon="✅" label="O que funcionou" cor="var(--fern)" texto={analise.funcionou} />
           <BlocoAnalise icon="⚠️" label="O que evitar" cor="var(--crimson)" texto={analise.evitar} />
           <BlocoAnalise icon="👥" label="Quem estamos atraindo" cor="var(--navy)" texto={analise.publico} />
-          <BlocoAnalise icon="📈" label="Seguidores" cor="#B68A2E" texto={analise.seguidores} />
+          <BlocoAnalise icon="📈" label="Seguidores" cor="#313D65" texto={analise.seguidores} />
 
           {/* melhores conteúdos com leitura */}
           {melhores.length > 0 && (
@@ -1228,12 +1229,15 @@ export function AnalisePainel({
   a,
   insightsQuery,
   projetoId,
+  admin = false,
 }: {
   a: IgAnalytics;
   /** Query string (igId/projetoId + período) pra chamar /api/instagram/insights. */
   insightsQuery?: string;
   /** projetoId (Notion) — habilita o bloco de Objetivo & Metas. */
   projetoId?: string;
+  /** Tela da equipe (/admin/analise): mostra o atalho pra definir metas no projeto. */
+  admin?: boolean;
 }) {
   const [aba, setAba] = useState<Aba>('geral');
 
@@ -1347,7 +1351,7 @@ export function AnalisePainel({
       </div>
 
       {/* OBJETIVO & METAS DO MÊS (persistente, todas as abas) */}
-      <MetasObjetivo projetoId={projetoId} a={a} />
+      <MetasObjetivo projetoId={projetoId} a={a} admin={admin} />
 
       {/* abas */}
       <BarraAbas aba={aba} onChange={setAba} />

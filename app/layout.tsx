@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
+import { DesfazerConcluir } from './_ui/DesfazerConcluir';
 import { Suspense } from 'react';
 import './globals.css';
+import NextTopLoader from 'nextjs-toploader';
 import { ServiceWorkerRegistration } from './_components/ServiceWorkerRegistration';
 import { AdminViewingBanner } from './_components/AdminViewingBanner';
 
@@ -36,10 +38,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
+        {/* Barrinha fina no topo ao trocar de página (substitui os esqueletos cinza que piscavam). */}
+        <NextTopLoader color="#111113" height={2} showSpinner={false} shadow={false} />
         <Suspense fallback={null}>
           <AdminViewingBanner />
         </Suspense>
         {children}
+        <DesfazerConcluir />
         <ServiceWorkerRegistration />
       </body>
     </html>

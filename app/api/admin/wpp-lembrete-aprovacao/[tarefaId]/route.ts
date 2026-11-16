@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import {
+  concluirTarefa,
   getTarefaComPost,
   getEmpresaDetalhe,
+  invalidarCachesAposMudanca,
   listAllProjetos,
   listarTarefasDoPost,
 } from '@/lib/notion';
@@ -37,6 +39,8 @@ export async function POST(
     mensagemCustom?: string;
     apenasPrevia?: boolean;
     grupoId?: string;
+    /** Outras tarefas do mesmo cliente que entram no mesmo lembrete. */
+    outrasTarefaIds?: string[];
   };
 
   // 1) Tarefa → projeto
@@ -78,7 +82,25 @@ export async function POST(
       )
     : undefined;
   const reaprovacao = !!daTarefa && daTarefa.ordemUm === '03' && /aprova/i.test(t.tarefaTitulo);
+  // Outros posts do mesmo cliente no mesmo lembrete (botão "Lembrar no grupo" da entrega).
+  const outras = (
+    await Promise.all(
+      (body.outrasTarefaIds ?? [])
+        .filter((id) => id && id.replace(/-/g, '') !== params.tarefaId.replace(/-/g, ''))
+        .slice(0, 12)
+        .map((id) => getTarefaComPost(id).then((d) => (d ? { id, t: d.tarefa } : null)).catch(() => null)),
+    )
+  ).filter((x): x is { id: string; t: typeof t } => !!x && x.t.projetoId === t.projetoId);
+  const postsDoLembrete = [
+    { titulo: t.postTitulo || t.tarefaTitulo, link: linkPost, postId: t.postId },
+    ...outras.map((o) => ({
+      titulo: o.t.postTitulo || o.t.tarefaTitulo,
+      link: o.t.postId ? `${env.app.url}/post/${o.t.postId}?tarefa=${o.id}` : `${env.app.url}/tarefa/${o.id}`,
+      postId: o.t.postId,
+    })),
+  ];
   const lembrete = montarLembrete({
+    posts: postsDoLembrete,
     forcarEtapa: reaprovacao ? 'reaprovacao' : undefined,
     textos,
     apelido: apelido ?? nomeCliente,
@@ -133,6 +155,19 @@ export async function POST(
     );
   }
 
+  for (const extra of postsDoLembrete.slice(1)) {
+    if (!extra.postId) continue;
+    await registrarEnvioAvulso({
+      projetoId: t.projetoId,
+      postId: extra.postId,
+      momento: reaprovacao ? 'reaprovacao' : undefined,
+      situacao: lembrete.situacao.codigo,
+      texto: mensagem,
+      grupoId: grupo.id,
+      messageId: resultado.messageId ?? null,
+      email: session.email,
+    }).catch(() => {});
+  }
   await registrarEnvioAvulso({
     projetoId: t.projetoId,
     postId: t.postId,
@@ -144,6 +179,44 @@ export async function POST(
     email: session.email,
   });
 
+  // Conclusão automática da tarefa de envio da Lud quando o botão de envio
+  // é apertado — sem isso, "Enviar Post Aprovação" fica eternamente aberta
+  // e o post nunca passa pra "Aprovação | Post" (que é o que o cliente vê).
+  //
+  // Três cenários:
+  //  1. Botão clicado numa tarefa "Enviar Post*" → conclui ELA MESMA (envio normal).
+  //  2. Reaprovação (ordemUm=03) → busca a "Enviar Post*" aberta no post e conclui.
+  //  3. Lembrete puro (tarefa atual = "Aprovação | Post" aguardando cliente) →
+  //     não conclui nada, só mandou lembrete.
+  let tarefaEnvioConcluida = false;
+  const ehTarefaDeEnvio = /enviar\s*post|enviar.*aprova/i.test(t.tarefaTitulo);
+
+  try {
+    if (ehTarefaDeEnvio) {
+      // Caso 1: a própria tarefa é de envio — concluir ela mesma.
+      await concluirTarefa(params.tarefaId);
+      tarefaEnvioConcluida = true;
+    } else if (reaprovacao && t.postId) {
+      // Caso 2: reaprovação depois de alteração — buscar e concluir a Enviar
+      // Post relacionada (que foi reaberta pelo ciclo de alteração).
+      const tarefasDoPost = await listarTarefasDoPost(t.postId);
+      const enviarPost = tarefasDoPost.find(
+        (x) => x.aberta && /enviar\s*post|enviar.*aprova/i.test(x.titulo),
+      );
+      if (enviarPost) {
+        await concluirTarefa(enviarPost.tarefaId);
+        tarefaEnvioConcluida = true;
+      }
+    }
+    // Caso 3 (lembrete puro): não faz nada, o envio ao cliente já foi feito antes.
+  } catch (err: any) {
+    console.warn('[wpp-lembrete] não consegui concluir "Enviar Post":', err?.message);
+  }
+
+  // Entregas/régua/página do post leem com cache: invalidar faz o enviado
+  // sumir da lista "falta enviar" sem precisar F5 manual.
+  invalidarCachesAposMudanca();
+
   return NextResponse.json({
     ok: true,
     destino: 'grupo',
@@ -152,5 +225,7 @@ export async function POST(
     clienteNome: nomeCliente,
     messageId: resultado.messageId,
     previa: mensagem,
+    reaprovacao,
+    tarefaEnvioConcluida,
   });
 }

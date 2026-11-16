@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LinkPrevia } from './LinkPrevia';
 import { listAtualizacoesRecentes, type AtualizacaoRecente } from '@/lib/notion';
 
 function tempoRelativo(iso: string): string {
@@ -29,7 +30,7 @@ function corDoStatus(status: string | null): { bg: string; txt: string } {
     return { bg: 'var(--cal-aprovacao-soft)', txt: 'var(--cal-aprovacao)' };
   }
   if (s.includes('produ') || s.includes('andamento')) {
-    return { bg: '#FFF4DA', txt: '#B07A14' };
+    return { bg: '#F1EBE5', txt: '#B07A14' };
   }
   if (s.includes('alteraç') || s.includes('alterac') || s.includes('ajuste')) {
     return { bg: 'var(--cal-alteracao-soft)', txt: 'var(--cal-alteracao)' };
@@ -91,8 +92,9 @@ function StatusPillMini({ status }: { status: string | null }) {
 
 function LinhaCompacto({ a }: { a: AtualizacaoRecente }) {
   return (
-    <Link
-      href={`/post/${a.postId}`}
+    // Post abre a prévia primeiro (regra do admin).
+    <LinkPrevia
+      postId={a.postId}
       className="flex items-center gap-3 px-3.5 py-2.5 transition hover:bg-bgSoft"
     >
       <span className="w-[48px] shrink-0 text-right text-[11px] font-semibold tabular-nums text-t3">
@@ -127,7 +129,7 @@ function LinhaCompacto({ a }: { a: AtualizacaoRecente }) {
           <StatusPillMini status={a.statusGeral ?? a.status} />
         )}
       </div>
-    </Link>
+    </LinkPrevia>
   );
 }
 

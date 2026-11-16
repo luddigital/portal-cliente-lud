@@ -670,7 +670,14 @@ export async function registrarEnvioAvulso(e: {
 
 export type HistoricoComunicacao = {
   visualizacoes: { email: string; vistoEm: string }[];
-  envios: { momento: string; variante: string | null; enviadoEm: string; enviadoPor: string | null }[];
+  envios: {
+    momento: string;
+    variante: string | null;
+    enviadoEm: string;
+    enviadoPor: string | null;
+    /** Mensagem que foi pro grupo do cliente. */
+    texto: string | null;
+  }[];
 };
 
 /** Lembretes enviados e visualizações do cliente de um post. */
@@ -684,7 +691,7 @@ export async function lerHistoricoComunicacao(postId: string): Promise<Historico
       .order('visto_em', { ascending: false }),
     sb
       .from('regua_envios')
-      .select('momento, variante, enviado_em, enviado_por')
+      .select('momento, variante, enviado_em, enviado_por, texto')
       .contains('post_ids', [postId])
       .order('enviado_em', { ascending: false }),
   ]);
@@ -695,8 +702,118 @@ export async function lerHistoricoComunicacao(postId: string): Promise<Historico
       variante: e.variante,
       enviadoEm: e.enviado_em,
       enviadoPor: e.enviado_por,
+      texto: e.texto ?? null,
     })),
   };
+}
+
+/** Última mensagem que a Lud. mandou no grupo do projeto (régua, avulsa ou geral). */
+export async function lerUltimoEnvioDoProjeto(
+  projetoId: string,
+): Promise<{ enviadoEm: string; texto: string | null } | null> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('regua_envios')
+      .select('enviado_em, texto')
+      .eq('projeto_id', projetoId)
+      .order('enviado_em', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return { enviadoEm: data.enviado_em, texto: data.texto ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/** Último aviso no grupo do cliente (qualquer mensagem da régua, avulsa ou geral) por post. */
+export async function lerUltimosAvisos(postIds: string[], dias = 45): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (postIds.length === 0) return out;
+  const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('regua_envios')
+    .select('post_ids, enviado_em')
+    .overlaps('post_ids', postIds)
+    .gte('enviado_em', desde)
+    .order('enviado_em', { ascending: true });
+  if (error) {
+    console.warn('[regua_envios avisos]', error.message);
+    return out;
+  }
+  const alvo = new Set(postIds);
+  for (const r of data ?? []) {
+    for (const id of (r.post_ids as string[]) ?? []) {
+      if (alvo.has(id)) out[id] = r.enviado_em; // fica o mais recente
+    }
+  }
+  return out;
+}
+
+/**
+ * Histórico de mensagens no grupo por post, pros avisos automáticos de aprovação:
+ * a última mensagem (qualquer uma) e quantos avisos automáticos vieram depois da
+ * última mensagem manual. Se a leitura falhar, LANÇA erro (melhor não mandar nada
+ * do que mandar em dobro).
+ */
+export async function lerHistoricoDeAvisos(
+  postIds: string[],
+  dias = 30,
+): Promise<Map<string, { ultimo: string; autos: number }>> {
+  const out = new Map<string, { ultimo: string; autos: number }>();
+  if (postIds.length === 0) return out;
+  const sem = (id: string) => id.replace(/-/g, '');
+  const com = (id: string) => sem(id).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+  void com;
+  // post_ids é jsonb (overlaps não funciona): lê as mensagens do período e filtra aqui.
+  const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('regua_envios')
+    .select('post_ids, enviado_em, momento')
+    .gte('enviado_em', desde)
+    .order('enviado_em', { ascending: true })
+    .limit(10000);
+  if (error) throw new Error(`histórico de envios: ${error.message}`);
+  const alvo = new Map(postIds.map((id) => [sem(id), id]));
+  for (const r of data ?? []) {
+    const auto = typeof r.momento === 'string' && r.momento.startsWith('auto_');
+    for (const bruto of (r.post_ids as string[]) ?? []) {
+      const id = alvo.get(sem(bruto));
+      if (!id) continue;
+      const atual = out.get(id);
+      out.set(id, { ultimo: r.enviado_em, autos: auto ? (atual?.autos ?? 0) + 1 : 0 });
+    }
+  }
+  return out;
+}
+
+/** Últimas mensagens que o portal mandou no grupo de um projeto (régua, lembretes, mensagem geral). */
+export async function lerEnviosDoProjeto(
+  projetoId: string,
+  limite = 4,
+): Promise<{ id: number; texto: string | null; enviadoPor: string | null; enviadoEm: string }[]> {
+  const semTraco = projetoId.replace(/-/g, '');
+  const comTraco = semTraco.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('regua_envios')
+    .select('id, texto, enviado_por, enviado_em')
+    .in('projeto_id', [semTraco, comTraco])
+    .order('enviado_em', { ascending: false })
+    .limit(limite);
+  if (error) {
+    console.warn('[regua_envios projeto]', error.message);
+    return [];
+  }
+  return (data ?? []).map((r: { id: number; texto: string | null; enviado_por: string | null; enviado_em: string }) => ({
+    id: r.id as number,
+    texto: (r.texto as string | null) ?? null,
+    enviadoPor: (r.enviado_por as string | null) ?? null,
+    enviadoEm: r.enviado_em as string,
+  }));
 }
 
 /** Envios pra aprovação (lote de quinta) dos últimos dias: post → quando foi enviado. */
@@ -708,7 +825,7 @@ export async function lerEnviosParaAprovacao(postIds: string[], dias = 70): Prom
   const { data, error } = await sb
     .from('regua_envios')
     .select('post_ids, enviado_em')
-    .eq('momento', 'quinta')
+    .in('momento', ['quinta', 'separado'])
     .gte('enviado_em', desde)
     .order('enviado_em', { ascending: true });
   if (error) {
@@ -798,4 +915,581 @@ export async function lerHistoricoPrazos(postId: string): Promise<MudancaPrazo[]
     console.warn('[tarefa_prazo_historico]', err?.message);
     return [];
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Workspace de criação de calendário (migration 0022)
+// ─────────────────────────────────────────────────────────────
+
+export type CalendarioVersao = {
+  id: string;
+  numero: number;
+  rascunho: string;
+  feedbacks: string;
+  criado_em: string;
+  criado_por: string | null;
+};
+
+export type CalendarioWorkspace = {
+  id: string;
+  projetoId: string;
+  ano: number;
+  mes: number;
+  briefingLivre: string;
+  rascunho: string;
+  feedbacks: string;
+  projectClaudeUrl: string | null;
+  versoes: CalendarioVersao[];
+  atualizadoEm: string | null;
+  atualizadoPor: string | null;
+};
+
+type LinhaWorkspace = {
+  id: string;
+  projeto_id: string;
+  ano: number;
+  mes: number;
+  briefing_livre: string;
+  rascunho: string;
+  feedbacks: string;
+  project_claude_url: string | null;
+  versoes: CalendarioVersao[] | null;
+  atualizado_em: string | null;
+  atualizado_por: string | null;
+};
+
+function linhaParaWorkspace(l: LinhaWorkspace): CalendarioWorkspace {
+  return {
+    id: l.id,
+    projetoId: l.projeto_id,
+    ano: l.ano,
+    mes: l.mes,
+    briefingLivre: l.briefing_livre ?? '',
+    rascunho: l.rascunho ?? '',
+    feedbacks: l.feedbacks ?? '',
+    projectClaudeUrl: l.project_claude_url,
+    versoes: l.versoes ?? [],
+    atualizadoEm: l.atualizado_em,
+    atualizadoPor: l.atualizado_por,
+  };
+}
+
+/** Carrega o workspace de um projeto+mês. Null se nunca foi criado. */
+export async function lerCalendarioWorkspace(
+  projetoId: string,
+  ano: number,
+  mes: number,
+): Promise<CalendarioWorkspace | null> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('calendario_workspace')
+      .select('*')
+      .eq('projeto_id', projetoId)
+      .eq('ano', ano)
+      .eq('mes', mes)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return linhaParaWorkspace(data as LinhaWorkspace);
+  } catch (err: any) {
+    console.warn('[calendario_workspace] lerCalendarioWorkspace:', err?.message);
+    return null;
+  }
+}
+
+/** Lista workspaces de um projeto (ordenado por mais recente). Pra "últimos calendários". */
+export async function listarCalendariosDoProjeto(
+  projetoId: string,
+  limite = 12,
+): Promise<CalendarioWorkspace[]> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('calendario_workspace')
+      .select('*')
+      .eq('projeto_id', projetoId)
+      .order('ano', { ascending: false })
+      .order('mes', { ascending: false })
+      .limit(limite);
+    if (error) throw error;
+    return (data ?? []).map((l: LinhaWorkspace) => linhaParaWorkspace(l));
+  } catch (err: any) {
+    console.warn('[calendario_workspace] listarCalendariosDoProjeto:', err?.message);
+    return [];
+  }
+}
+
+/** Grava (ou cria) o workspace de um projeto+mês. UPSERT no (projeto_id, ano, mes). */
+export async function salvarCalendarioWorkspace(
+  input: {
+    projetoId: string;
+    ano: number;
+    mes: number;
+    briefingLivre?: string;
+    rascunho?: string;
+    feedbacks?: string;
+    projectClaudeUrl?: string | null;
+  },
+  email: string,
+): Promise<CalendarioWorkspace | null> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('calendario_workspace')
+      .upsert(
+        {
+          projeto_id: input.projetoId,
+          ano: input.ano,
+          mes: input.mes,
+          briefing_livre: input.briefingLivre ?? '',
+          rascunho: input.rascunho ?? '',
+          feedbacks: input.feedbacks ?? '',
+          project_claude_url: input.projectClaudeUrl ?? null,
+          atualizado_em: new Date().toISOString(),
+          atualizado_por: email.trim().toLowerCase(),
+        },
+        { onConflict: 'projeto_id,ano,mes' },
+      )
+      .select('*')
+      .single();
+    if (error) throw error;
+    return linhaParaWorkspace(data as LinhaWorkspace);
+  } catch (err: any) {
+    console.warn('[calendario_workspace] salvarCalendarioWorkspace:', err?.message);
+    return null;
+  }
+}
+
+/** Congela a versão atual do rascunho + feedbacks numa nova entrada em `versoes`. */
+export async function salvarVersaoCalendario(
+  input: { projetoId: string; ano: number; mes: number },
+  email: string,
+): Promise<CalendarioWorkspace | null> {
+  try {
+    const existente = await lerCalendarioWorkspace(input.projetoId, input.ano, input.mes);
+    if (!existente) return null;
+    const novaVersao: CalendarioVersao = {
+      id: crypto.randomUUID(),
+      numero: existente.versoes.length + 1,
+      rascunho: existente.rascunho,
+      feedbacks: existente.feedbacks,
+      criado_em: new Date().toISOString(),
+      criado_por: email.trim().toLowerCase(),
+    };
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('calendario_workspace')
+      .update({
+        versoes: [...existente.versoes, novaVersao],
+        atualizado_em: new Date().toISOString(),
+        atualizado_por: email.trim().toLowerCase(),
+      })
+      .eq('id', existente.id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return linhaParaWorkspace(data as LinhaWorkspace);
+  } catch (err: any) {
+    console.warn('[calendario_workspace] salvarVersaoCalendario:', err?.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Customização do projeto (migration 0023) — cover do header
+// ─────────────────────────────────────────────────────────────
+
+export type ProjetoCustomizacao = {
+  projetoId: string;
+  coverUrl: string | null;
+  /** Dias da semana combinados pra postar (0 = domingo … 6 = sábado). */
+  diasFixos: number[];
+  atualizadoEm: string | null;
+};
+
+export async function lerCustomizacaoProjeto(
+  projetoId: string,
+): Promise<ProjetoCustomizacao | null> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('projeto_customizacao')
+      .select('*')
+      .eq('projeto_id', projetoId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return {
+      projetoId: data.projeto_id,
+      coverUrl: data.cover_url ?? null,
+      diasFixos: Array.isArray(data.dias_fixos) ? data.dias_fixos.map(Number).sort() : [],
+      atualizadoEm: data.atualizado_em ?? null,
+    };
+  } catch (err: any) {
+    console.warn('[projeto_customizacao] ler:', err?.message);
+    return null;
+  }
+}
+
+export async function salvarCoverProjeto(
+  projetoId: string,
+  coverUrl: string | null,
+  email: string,
+): Promise<boolean> {
+  try {
+    const sb = await supabaseAdmin();
+    const { error } = await sb
+      .from('projeto_customizacao')
+      .upsert(
+        {
+          projeto_id: projetoId,
+          cover_url: coverUrl?.trim() || null,
+          atualizado_em: new Date().toISOString(),
+          atualizado_por: email.trim().toLowerCase(),
+        },
+        { onConflict: 'projeto_id' },
+      );
+    if (error) throw error;
+    return true;
+  } catch (err: any) {
+    console.warn('[projeto_customizacao] salvarCover:', err?.message);
+    return false;
+  }
+}
+
+/** Grava os dias fixos de postagem do projeto (coluna dias_fixos). */
+export async function salvarDiasFixosProjeto(
+  projetoId: string,
+  dias: number[],
+  email: string,
+): Promise<boolean> {
+  try {
+    const sb = await supabaseAdmin();
+    const limpos = [...new Set(dias.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
+    const { error } = await sb.from('projeto_customizacao').upsert(
+      {
+        projeto_id: projetoId,
+        dias_fixos: limpos,
+        atualizado_em: new Date().toISOString(),
+        atualizado_por: email.trim().toLowerCase(),
+      },
+      { onConflict: 'projeto_id' },
+    );
+    if (error) throw error;
+    return true;
+  } catch (err: any) {
+    console.warn('[projeto_customizacao] salvarDiasFixos:', err?.message);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Reuniões (migration 0024)
+// ─────────────────────────────────────────────────────────────
+
+export type Reuniao = {
+  id: string;
+  projetoId: string;
+  clienteNome: string | null;
+  data: string; // ISO
+  titulo: string;
+  pauta: string;
+  feita: boolean;
+  feitaEm: string | null;
+  anotacoes: string;
+  criadoEm: string;
+  atualizadoEm: string;
+  criadoPor: string | null;
+};
+
+type LinhaReuniao = {
+  id: string;
+  projeto_id: string;
+  cliente_nome: string | null;
+  data: string;
+  titulo: string;
+  pauta: string;
+  feita: boolean;
+  feita_em: string | null;
+  anotacoes: string;
+  criado_em: string;
+  atualizado_em: string;
+  criado_por: string | null;
+};
+
+function linhaParaReuniao(l: LinhaReuniao): Reuniao {
+  return {
+    id: l.id,
+    projetoId: l.projeto_id,
+    clienteNome: l.cliente_nome,
+    data: l.data,
+    titulo: l.titulo ?? '',
+    pauta: l.pauta ?? '',
+    feita: !!l.feita,
+    feitaEm: l.feita_em,
+    anotacoes: l.anotacoes ?? '',
+    criadoEm: l.criado_em,
+    atualizadoEm: l.atualizado_em,
+    criadoPor: l.criado_por,
+  };
+}
+
+export async function listarReunioes(filtro: {
+  projetoId?: string;
+  inicio?: string; // ISO
+  fim?: string;    // ISO
+  limite?: number;
+} = {}): Promise<Reuniao[]> {
+  try {
+    const sb = await supabaseAdmin();
+    let q = sb.from('reuniao').select('*').order('data', { ascending: false });
+    if (filtro.projetoId) q = q.eq('projeto_id', filtro.projetoId);
+    if (filtro.inicio) q = q.gte('data', filtro.inicio);
+    if (filtro.fim) q = q.lte('data', filtro.fim);
+    q = q.limit(filtro.limite ?? 200);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []).map((l: LinhaReuniao) => linhaParaReuniao(l));
+  } catch (err: any) {
+    console.warn('[reuniao] listar:', err?.message);
+    return [];
+  }
+}
+
+export async function criarReuniao(
+  input: {
+    projetoId: string;
+    clienteNome?: string | null;
+    data: string;
+    titulo?: string;
+    pauta?: string;
+  },
+  email: string,
+): Promise<Reuniao | null> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('reuniao')
+      .insert({
+        projeto_id: input.projetoId,
+        cliente_nome: input.clienteNome ?? null,
+        data: input.data,
+        titulo: input.titulo ?? '',
+        pauta: input.pauta ?? '',
+        criado_por: email.trim().toLowerCase(),
+      })
+      .select('*')
+      .single();
+    if (error) throw error;
+    return linhaParaReuniao(data as LinhaReuniao);
+  } catch (err: any) {
+    console.warn('[reuniao] criar:', err?.message);
+    return null;
+  }
+}
+
+export async function atualizarReuniao(
+  id: string,
+  patch: Partial<{
+    data: string;
+    titulo: string;
+    pauta: string;
+    feita: boolean;
+    anotacoes: string;
+  }>,
+  email: string,
+): Promise<Reuniao | null> {
+  try {
+    const sb = await supabaseAdmin();
+    const updates: Record<string, unknown> = {
+      atualizado_em: new Date().toISOString(),
+      criado_por: email.trim().toLowerCase(),
+    };
+    if (patch.data !== undefined) updates.data = patch.data;
+    if (patch.titulo !== undefined) updates.titulo = patch.titulo;
+    if (patch.pauta !== undefined) updates.pauta = patch.pauta;
+    if (patch.anotacoes !== undefined) updates.anotacoes = patch.anotacoes;
+    if (patch.feita !== undefined) {
+      updates.feita = patch.feita;
+      updates.feita_em = patch.feita ? new Date().toISOString() : null;
+    }
+    const { data, error } = await sb
+      .from('reuniao')
+      .update(updates)
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return linhaParaReuniao(data as LinhaReuniao);
+  } catch (err: any) {
+    console.warn('[reuniao] atualizar:', err?.message);
+    return null;
+  }
+}
+
+export async function excluirReuniao(id: string): Promise<boolean> {
+  try {
+    const sb = await supabaseAdmin();
+    const { error } = await sb.from('reuniao').delete().eq('id', id);
+    if (error) throw error;
+    return true;
+  } catch (err: any) {
+    console.warn('[reuniao] excluir:', err?.message);
+    return false;
+  }
+}
+
+export async function contarReunioesDoMes(input: {
+  ano: number;
+  mes: number;
+  projetoId?: string;
+}): Promise<{ feitas: number; total: number }> {
+  try {
+    const sb = await supabaseAdmin();
+    const inicio = new Date(input.ano, input.mes - 1, 1).toISOString();
+    const fim = new Date(input.ano, input.mes, 1).toISOString();
+    let q = sb.from('reuniao').select('feita', { count: 'exact' }).gte('data', inicio).lt('data', fim);
+    if (input.projetoId) q = q.eq('projeto_id', input.projetoId);
+    const { data, count, error } = await q;
+    if (error) throw error;
+    const feitas = (data ?? []).filter((r: { feita: boolean }) => r.feita).length;
+    return { feitas, total: count ?? 0 };
+  } catch (err: any) {
+    console.warn('[reuniao] contar:', err?.message);
+    return { feitas: 0, total: 0 };
+  }
+}
+
+/**
+ * Todas as mensagens de WhatsApp (de qualquer tipo) que citaram cada post nos
+ * últimos `dias`: base do "já mandamos algo pro cliente?" na página da entrega.
+ */
+/** Do que a mensagem tratava (a tabela não guarda a tarefa: vem do momento e do texto). */
+export type AssuntoMensagem = 'aprovacao' | 'materiais' | 'outro';
+export type EnvioDoPost = {
+  momento: string;
+  enviadoEm: string;
+  assunto?: AssuntoMensagem;
+  /** Mensagem que abre uma reaprovação ("Fizemos os ajustes…"). */
+  reaprovacao?: boolean;
+};
+
+const MOMENTOS_DA_REGUA_DE_APROVACAO = ['quinta', 'separado', 'reaprovacao', 'sexta', 'segunda_manha', 'segunda_tarde', 'terca'];
+
+export function assuntoDaMensagem(momento: string, texto: string | null): AssuntoMensagem {
+  if (MOMENTOS_DA_REGUA_DE_APROVACAO.includes(momento)) return 'aprovacao';
+  const t = (texto ?? '').toLowerCase();
+  // Cobrança de materiais vem antes: o texto dela pode citar a aprovação ("pra gente produzir e mandar pra aprovação").
+  if (/precisamos d[oa]s? (materia|informa)|materiais (pra|para) (produ|o post)|envi(ar|e) (os )?materiais/.test(t)) return 'materiais';
+  if (/aprova/.test(t)) return 'aprovacao';
+  if (/materia|voice|v[íi]deo|foto|[áa]udio|pr[ée]vi|informa/.test(t)) return 'materiais';
+  return 'outro';
+}
+
+export async function lerEnviosRecentesDosPosts(
+  postIds: string[],
+  dias = 30,
+): Promise<Record<string, EnvioDoPost[]>> {
+  const out: Record<string, EnvioDoPost[]> = {};
+  if (postIds.length === 0) return out;
+  const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('regua_envios')
+    .select('post_ids, momento, enviado_em, texto')
+    .gte('enviado_em', desde)
+    .order('enviado_em', { ascending: false });
+  if (error) {
+    console.warn('[regua_envios]', error.message);
+    return out;
+  }
+  const alvo = new Set(postIds);
+  for (const r of data ?? []) {
+    for (const id of (r.post_ids as string[]) ?? []) {
+      if (!alvo.has(id)) continue;
+      (out[id] ??= []).push({
+        momento: r.momento,
+        enviadoEm: r.enviado_em,
+        assunto: assuntoDaMensagem(r.momento, r.texto),
+        reaprovacao: r.momento === 'reaprovacao' || /fizemos (as|os) (altera|ajuste)/i.test(r.texto ?? ''),
+      });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Nota interna da entrega por projeto (0025)
+// ---------------------------------------------------------------------------
+
+export type NotaEntrega = { texto: string; atualizadoPor: string | null; atualizadoEm: string };
+
+const semTracoId = (id: string) => id.replace(/-/g, '');
+
+export async function lerNotaEntrega(entregaId: string, projetoId: string): Promise<NotaEntrega | null> {
+  try {
+    const sb = await supabaseAdmin();
+    const { data, error } = await sb
+      .from('entrega_notas')
+      .select('texto, atualizado_por, atualizado_em')
+      .eq('entrega_id', semTracoId(entregaId))
+      .eq('projeto_id', semTracoId(projetoId))
+      .maybeSingle();
+    if (error || !data) return null;
+    return { texto: data.texto ?? '', atualizadoPor: data.atualizado_por ?? null, atualizadoEm: data.atualizado_em };
+  } catch {
+    return null;
+  }
+}
+
+export async function salvarNotaEntrega(n: {
+  entregaId: string;
+  projetoId: string;
+  texto: string;
+  por: string | null;
+}): Promise<NotaEntrega> {
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb
+    .from('entrega_notas')
+    .upsert(
+      {
+        entrega_id: semTracoId(n.entregaId),
+        projeto_id: semTracoId(n.projetoId),
+        texto: n.texto,
+        atualizado_por: n.por,
+        atualizado_em: new Date().toISOString(),
+      },
+      { onConflict: 'entrega_id,projeto_id' },
+    )
+    .select('texto, atualizado_por, atualizado_em')
+    .single();
+  if (error) throw error;
+  return { texto: data.texto ?? '', atualizadoPor: data.atualizado_por ?? null, atualizadoEm: data.atualizado_em };
+}
+
+// ---------------------------------------------------------------------------
+// Projetos escondidos da área do cliente (0026)
+// ---------------------------------------------------------------------------
+
+/** Ids (sem traço) dos projetos que a cliente não vê no portal. */
+export async function lerProjetosOcultosDoCliente(): Promise<Set<string>> {
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb.from('projeto_visibilidade').select('projeto_id').eq('oculto_do_cliente', true);
+  if (error) throw error;
+  return new Set((data ?? []).map((r: { projeto_id: string }) => String(r.projeto_id).replace(/-/g, '')));
+}
+
+export async function salvarVisibilidadeDoProjeto(projetoId: string, visivel: boolean, por: string | null): Promise<void> {
+  const sb = await supabaseAdmin();
+  const { error } = await sb.from('projeto_visibilidade').upsert(
+    {
+      projeto_id: projetoId.replace(/-/g, ''),
+      oculto_do_cliente: !visivel,
+      atualizado_em: new Date().toISOString(),
+      atualizado_por: por,
+    },
+    { onConflict: 'projeto_id' },
+  );
+  if (error) throw error;
 }

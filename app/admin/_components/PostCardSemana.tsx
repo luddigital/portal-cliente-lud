@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { PostCalendario } from '@/lib/notion';
 import { corDoStatus } from '@/lib/statusCor';
-import { PreviaPostModal } from '@/app/admin/aprovacoes/PreviaPostModal';
+import { PreviaPostModal, prefetchPrevia } from '@/app/admin/aprovacoes/PreviaPostModal';
 
 /**
  * Card do post no calendário da semana (home). Clicar abre o popup de prévia
@@ -18,7 +18,7 @@ export function PostCardSemana({ p }: { p: PostCalendario }) {
     <>
       <button
         type="button"
-        onClick={() => setAberto(true)}
+        onMouseEnter={() => prefetchPrevia(p.id)} onClick={() => setAberto(true)}
         title={`${p.projetoNome} — ${p.titulo} · ${label}`}
         className="block w-full rounded-md border border-[rgba(21,21,33,0.1)] bg-white px-1.5 py-1 text-left transition hover:border-navy/40 hover:shadow-sm sm:px-2 sm:py-1.5"
       >

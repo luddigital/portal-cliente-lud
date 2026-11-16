@@ -1,10 +1,20 @@
 'use client';
+import { ComentariosLud } from '@/app/post/[id]/ComentariosLud';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { compararNoFluxo } from '@/lib/etapas-projeto';
 import type { TarefaDoPost } from '@/lib/notion';
-import { TodasTarefasCard } from '@/app/post/[id]/PostSidebarLud';
+import { HistoricoResumo, TodasTarefasCard } from '@/app/post/[id]/PostSidebarLud';
+import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
+import { BotaoLembreteWpp } from './BotaoLembreteWpp';
+import { nomeCurtoDoProjeto } from '@/lib/rotas';
+import type { EnvioHistorico, NotaHistorico, TarefaClienteHistorico } from '@/lib/historico-post';
+import { CaixaProgramacao, ReguaCompacta } from '@/app/post/[id]/NovoLud';
+import { horaCurta } from '@/app/post/[id]/horaCurta';
+import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
+import { emojiDoFormato } from '@/app/admin/esteira-copy/EsteiraNova';
+import { SolicitarAlteracao } from '@/app/post/[id]/SolicitarAlteracao';
 
 type Arquivo = {
   id: string;
@@ -15,6 +25,8 @@ type Arquivo = {
 type Tarefa = TarefaDoPost & { pessoa: string | null };
 type Preview = {
   titulo: string;
+  projetoNome?: string;
+  hora?: string | null;
   legenda: string;
   formatoTipo: string;
   dataPostagem: string | null;
@@ -23,14 +35,21 @@ type Preview = {
   arquivos: Arquivo[];
   tarefas: Tarefa[];
   colaboradores?: Record<string, string>;
+  /** Só pro admin: últimas atualizações do post. */
+  historico?: { visualizacoes: { email: string; vistoEm: string }[]; envios: EnvioHistorico[] } | null;
+  notas?: NotaHistorico[];
+  tarefasCliente?: TarefaClienteHistorico[];
+  ideia?: string | null;
+  briefing?: string | null;
+  roteiro?: string | null;
+  cards?: string | null;
 };
 
 const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
 function dataPostagemTexto(iso: string): string {
-  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
-  const dia = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')} (${DIA_SEMANA[dia]})`;
+  const [, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
 }
 
 
@@ -49,13 +68,26 @@ function prazoCurto(iso: string | null): { texto: string; atrasada: boolean } {
 
 function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
   const router = useRouter();
+  const [, startTransition] = useTransition();
   const [tarefas, setTarefas] = useState(iniciais);
   // Concluídas aqui no popup: guardam o status anterior pro "desfazer".
   const [agora, setAgora] = useState<Record<string, string | null>>({});
   const [salvando, setSalvando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Marca que houve alteração — o refresh da página de trás acontece no
+  // CLEANUP (quando o modal fecha). Se fizesse router.refresh() no concluir,
+  // o Suspense pai poderia remontar e fechar o modal no meio do fluxo.
+  const houveMutacao = useRef(false);
 
   useEffect(() => setTarefas(iniciais), [iniciais]);
+
+  useEffect(() => {
+    return () => {
+      // startTransition evita o Suspense pai disparar fallback (tela branca):
+      // o UI atual fica visível enquanto o novo payload chega em background.
+      if (houveMutacao.current) startTransition(() => router.refresh());
+    };
+  }, [router]);
 
   if (tarefas.length === 0) return null;
   const abertas = tarefas
@@ -73,8 +105,11 @@ function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, aberta: false } : x)));
+      avisarConcluida(t.tarefaId, t.titulo);
       setAgora((a) => ({ ...a, [t.tarefaId]: t.status }));
-      router.refresh(); // a página atrás do popup (entrega, projeto…) acompanha
+      // router.refresh() foi movido pro cleanup — a página de trás atualiza
+      // quando o modal fecha, pra não desmontar o modal no meio do fluxo.
+      houveMutacao.current = true;
     } catch (e: any) {
       setErro(e?.message ?? 'Não consegui concluir.');
     } finally {
@@ -94,7 +129,7 @@ function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setTarefas((ts) => ts.map((x) => (x.tarefaId === t.tarefaId ? { ...x, aberta: true } : x)));
-      router.refresh();
+      houveMutacao.current = true; // refresh roda quando o modal fecha
       setAgora((a) => {
         const n = { ...a };
         delete n[t.tarefaId];
@@ -197,6 +232,171 @@ function tipoArquivo(mime: string, nome: string): 'imagem' | 'video' | 'audio' |
   return 'outro';
 }
 
+function hojeSP(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+function somaDiasIso(iso: string, n: number): string {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** "hoje, qua 21/10" / "amanhã, qui 22/10" / "seg 20/10". */
+function prazoLongo(iso: string, hoje: string): string {
+  const d = iso.slice(0, 10);
+  const [y, m, dd] = d.split('-').map(Number);
+  const sem = DIA_SEMANA[new Date(Date.UTC(y, m - 1, dd)).getUTCDay()];
+  const base = `${sem} ${String(dd).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+  if (d === hoje) return `hoje, ${base}`;
+  if (d === somaDiasIso(hoje, 1)) return `amanhã, ${base}`;
+  if (d === somaDiasIso(hoje, -1)) return `ontem, ${base}`;
+  return base;
+}
+
+/** Rótulo curto da etapa na régua ("Aprovação | Arte" vira "Aprov. arte"). */
+function rotuloRegua(titulo: string): string {
+  const t = titulo.trim();
+  const m = /^(aprovação|alteração)\s*\|\s*(.+)$/i.exec(t);
+  if (m) {
+    const resto = m[2].trim().toLowerCase();
+    if (/^post$/.test(resto)) return m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
+    return `${m[1].slice(0, 5)}. ${resto}`.replace(/^./, (c) => c.toUpperCase());
+  }
+  return t.length > 16 ? t.slice(0, 15) + '…' : t;
+}
+
+/** Linha discreta "Prazo desta etapa: X · mudar" (muda a Data Entrega no Notion). */
+function PrazoDaEtapa({ tarefaId, prazo, hoje, onMudou }: { tarefaId: string; prazo: string | null; hoje: string; onMudou: (novo: string) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const dow = new Date(hoje + 'T12:00:00Z').getUTCDay();
+  const proxSeg = somaDiasIso(hoje, ((8 - dow) % 7) || 7);
+  async function salvar(novo: string) {
+    if (!novo) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/admin/tarefas/${tarefaId}/prazo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prazo: novo }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'erro');
+      onMudou(novo);
+      setAberto(false);
+    } catch (e: any) {
+      setErro(e?.message ?? 'erro');
+    } finally {
+      setSalvando(false);
+    }
+  }
+  const atrasada = !!prazo && prazo.slice(0, 10) < hoje;
+  const cor = !prazo ? '#636369' : atrasada ? '#7E211C' : prazo.slice(0, 10) === hoje ? '#7A1F4C' : '#111113';
+  return (
+    <span className="relative flex flex-wrap items-center gap-1.5 text-[12.5px] text-[#46464B]">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
+      Prazo desta etapa:
+      <b style={{ color: cor }}>{salvando ? 'salvando…' : prazo ? prazoLongo(prazo, hoje) : 'sem prazo'}</b>
+      {atrasada && <span className="text-[#7E211C]">· atrasada</span>}
+      <span className="text-[#8A8A90]">·</span>
+      <button type="button" onClick={() => setAberto(!aberto)} className="font-bold text-[#46464B] underline underline-offset-2 hover:text-[#111113]">
+        mudar
+      </button>
+      {aberto && (
+        <span className="absolute left-0 top-[calc(100%+6px)] z-20 flex w-[230px] flex-col gap-1.5 rounded-[14px] border border-[#E9E9EB] bg-white p-2.5 shadow-[0_8px_24px_rgba(17,17,19,0.12)]">
+          <span className="grid grid-cols-2 gap-1.5">
+            {[
+              ['Hoje', hoje],
+              ['Amanhã', somaDiasIso(hoje, 1)],
+              ['Segunda', proxSeg],
+              ['+1 semana', somaDiasIso(hoje, 7)],
+            ].map(([l, d]) => (
+              <button key={l} type="button" disabled={salvando} onClick={() => salvar(d)} className="rounded-[9px] border border-[#E9E9EB] px-2 py-1.5 text-[12px] font-bold hover:border-[#111113] disabled:opacity-50">
+                {l}
+              </button>
+            ))}
+          </span>
+          <input type="date" defaultValue={prazo?.slice(0, 10) ?? hoje} onChange={(e) => salvar(e.target.value)} className="rounded-[9px] border border-[#D6D6D9] px-2 py-1.5 text-[12.5px] outline-none focus:border-[#111113]" />
+          {erro && <span className="px-1 text-[11.5px] text-[#7E211C]">Não salvou: {erro}</span>}
+          <button type="button" onClick={() => setAberto(false)} className="text-[11.5px] text-[#636369] hover:text-[#111113]">
+            Fechar
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Régua das etapas do post: feito claro, agora destacado, depois com contorno. */
+function Regua({ tarefas, agoraId }: { tarefas: Tarefa[]; agoraId: string | null }) {
+  if (tarefas.length === 0) return null;
+  const idxAgora = tarefas.findIndex((t) => t.tarefaId === agoraId);
+  return (
+    <div className="overflow-x-auto min-h-fit pb-1">
+      <ol className="flex min-w-max items-start">
+        {tarefas.map((t, i) => {
+          const agora = t.tarefaId === agoraId;
+          const feito = !t.aberta;
+          const depois = !feito && !agora;
+          return (
+            <li key={t.tarefaId} className="relative flex w-[92px] flex-col items-center gap-1.5" title={t.titulo}>
+              {i > 0 && <span className={`absolute right-1/2 top-[9px] h-[2px] w-full ${idxAgora >= 0 && i <= idxAgora ? 'bg-[#D6D6D9]' : depois ? 'bg-[#46464B]' : 'bg-[#E9E9EB]'}`} />}
+              <span
+                className={`relative z-10 flex items-center justify-center rounded-full ${
+                  agora ? 'h-[20px] w-[20px] border-[3px] border-[#B42318] bg-[#B42318] ring-4 ring-[#F6CFCB]' : feito ? 'h-[18px] w-[18px] bg-[#E9E9EB] text-[9px] text-[#8A8A90]' : 'h-[18px] w-[18px] border-2 border-[#46464B] bg-white'
+                }`}
+              >
+                {feito ? '✓' : ''}
+              </span>
+              {agora ? (
+                <span className="whitespace-nowrap rounded-full bg-[#F6CFCB] px-1.5 py-px text-[11px] font-extrabold text-[#7E211C]">{rotuloRegua(t.titulo)}</span>
+              ) : (
+                <span className={`max-w-[88px] truncate text-center text-[11px] ${feito ? 'text-[#8A8A90]' : 'font-extrabold text-[#111113]'}`}>{rotuloRegua(t.titulo)}</span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+const TIPOS_COMENTARIO = new Set<NotaHistorico['tipo']>(['cliente_comentou', 'cliente_alteracao', 'equipe']);
+
+function quandoNota(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d);
+  const hora = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }).format(d).replace(':', 'h');
+  const hoje = hojeSP();
+  if (dia === hoje) return `hoje ${hora}`;
+  if (dia === somaDiasIso(hoje, -1)) return `ontem ${hora}`;
+  return `${dia.slice(8)}/${dia.slice(5, 7)} ${hora}`;
+}
+
+/* Cache da prévia no navegador: abrir de novo é na hora, e passar o mouse no post já começa a buscar. */
+const cachePrevia = new Map<string, { em: number; p: Promise<any>; dado?: any }>();
+function buscarPrevia(postId: string, forcar = false): Promise<any> {
+  const c = cachePrevia.get(postId);
+  if (!forcar && c && Date.now() - c.em < 20_000) return c.p;
+  const p = fetch(`/api/post/${postId}/preview`, { cache: 'no-store' }).then(async (res) => {
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+    const atual = cachePrevia.get(postId);
+    if (atual) atual.dado = j;
+    return j;
+  });
+  cachePrevia.set(postId, { em: Date.now(), p, dado: c?.dado });
+  p.catch(() => cachePrevia.delete(postId));
+  return p;
+}
+/** Chame no onMouseEnter/onFocus de quem abre o popup: a prévia já vem pronta no clique. */
+export function prefetchPrevia(postId: string | null | undefined) {
+  if (postId) buscarPrevia(postId).catch(() => {});
+}
+
 export function PreviaPostModal({
   postId,
   tarefaId,
@@ -206,7 +406,10 @@ export function PreviaPostModal({
   tarefaId?: string | null;
   fechar: () => void;
 }) {
-  const [preview, setPreview] = useState<Preview | null>(null);
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  // Se já tem a prévia no cache (aberta antes ou buscada no hover), mostra na hora e atualiza por trás.
+  const [preview, setPreview] = useState<Preview | null>(() => (cachePrevia.get(postId)?.dado as Preview) ?? null);
   // Página completa volta pra onde o popup foi aberto (projeto, aprovações…).
   const hrefCompleto = (() => {
     const q = new URLSearchParams();
@@ -217,35 +420,41 @@ export function PreviaPostModal({
   })();
   const [erro, setErro] = useState<string | null>(null);
   const [ativo, setAtivo] = useState(0);
+  const [concluindo, setConcluindo] = useState(false);
+  const [erroEtapa, setErroEtapa] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+  const [aba, setAba] = useState<'post' | 'tarefas' | 'comentarios' | 'historico'>('post');
+  const houveMutacao = useRef(false);
+  const hoje = hojeSP();
+
+  async function carregar() {
+    return (await buscarPrevia(postId, true)) as Preview;
+  }
 
   useEffect(() => {
     let cancelado = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/post/${postId}/preview`, {
-          cache: 'no-store',
-        });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
-        if (!cancelado) setPreview(j);
-      } catch (e: any) {
-        if (!cancelado) setErro(e?.message ?? 'erro');
-      }
-    })();
+    (buscarPrevia(postId) as Promise<Preview>)
+      .then((j) => !cancelado && setPreview(j))
+      .catch((e: any) => !cancelado && setErro(e?.message ?? 'erro'));
     return () => {
       cancelado = true;
     };
-  }, [postId]);
+  }, [postId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ESC fecha
+  // A tela de trás atualiza quando o popup fecha (não no meio do fluxo).
+  useEffect(() => {
+    return () => {
+      if (houveMutacao.current) startTransition(() => router.refresh());
+    };
+  }, [router]);
+
+  // ESC fecha; setas trocam a arte.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') fechar();
       if (preview && preview.arquivos.length > 1) {
-        if (e.key === 'ArrowLeft')
-          setAtivo((i) => Math.max(0, i - 1));
-        if (e.key === 'ArrowRight')
-          setAtivo((i) => Math.min(preview.arquivos.length - 1, i + 1));
+        if (e.key === 'ArrowLeft') setAtivo((i) => Math.max(0, i - 1));
+        if (e.key === 'ArrowRight') setAtivo((i) => Math.min(preview.arquivos.length - 1, i + 1));
       }
     }
     window.addEventListener('keydown', onKey);
@@ -254,242 +463,348 @@ export function PreviaPostModal({
 
   const arquivoAtivo = preview?.arquivos[ativo] ?? null;
   const semArte = !!preview && preview.arquivos.length === 0;
-  const tipo = arquivoAtivo
-    ? tipoArquivo(arquivoAtivo.mimeType, arquivoAtivo.name)
-    : null;
+  const tipo = arquivoAtivo ? tipoArquivo(arquivoAtivo.mimeType, arquivoAtivo.name) : null;
+
+  // Etapas do post na ordem do Notion (Ordem → Ordem (1)); agora = primeira aberta.
+  const fluxo = (preview?.tarefas ?? [])
+    .filter((t) => t.status !== 'Cancelado' && t.status !== 'Excluída')
+    .slice()
+    .sort((a, b) => compararNoFluxo(a as any, b as any));
+  const agora = fluxo.find((t) => t.aberta) ?? null;
+  const handle = preview?.projetoNome ? nomeCurtoDoProjeto(preview.projetoNome) : null;
+  const iniciais = (handle ?? '?').replace(/^@/, '').slice(0, 2).toUpperCase();
+  const hashtags = (preview?.legenda.match(/#[\p{L}0-9_]+/gu) ?? []) as string[];
+
+  function mudarPrazoLocal(novo: string) {
+    if (!agora) return;
+    houveMutacao.current = true;
+    setPreview((p) => (p ? { ...p, tarefas: p.tarefas.map((t) => (t.tarefaId === agora.tarefaId ? { ...t, prazo: novo } : t)) } : p));
+  }
+
+  async function concluirEtapa() {
+    if (!agora) return;
+    setConcluindo(true);
+    setErroEtapa(null);
+    try {
+      const res = await fetch(`/api/tarefas/${agora.tarefaId}/concluir`, { method: 'POST' });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
+      avisarConcluida(agora.tarefaId);
+      houveMutacao.current = true;
+      setPreview((p) => (p ? { ...p, tarefas: p.tarefas.map((t) => (t.tarefaId === agora.tarefaId ? { ...t, aberta: false } : t)) } : p));
+    } catch (e: any) {
+      setErroEtapa(e?.message ?? 'Não consegui concluir.');
+    } finally {
+      setConcluindo(false);
+    }
+  }
+
+  async function copiarLegenda() {
+    try {
+      await navigator.clipboard.writeText(preview?.legenda ?? '');
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1500);
+    } catch {
+      /* sem permissão */
+    }
+  }
+
+  const chip = 'inline-flex items-center rounded-full bg-[#F4F4F5] px-2.5 py-[3px] text-[11.5px] font-bold text-[#111113]';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4"
-      onClick={fechar}
-    >
-      <div
-        className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between gap-3 border-b border-[rgba(21,21,33,0.08)] px-5 py-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
-              Pré-visualização do post
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111113]/60 p-4" onClick={fechar}>
+      <div className="relative flex max-h-[92vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {/* Cabeçalho */}
+        <div className="flex items-center justify-between gap-3 border-b border-[#E9E9EB] px-6 py-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <span
+              className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-[#F4F4F5] text-[22px] sm:flex"
+              title={preview?.formato || 'Formato'}
+            >
+              {preview ? emojiDoFormato(preview.formato) ?? '📝' : ''}
+            </span>
+            <div className="min-w-0">
+              {preview?.projetoNome && <div className="truncate text-[12px] font-bold text-[#636369]">{handle !== 'Projeto' ? handle : preview.projetoNome}</div>}
+              <div className="truncate text-[18px] font-extrabold tracking-[-0.01em] text-[#111113]">{preview?.titulo ?? 'Carregando…'}</div>
+              {preview && (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {preview.dataPostagem && <span className={chip}>📅 {dataPostagemTexto(preview.dataPostagem)}</span>}
+                  {preview.formato && <span className={chip}>{preview.formato}{preview.arquivos.length > 1 ? ` · ${preview.arquivos.length}` : ''}</span>}
+                </div>
+              )}
             </div>
-            <div className="mt-0.5 truncate text-[15px] font-semibold text-ink">
-              {preview?.titulo ?? 'Carregando…'}
-            </div>
-            {preview && (preview.dataPostagem || preview.formato || preview.status) && (
-              <div className="mt-0.5 flex flex-wrap gap-x-2.5 text-[11.5px] text-t3">
-                {preview.dataPostagem && (
-                  <span>
-                    Postagem <span className="font-medium text-t1">{dataPostagemTexto(preview.dataPostagem)}</span>
-                  </span>
-                )}
-                {preview.formato && <span>· {preview.formato}</span>}
-                {preview.status && <span>· {preview.status}</span>}
-              </div>
-            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <a
-              href={hrefCompleto}
-              title="Abrir página completa"
-              aria-label="Abrir página completa"
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[rgba(21,21,33,0.13)] bg-white px-2.5 text-[11px] font-semibold text-ink transition hover:bg-bgSoft"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M15 3h6v6" />
-                <path d="M9 21H3v-6" />
-                <path d="M21 3l-7 7" />
-                <path d="M3 21l7-7" />
-              </svg>
-              <span className="hidden sm:inline">Abrir completo</span>
+            <a href={hrefCompleto} className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-[#D6D6D9] bg-white px-3.5 text-[13px] font-extrabold text-[#111113] hover:bg-[#F4F4F5]">
+              ↗ <span className="hidden sm:inline">Abrir completo</span>
             </a>
-            <button
-              type="button"
-              onClick={fechar}
-              aria-label="Fechar"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[18px] text-t3 transition hover:bg-bgSoft hover:text-ink"
-            >
+            <button type="button" onClick={fechar} aria-label="Fechar" className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F4F4F5] text-[18px] text-[#46464B] hover:bg-[#E9E9EB]">
               ×
             </button>
           </div>
         </div>
 
+        {/* Abas */}
+        {preview && (
+          <nav aria-label="Abas da prévia" className="mx-6 mt-3 flex w-fit max-w-[calc(100%-48px)] gap-0.5 overflow-x-auto min-h-fit rounded-[12px] bg-[#F4F4F5] p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {(
+              [
+                ['post', 'Post', null],
+                ['tarefas', 'Tarefas', preview.tarefas.filter((t) => t.aberta).length],
+                ['comentarios', 'Comentários', (preview.notas ?? []).filter((n) => TIPOS_COMENTARIO.has(n.tipo) || n.tipo === 'interna').length],
+                ['historico', 'Histórico', null],
+              ] as const
+            ).map(([id, rot, n]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setAba(id)}
+                className={`whitespace-nowrap rounded-[10px] px-3.5 py-1.5 text-[13px] ${aba === id ? 'bg-white font-extrabold text-[#111113] shadow-[0_1px_2px_rgba(17,17,19,0.08)]' : 'font-bold text-[#636369] hover:text-[#111113]'}`}
+              >
+                {rot}
+                {n !== null && n > 0 && <b className={id === 'tarefas' ? 'text-[#7E211C]' : ''}> · {n}</b>}
+              </button>
+            ))}
+          </nav>
+        )}
+
         {/* Corpo */}
         <div className="flex-1 overflow-y-auto">
-          {erro && (
-            <div className="m-6 rounded-lg bg-[var(--prazo-atrasado-soft)] p-4 text-[13px] text-[var(--prazo-atrasado)]">
-              {erro}
-            </div>
-          )}
+          {erro && <div className="m-6 rounded-[12px] bg-[#F6CFCB] p-4 text-[13px] text-[#7E211C]">{erro}</div>}
           {!preview && !erro && (
-            <div className="flex h-[360px] items-center justify-center text-[13px] text-t3">
-              Carregando preview…
+            <div className="space-y-4 p-6">
+              <div className="h-[120px] animate-pulse rounded-[18px] bg-[#F1F1F2]" />
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+                <div className="h-[420px] animate-pulse rounded-[18px] bg-[#F1F1F2]" />
+                <div className="h-[420px] animate-pulse rounded-[18px] bg-[#F1F1F2]" />
+              </div>
             </div>
           )}
           {preview && (
-            <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-              {/* Mídia — sem arte ainda, as tarefas ocupam o lugar dela */}
-              <div className="space-y-3">
-                {semArte ? (
-                  preview.tarefas.length > 0 ? (
-                    <div className="space-y-2">
-                      <p className="text-[11.5px] text-t3">Arte ainda não anexada. Andamento do post:</p>
-                      <div className="rounded-xl border border-[rgba(21,21,33,0.08)] p-4">
-                        <TodasTarefasCard
-                          tarefas={preview.tarefas}
-                          colaboradores={preview.colaboradores ?? {}}
-                          podeEditarPrazo
-                          semMoldura
-                        />
-                      </div>
+            <div className="flex flex-col gap-5 p-6">
+              {/* Onde o post está: uma linha só, etapas recolhidas */}
+              {fluxo.length > 0 && (
+                <section className="flex flex-col gap-2.5 rounded-[16px] border border-[#EDEDEF] px-4 py-3">
+                  {agora ? (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <span className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Agora</span>
+                      <b className="text-[14px] text-[#111113]">{agora.titulo}</b>
+                      {agora.pessoa && <span className="text-[12.5px] text-[#636369]">com {agora.pessoa.split(' ')[0]}</span>}
+                      <PrazoDaEtapa key={agora.tarefaId} tarefaId={agora.tarefaId} prazo={agora.prazo} hoje={hoje} onMudou={mudarPrazoLocal} />
+                      <span className="ml-auto flex items-center gap-2">
+                        {ehTarefaDoCliente(agora.titulo) && (
+                          <BotaoLembreteWpp tarefaId={agora.tarefaId} clienteNome={preview.projetoNome ?? 'cliente'} rotulo="Lembrar no grupo" compacto />
+                        )}
+                        <button
+                          type="button"
+                          onClick={concluirEtapa}
+                          disabled={concluindo}
+                          className="inline-flex h-8 items-center rounded-full bg-[#111113] px-3.5 text-[12.5px] font-extrabold text-white hover:bg-[#2C2C30] disabled:opacity-50"
+                        >
+                          {concluindo ? 'Concluindo…' : '✓ Concluir'}
+                        </button>
+                      </span>
                     </div>
                   ) : (
-                    <div className="flex min-h-[260px] items-center justify-center rounded-xl bg-bgSoft text-[13px] text-t3">
-                      Nenhum arquivo anexado ao post ainda.
+                    <span className="text-[13px] font-bold text-[#2E5520]">✓ Todas as etapas concluídas.</span>
+                  )}
+                  {erroEtapa && <span className="text-[12px] font-bold text-[#7E211C]">{erroEtapa}</span>}
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#F0F0F1]">
+                        <span className="block h-full rounded-full bg-[#2E5520]" style={{ width: `${Math.round((fluxo.filter((t) => !t.aberta).length / fluxo.length) * 100)}%` }} />
+                      </span>
+                      <span className="whitespace-nowrap text-[12px] font-bold text-[#636369]">
+                        {fluxo.filter((t) => !t.aberta).length} de {fluxo.length} etapas <span className="inline-block transition-transform group-open:rotate-90">›</span>
+                      </span>
+                    </summary>
+                    <div className="mt-3">
+                      <ReguaCompacta
+                        etapas={fluxo.map((t) => ({ id: t.tarefaId, titulo: rotuloRegua(t.titulo), feito: !t.aberta, prazo: t.prazo }))}
+                        agoraId={agora?.tarefaId ?? null}
+                      />
                     </div>
-                  )
+                  </details>
+                </section>
+              )}
+
+              {/* Pedir alteração de arte e/ou copy (o mesmo da página completa) */}
+              {aba === 'post' &&
+                (() => {
+                  const pedido = preview.tarefas.find((t) => t.titulo.trim() === 'Alteração | Post' && t.aberta && !t.finalizada);
+                  const resp = (titulo: string) => preview.tarefas.filter((t) => t.titulo.trim() === titulo).find((t) => t.pessoaNome)?.pessoaNome ?? null;
+                  const comentarios = (preview.notas ?? [])
+                    .filter((n) => n.tipo === 'cliente_comentou' || n.tipo === 'cliente_alteracao')
+                    .map((n) => ({
+                      quando: n.quando,
+                      tipo: (n.tipo === 'cliente_alteracao' ? 'alteracao' : 'comentou') as 'alteracao' | 'comentou',
+                      autor: n.autor ?? null,
+                      trecho: n.corpo || n.titulo,
+                    }));
+                  return (
+                    <div className={pedido ? '' : 'flex justify-end'} onClickCapture={() => (houveMutacao.current = true)}>
+                      <SolicitarAlteracao
+                        key={postId}
+                        postId={postId}
+                        pedido={pedido ? { tarefaId: pedido.tarefaId, prazo: pedido.prazo } : null}
+                        comentarios={comentarios}
+                        responsaveis={{ arte: resp('Arte'), copy: resp('Briefing & Copy') }}
+                      />
+                    </div>
+                  );
+                })()}
+
+              {aba === 'tarefas' && (
+                <div className="rounded-[18px] border border-[#E9E9EB] p-4">
+                  <TodasTarefasCard tarefas={preview.tarefas} colaboradores={preview.colaboradores ?? {}} podeEditarPrazo semMoldura linkAdmin compacto />
+                </div>
+              )}
+              {aba === 'comentarios' && <ComentariosLud postId={postId} notas={preview.notas ?? []} />}
+              {aba === 'historico' &&
+                (preview.historico ? (
+                  <section className="rounded-[18px] border border-[#E9E9EB] p-4">
+                    <HistoricoResumo historico={preview.historico} notas={preview.notas ?? []} tarefasCliente={preview.tarefasCliente ?? []} hrefCompleto={hrefCompleto} />
+                  </section>
                 ) : (
-                  <>
-                    <div className="relative overflow-hidden rounded-xl bg-ink">
-                      <div
-                        className={`relative w-full ${
-                          tipo === 'video'
-                            ? 'aspect-video'
-                            : 'aspect-square'
-                        }`}
-                      >
-                        {arquivoAtivo && tipo === 'imagem' && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={`/api/drive/preview/${arquivoAtivo.id}`}
-                            alt={arquivoAtivo.name}
-                            className="absolute inset-0 h-full w-full object-contain"
-                          />
-                        )}
-                        {arquivoAtivo && tipo === 'video' && (
-                          <video
-                            src={`/api/drive/preview/${arquivoAtivo.id}`}
-                            controls
-                            playsInline
-                            preload="metadata"
-                            className="absolute inset-0 h-full w-full"
-                          />
-                        )}
-                        {arquivoAtivo && tipo === 'audio' && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-mauve/15 px-6">
-                            <span className="text-[48px]">🎙</span>
-                            <audio
-                              src={`/api/drive/preview/${arquivoAtivo.id}`}
-                              controls
-                              preload="metadata"
-                              className="w-full max-w-md"
-                            />
-                          </div>
-                        )}
-                        {arquivoAtivo && tipo === 'outro' && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/70">
-                            <span className="text-[48px]">📎</span>
-                            <span className="text-[11px]">
-                              {arquivoAtivo.name}
-                            </span>
-                          </div>
+                  <p className="text-[13px] text-[#636369]">Sem histórico por aqui ainda.</p>
+                ))}
+              <div className={`grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] ${aba === 'post' ? '' : 'hidden'}`}>
+                {/* Arte */}
+                <div className="space-y-3">
+                  {semArte ? (
+                    <div className="flex min-h-[220px] flex-col items-center justify-center gap-1 rounded-[18px] bg-[#F7F7F8] text-center">
+                      <span className="text-[28px]">{emojiDoFormato(preview.formato) ?? '📝'}</span>
+                      <span className="text-[13px] font-bold text-[#46464B]">Arte ainda não anexada</span>
+                      <span className="text-[12px] text-[#8A8A90]">As tarefas do post estão na aba Tarefas.</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="relative overflow-hidden rounded-[18px] bg-[#111113]">
+                        <div className={`relative w-full ${tipo === 'video' ? 'aspect-[4/5] max-h-[560px]' : 'aspect-[4/5]'}`}>
+                          {arquivoAtivo && tipo === 'imagem' && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={`/api/drive/preview/${arquivoAtivo.id}`} alt={arquivoAtivo.name} className="absolute inset-0 h-full w-full object-contain" />
+                          )}
+                          {arquivoAtivo && tipo === 'video' && <video src={`/api/drive/preview/${arquivoAtivo.id}`} controls playsInline preload="metadata" className="absolute inset-0 h-full w-full" />}
+                          {arquivoAtivo && tipo === 'audio' && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[#2C2C30] px-6">
+                              <span className="text-[13px] font-bold text-white/80">Áudio</span>
+                              <audio src={`/api/drive/preview/${arquivoAtivo.id}`} controls preload="metadata" className="w-full max-w-md" />
+                            </div>
+                          )}
+                          {arquivoAtivo && tipo === 'outro' && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/70">
+                              <span className="text-[12px]">{arquivoAtivo.name}</span>
+                            </div>
+                          )}
+                        </div>
+                        {preview.arquivos.length > 1 && (
+                          <>
+                            <button type="button" onClick={() => setAtivo((i) => Math.max(0, i - 1))} disabled={ativo === 0} className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white text-[18px] font-bold text-[#111113] shadow disabled:opacity-30" aria-label="Anterior">
+                              ‹
+                            </button>
+                            <button type="button" onClick={() => setAtivo((i) => Math.min(preview.arquivos.length - 1, i + 1))} disabled={ativo === preview.arquivos.length - 1} className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white text-[18px] font-bold text-[#111113] shadow disabled:opacity-30" aria-label="Próximo">
+                              ›
+                            </button>
+                            <div className="absolute right-3 top-3 rounded-full bg-[#111113]/80 px-2.5 py-0.5 text-[11px] font-extrabold text-white">
+                              {ativo + 1} / {preview.arquivos.length}
+                            </div>
+                          </>
                         )}
                       </div>
-
-                      {/* Setas */}
                       {preview.arquivos.length > 1 && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setAtivo((i) => Math.max(0, i - 1))}
-                            disabled={ativo === 0}
-                            className="absolute left-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[18px] font-bold text-ink shadow transition hover:bg-white disabled:opacity-30"
-                            aria-label="Anterior"
-                          >
-                            ‹
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setAtivo((i) =>
-                                Math.min(preview.arquivos.length - 1, i + 1),
-                              )
-                            }
-                            disabled={ativo === preview.arquivos.length - 1}
-                            className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[18px] font-bold text-ink shadow transition hover:bg-white disabled:opacity-30"
-                            aria-label="Próximo"
-                          >
-                            ›
-                          </button>
-                          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-ink/80 px-2.5 py-0.5 text-[10px] font-semibold text-white">
-                            {ativo + 1} / {preview.arquivos.length}
-                          </div>
-                        </>
+                        <div className="flex gap-1.5 overflow-x-auto min-h-fit">
+                          {preview.arquivos.map((a, i) => {
+                            const t = tipoArquivo(a.mimeType, a.name);
+                            return (
+                              <button key={a.id} type="button" onClick={() => setAtivo(i)} className={`relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[10px] border-2 ${i === ativo ? 'border-[#111113]' : 'border-transparent opacity-60 hover:opacity-100'}`}>
+                                {t === 'imagem' ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={`/api/drive/preview/${a.id}`} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center bg-[#F4F4F5] text-[14px]">{t === 'video' ? '▶' : '·'}</div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {arquivoAtivo && (
+                        <div className="flex flex-wrap gap-2">
+                          <a href={arquivoAtivo.webViewLink} target="_blank" rel="noreferrer" className="rounded-[12px] border border-[#D6D6D9] bg-white px-4 py-2 text-[13px] font-extrabold hover:bg-[#F4F4F5]">
+                            Abrir no Drive
+                          </a>
+                          <a href={`/api/drive/preview/${arquivoAtivo.id}`} download={arquivoAtivo.name} className="rounded-[12px] border border-[#D6D6D9] bg-white px-4 py-2 text-[13px] font-extrabold hover:bg-[#F4F4F5]">
+                            Baixar arte
+                          </a>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Lateral: legenda, programação, comentários, histórico */}
+                <div className="flex min-w-0 flex-col gap-4">
+                  {(preview.ideia || preview.briefing || preview.roteiro || preview.cards) && (
+                    <section className="flex flex-col divide-y divide-[#F0F0F2] rounded-[18px] border border-[#E9E9EB]">
+                      {(
+                        [
+                          ['💡 Ideia do post', preview.ideia],
+                          ['📋 Briefing', preview.briefing],
+                          ['🎙️ Roteiro', preview.roteiro],
+                          ['🗂️ Cards', preview.cards],
+                        ] as const
+                      )
+                        .filter(([, t]) => !!t)
+                        .map(([rot, t], i) => (
+                          <details key={rot} open={i === 0} className="group px-4 py-3">
+                            <summary className="flex cursor-pointer list-none items-center justify-between [&::-webkit-details-marker]:hidden">
+                              <b className="text-[13.5px]">{rot}</b>
+                              <span className="text-[12px] text-[#8A8A90] transition-transform group-open:rotate-90">›</span>
+                            </summary>
+                            <p className="mt-2 max-h-[220px] overflow-y-auto whitespace-pre-line text-[12.5px] leading-[1.55] text-[#2C2C30]">{t}</p>
+                          </details>
+                        ))}
+                    </section>
+                  )}
+                  <section className="flex flex-col gap-2 rounded-[18px] border border-[#E9E9EB] p-4">
+                    <div className="flex items-baseline justify-between">
+                      <b className="text-[14px]">Legenda</b>
+                      {preview.legenda && (
+                        <button type="button" onClick={copiarLegenda} className="text-[12.5px] font-extrabold hover:underline">
+                          {copiado ? 'Copiada' : 'Copiar'}
+                        </button>
                       )}
                     </div>
-
-                    {/* Thumbs */}
-                    {preview.arquivos.length > 1 && (
-                      <div className="flex gap-1.5 overflow-x-auto">
-                        {preview.arquivos.map((a, i) => {
-                          const t = tipoArquivo(a.mimeType, a.name);
-                          return (
-                            <button
-                              key={a.id}
-                              type="button"
-                              onClick={() => setAtivo(i)}
-                              className={`relative h-14 w-14 shrink-0 overflow-hidden rounded border-2 transition ${
-                                i === ativo
-                                  ? 'border-ink'
-                                  : 'border-transparent opacity-60 hover:opacity-100'
-                              }`}
-                            >
-                              {t === 'imagem' ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={`/api/drive/preview/${a.id}`}
-                                  alt=""
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-bgSoft text-[16px]">
-                                  {t === 'video'
-                                    ? '▶'
-                                    : t === 'audio'
-                                      ? '🎙'
-                                      : '📎'}
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
+                    {preview.legenda ? (
+                      <>
+                        <p className="line-clamp-6 whitespace-pre-line text-[13px] leading-[1.55] text-[#111113]">{preview.legenda}</p>
+                        {hashtags.length > 0 && (
+                          <span className="text-[11.5px] text-[#636369]">
+                            {hashtags.slice(0, 3).join(' ')} · {hashtags.length} hashtag{hashtags.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-[12.5px] text-[#636369]">Sem legenda definida.</p>
                     )}
-                  </>
-                )}
-              </div>
+                  </section>
 
-              {/* Legenda + tarefas */}
-              <div className="space-y-5">
-              <div className="space-y-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">
-                  Legenda
+                  <CaixaProgramacao
+                    postId={postId}
+                    data={preview.dataPostagem}
+                    hora={horaCurta(preview?.hora)}
+                    formato={preview.formato || null}
+                    situacao={/postad|publicad/i.test(preview.status ?? '') ? 'postado' : /agendad|programad/i.test(preview.status ?? '') ? 'programado' : 'nao'}
+                    feed={[]}
+                  />
+
                 </div>
-                {preview.legenda ? (
-                  <div className="whitespace-pre-line rounded-lg bg-bgSoft/60 p-3 text-[13px] leading-[1.55] text-ink">
-                    {preview.legenda}
-                  </div>
-                ) : (
-                  <div className="rounded-lg bg-bgSoft/60 p-3 text-[12px] italic text-t3">
-                    Sem legenda definida.
-                  </div>
-                )}
-              </div>
-              {!semArte && <TarefasResumo tarefas={preview.tarefas ?? []} />}
               </div>
             </div>
           )}
         </div>
+
       </div>
     </div>
   );

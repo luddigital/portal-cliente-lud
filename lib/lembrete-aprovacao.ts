@@ -6,7 +6,7 @@
  * Arquivo puro (sem acesso a banco) pra ser usado também na prévia do admin.
  */
 
-export type EtapaLembrete = 'pauta' | 'previos' | 'producao' | 'post' | 'reaprovacao';
+export type EtapaLembrete = 'pauta' | 'previos' | 'producao' | 'post' | 'reaprovacao' | 'auto_hoje' | 'auto_ontem';
 
 export type SituacaoLembrete =
   | 'no_prazo'
@@ -52,6 +52,18 @@ export const ETAPAS: {
     condicao: 'Aprovação nova que nasce depois de uma alteração (Ordem (1) = 03 no Notion)',
     onboarding: 'A equipe já fez os ajustes pedidos. O cliente revisa a nova versão; o post pode ser alterado até 3x.',
   },
+  {
+    id: 'auto_hoje',
+    nome: 'Aviso automático · já mandamos hoje',
+    condicao: 'Aviso automático de aprovação de post quando a última mensagem foi hoje, há 5 horas ou mais',
+    onboarding: 'Reforço do mesmo dia. Com menos de 5 horas desde a última mensagem, nada é enviado.',
+  },
+  {
+    id: 'auto_ontem',
+    nome: 'Aviso automático · mandamos ontem',
+    condicao: 'Aviso automático de aprovação de post quando a última mensagem foi ontem (ou no último dia útil)',
+    onboarding: 'Lembrete do dia seguinte. Depois de 2 avisos automáticos, o portal para e mostra pra equipe decidir.',
+  },
 ];
 
 export const SITUACOES: { id: SituacaoLembrete; nome: string; condicao: string }[] = [
@@ -84,6 +96,26 @@ export const VARIAVEIS: { nome: string; descricao: string }[] = [
   { nome: '{dias_atraso}', descricao: 'Há quanto tempo venceu (4 dias)' },
   { nome: '{verbo}', descricao: 'Verbo da etapa (aprovar / enviar)' },
 ];
+
+/**
+ * Aviso de readequação (aprovação de post): prazo é hoje ou já passou.
+ * Editável pelas chaves `lembrete.readequacao.vence_hoje` / `.vencido`.
+ */
+export const AVISO_READEQUACAO: Record<'vence_hoje' | 'vencido', string> = {
+  vence_hoje:
+    '⚠️ O prazo de aprovação termina *hoje*. Se o post não for aprovado nem encaminhado pra alteração até o fim do dia, ele vai ser readequado: o dia em que ele seria postado fica sem publicação, tá bem?',
+  vencido:
+    '⚠️ O prazo de aprovação já passou. Se o post não for aprovado nem encaminhado pra alteração hoje, ele vai ser readequado: o dia em que ele seria postado fica sem publicação.',
+};
+
+export function avisoReadequacao(
+  situacao: SituacaoLembrete,
+  textos?: Record<string, string>,
+): string | null {
+  const chave = situacao === 'vence_hoje' ? 'vence_hoje' : situacao === 'vencido' || situacao === 'data_passou' ? 'vencido' : null;
+  if (!chave) return null;
+  return textos?.[`lembrete.readequacao.${chave}`] ?? AVISO_READEQUACAO[chave];
+}
 
 export const PADRAO: Record<string, string> = {
   'lembrete.saudacao': 'Oie, {apelido}! Tudo bem? 😊',
@@ -118,6 +150,17 @@ export const PADRAO: Record<string, string> = {
   'lembrete.etapa.reaprovacao.regra':
     'Se ainda faltar algum ajuste, manda tudo junto numa solicitação só, combinado? Lembrando que o post pode ser alterado até 3x 😉',
   'lembrete.etapa.reaprovacao.verbo': 'aprovar',
+
+  'lembrete.etapa.auto_hoje.abertura': 'Passando de novo por aqui: esse post segue esperando sua aprovação no portal.',
+  'lembrete.etapa.auto_hoje.acao': 'É só abrir aqui:',
+  'lembrete.etapa.auto_hoje.regra': '',
+  'lembrete.etapa.auto_hoje.verbo': 'aprovar',
+
+  'lembrete.etapa.auto_ontem.abertura': 'Ontem te mandamos esse post pra aprovação e ele ainda está te esperando no portal:',
+  'lembrete.etapa.auto_ontem.acao': 'Abre aqui pra revisar e aprovar:',
+  'lembrete.etapa.auto_ontem.regra':
+    'O post poderá ser alterado 3x apenas, então não esquece de enviar todas as solicitações que deseja em apenas uma solicitação 😉',
+  'lembrete.etapa.auto_ontem.verbo': 'aprovar',
 
   'lembrete.prazo.no_prazo': 'O prazo é até *{prazo_dia}*.',
   'lembrete.prazo.vence_amanha': 'O prazo termina *amanhã ({prazo})*.',
@@ -211,6 +254,13 @@ export function montarLembrete(input: {
   textos?: Record<string, string>;
   hoje?: string;
   forcarEtapa?: EtapaLembrete;
+  /** Vários posts do mesmo cliente num lembrete só (cada um com o link dele). */
+  posts?: { titulo: string; link: string }[];
+  /**
+   * Primeiro comunicado sobre o post: sem aviso de readequação e sem "o prazo era X
+   * e já passou" (não faz sentido cobrar prazo de algo que ainda não mandamos).
+   */
+  primeiroEnvio?: boolean;
 }): {
   mensagem: string;
   etapa: EtapaLembrete;
@@ -234,11 +284,23 @@ export function montarLembrete(input: {
   };
   const p = (modelo: string) => preencher(modelo, vars, Boolean(input.postData));
 
+  // Aprovação de post com prazo hoje ou vencido: avisa da readequação.
+  const readequacao = input.primeiroEnvio
+    ? null
+    : (etapa === 'post' || etapa === 'reaprovacao' || etapa === 'auto_hoje' || etapa === 'auto_ontem') && situacao.codigo === 'vence_hoje'
+      ? avisoReadequacao(situacao.codigo, input.textos)
+      : null;
+  const varios = (input.posts?.length ?? 0) > 1;
   const blocos = [
     p(textos['lembrete.saudacao']),
-    [p(e('abertura')), `*${input.postTitulo}*`].filter(Boolean).join('\n'),
-    p(textos[`lembrete.prazo.${situacao.codigo}`] ?? ''),
-    [p(e('acao')), input.link].filter(Boolean).join('\n'),
+    varios
+      ? [p(e('abertura')), ...input.posts!.map((x) => `*${x.titulo}*\n${x.link}`)].filter(Boolean).join('\n\n')
+      : [p(e('abertura')), `*${input.postTitulo}*`].filter(Boolean).join('\n'),
+    readequacao ??
+      (input.primeiroEnvio && (situacao.codigo === 'vencido' || situacao.codigo === 'data_passou')
+        ? ''
+        : p(textos[`lembrete.prazo.${situacao.codigo}`] ?? '')),
+    varios ? p(e('acao')) : [p(e('acao')), input.link].filter(Boolean).join('\n'),
     p(e('regra')),
     p(textos['lembrete.fechamento']),
   ].filter(Boolean);

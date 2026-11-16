@@ -98,7 +98,7 @@ export function EntregaCard({
 
   return (
     <a
-      href={href ?? `/admin/entrega/${entrega.id}`}
+      href={href ?? `/admin/entregas/${entrega.id}`}
       className="group block overflow-hidden rounded-xl border border-[rgba(21,21,33,0.06)] bg-white transition hover:border-navy/30 hover:shadow-sm"
     >
       {/* Topinho colorido */}

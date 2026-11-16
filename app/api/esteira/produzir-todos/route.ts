@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getSession } from '@/lib/auth';
@@ -68,7 +69,7 @@ async function handle(
   const dryRun = body.dryRun === true;
   const limite = Math.max(1, Math.min(60, body.limite ?? 60));
 
-  const notion = new Client({ auth: env.notion.token });
+  const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
   const inicio = Date.now();
 
   // Puxa cards da Fila (Briefing & Copy pronto pra produzir)

@@ -594,7 +594,7 @@ export function EsteiraView({
 
       {/* Mobile: tabs. Desktop: sumir. */}
       <div className="lg:hidden">
-        <div className="flex overflow-x-auto rounded-xl border border-[rgba(21,21,33,0.08)] bg-white p-1 gap-1">
+        <div className="flex overflow-x-auto min-h-fit rounded-xl border border-[rgba(21,21,33,0.08)] bg-white p-1 gap-1">
           {COLUNAS_KANBAN.map(
             (col) => {
               const info = COLUNA_INFO[col];

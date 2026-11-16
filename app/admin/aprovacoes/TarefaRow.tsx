@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { TarefaDaEntrega } from '@/lib/notion';
 import type { Visualizacao } from '@/lib/supabase';
 import { BotaoLembreteWpp } from './BotaoLembreteWpp';
-import { PreviaPostModal } from './PreviaPostModal';
+import { PreviaPostModal, prefetchPrevia } from './PreviaPostModal';
 import { ChipData } from '@/app/_components/ChipData';
 
 function hojeLocal(): string {
@@ -73,9 +73,8 @@ export function TarefaRow({
   // Se não existe postId (ex.: tarefa avulsa sem post vinculado), cai direto
   // na navegação pra página da tarefa, sem modal.
   const temPreview = Boolean(t.postId);
-  const hrefFallback = t.postId
-    ? `/post/${t.postId}?tarefa=${t.tarefaId}`
-    : `/tarefa/${t.tarefaId}`;
+  // Sem post: a página da tarefa no admin (não o formulário do cliente em /tarefa).
+  const hrefFallback = t.postId ? `/post/${t.postId}?tarefa=${t.tarefaId}` : `/admin/tarefas/${t.tarefaId}`;
 
   const conteudoInterno = (
     <>
@@ -112,7 +111,7 @@ export function TarefaRow({
         {temPreview ? (
           <button
             type="button"
-            onClick={() => setModalAberto(true)}
+            onMouseEnter={() => prefetchPrevia(t.postId)} onClick={() => setModalAberto(true)}
             className="flex min-w-0 flex-1 items-center gap-3 text-left"
             title="Ver prévia do post"
           >

@@ -94,9 +94,9 @@ export function SelectsMeta(props: Props) {
   // Emoji só decorativo por nome — heurística leve
   function emojiFormato(nome: string): string {
     const n = nome.toLowerCase();
-    if (n.includes('reels') || n.includes('vídeo') || n.includes('video')) return '🎬';
+    if (n.includes('reels') || n.includes('vídeo') || n.includes('video')) return '📱';
     if (n.includes('carrossel')) return '🔲';
-    if (n.includes('stor')) return '📱';
+    if (n.includes('stor')) return '⭕';
     if (n.includes('foto') || n.includes('imagem') || n.includes('post')) return '📸';
     return '📝';
   }

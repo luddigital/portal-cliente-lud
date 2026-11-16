@@ -1,3 +1,4 @@
+import { fetchDoNotion } from '@/lib/notionFetch';
 import { NextResponse } from 'next/server';
 import { Client } from '@notionhq/client';
 import { getSession } from '@/lib/auth';
@@ -58,7 +59,7 @@ export async function POST(
       );
     }
 
-    const notion = new Client({ auth: env.notion.token });
+    const notion = new Client({ auth: env.notion.token, fetch: fetchDoNotion as any });
 
     // Puxa dados do post (título + cliente via projeto)
     const page = (await notion.pages.retrieve({

@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { env } from '@/lib/env';
 import { montarRegua } from '@/lib/regua';
 import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
