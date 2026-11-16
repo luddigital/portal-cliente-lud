@@ -8,6 +8,7 @@ import { corDaEtapa } from '@/lib/corEtapa';
 import { quandoComEmoji } from '../entregas/[id]/EntregaSemanas';
 import { BotaoLembreteWpp } from '../aprovacoes/BotaoLembreteWpp';
 import { MenuPropriedades, NOME_COLUNA, usePropriedades, type Coluna } from '../_ui/Propriedades';
+import { AvatarPessoa as AvatarPadrao, AvatarProjeto, Sinal } from '../_ui/Avatares';
 import { PreviaPostModal, prefetchPrevia } from '../aprovacoes/PreviaPostModal';
 
 /**
@@ -62,7 +63,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
   const [paraHoje, setParaHoje] = useState<Record<string, true>>({});
   const [pessoa, setPessoa] = useState<string>(pessoaInicial || 'todas');
   const [previa, setPrevia] = useState<{ postId: string; tarefaId: string } | null>(null);
-  const props_ = usePropriedades('tarefas', ['data', 'tarefa', 'post', 'projeto', 'status', 'acao']);
+  const props_ = usePropriedades('tarefas-v2', ['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']);
 
   const abaDe = (t: LinhaTarefa): Aba | null => {
     if (t.status === 'Inbox' || !t.prazo) return 'inbox';
@@ -139,15 +140,15 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       });
   }
 
-  const LARG: Partial<Record<Coluna, string>> = { data: 'w-[96px]', tarefa: 'w-[270px]', status: 'w-[400px]', projeto: 'w-[72px]', pessoa: 'w-[130px]', acao: 'w-[160px]' };
+  const LARG: Partial<Record<Coluna, string>> = { data: 'w-[76px]', tarefa: 'w-[260px]', status: 'w-[230px]', projeto: 'w-[68px] text-center', pessoa: 'w-[60px] text-center', sinal: 'w-[92px]', acao: 'w-[160px]' };
   const celula = (c: Coluna, t: LinhaTarefa) => {
     switch (c) {
       case 'data': {
         if (!t.prazo) return <span className="text-[#A1A1A8]">—</span>;
-        const q = quandoComEmoji(paraHoje[t.id] ? hoje : t.prazo, hoje);
+        const d = paraHoje[t.id] ? hoje : t.prazo.slice(0, 10);
         return (
-          <span className="whitespace-nowrap text-[12.5px] font-semibold tabular-nums" style={{ color: q.cor }}>
-            {q.texto}
+          <span className="whitespace-nowrap text-[12.5px] font-semibold tabular-nums" style={{ color: d < hoje ? 'var(--prazo-atrasado)' : '#46464B' }}>
+            {ddmm(d)}
           </span>
         );
       }
@@ -159,7 +160,9 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
           </Link>
         );
       case 'status':
-        return <StatusDaTarefa t={t} hoje={hoje} />;
+        return <Pilula titulo={t.antes ? t.antes.titulo : t.titulo} />;
+      case 'sinal':
+        return <Sinal itens={sinalDaTarefa(t, hoje)} />;
       case 'post':
         return t.postId ? (
           <button
@@ -175,24 +178,22 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         );
       case 'projeto':
         return t.projeto && t.projetoId ? (
-          <Link href={rotas.projeto(t.projetoId)} title={t.projeto} aria-label={t.projeto} className="inline-flex hover:opacity-80">
-            {t.projetoFoto ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={t.projetoFoto} alt="" className="h-7 w-7 rounded-full border border-[#E9E9EB] object-cover" />
-            ) : (
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#111113] text-[11px] font-bold text-white">{t.projeto.replace(/^@/, '')[0]?.toUpperCase()}</span>
-            )}
+          <Link href={rotas.projeto(t.projetoId)} aria-label={t.projeto} className="flex justify-center hover:opacity-80">
+            <AvatarProjeto handle={t.projeto} foto={t.projetoFoto} />
           </Link>
         ) : (
           <span className="text-[#A1A1A8]">—</span>
         );
-      case 'pessoa':
+      case 'pessoa': {
+        // Resp.: quem está com o post agora (na travada, quem está segurando; com o cliente, o cliente).
+        const nome = t.antes ? t.antes.pessoa : t.pessoa;
+        const foto = t.antes ? t.antes.avatar : t.pessoaAvatar;
         return (
-          <span className="flex items-center gap-1.5 text-[12.5px] text-[#46464B]">
-            <Avatar nome={t.pessoa ?? '?'} foto={t.pessoaAvatar} />
-            {(t.pessoa ?? '—').split(' ')[0]}
+          <span className="flex justify-center">
+            {nome ? <AvatarPadrao nome={nome} foto={foto ?? (t.doCliente ? t.projetoFoto : null)} titulo={`Com ${nome}`} /> : <span className="text-[#A1A1A8]">—</span>}
           </span>
         );
+      }
       case 'acao':
         if (t.antes) return null;
         if (aba === 'atr' && !paraHoje[t.id])
@@ -243,7 +244,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         </div>
       </details>
 
-      <MenuPropriedades disponiveis={['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'acao']} {...props_} />
+      <MenuPropriedades disponiveis={['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']} {...props_} />
       </div>
 
       {/* Abas */}
@@ -339,13 +340,8 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
 }
 
 function Avatar({ nome, foto, grande = false }: { nome: string; foto: string | null; grande?: boolean }) {
-  const t = grande ? 'h-6 w-6 text-[10px]' : 'h-4 w-4 text-[8px]';
-  return foto ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={foto} alt="" className={`${t} shrink-0 rounded-full object-cover`} />
-  ) : (
-    <span className={`${t} flex shrink-0 items-center justify-center rounded-full bg-[#E9E9EB] font-bold text-[#46464B]`}>{nome[0]?.toUpperCase()}</span>
-  );
+  // Mesmo avatar do resto do portal (foto ou inicial em pastel), só no tamanho pequeno.
+  return <AvatarPadrao nome={nome} foto={foto} tamanho={grande ? 24 : 16} />;
 }
 
 const quandoMsg = (iso: string) => {
@@ -407,30 +403,17 @@ function FotoPessoa({ nome, foto }: { nome: string; foto: string | null }) {
 }
 
 /**
- * Status: a etapa em que o post está agora (colorida) e a linha de bolinhas.
- * Travada → quem está com o post (+ 🚨 vermelho se passou do prazo).
- * Com o cliente → 📤 enviado no grupo (verde) ou não (vermelho) · 👁 viu (verde) ou não (cinza).
- * Liberada → só a pílula.
+ * Sinal da tarefa (só cores): travada → 🚨 se quem segura passou do prazo;
+ * com o cliente → 📤 enviado no grupo (verde) ou não (vermelho) · 👁 viu (verde) ou não (cinza).
  */
-function StatusDaTarefa({ t, hoje }: { t: LinhaTarefa; hoje: string }) {
-  let titulo = t.titulo;
-  const itens: Bolinha[] = [];
-  if (t.antes) {
-    titulo = t.antes.titulo;
-    if (t.antes.pessoa) itens.push({ icone: <FotoPessoa nome={t.antes.pessoa} foto={t.antes.avatar} />, dica: `Com ${t.antes.pessoa}`, st: 'ok' });
-    if (t.antes.prazo && t.antes.prazo < hoje) itens.push({ icone: '🚨', dica: `Atrasada desde ${ddmm(t.antes.prazo)}`, st: 'atr' });
-  } else if (t.wpp) {
-    itens.push(
-      t.wpp.n
-        ? { icone: '📤', dica: `Enviado no grupo${t.wpp.n > 1 ? ` (${t.wpp.n}×)` : ''}${t.wpp.ultimo ? ` · ${quandoMsg(t.wpp.ultimo)}` : ''}`, st: 'ok' }
-        : { icone: '📤', dica: 'Não enviado no grupo', st: 'atr' },
-    );
-    if (/aprova/i.test(t.titulo)) itens.push(t.visto ? { icone: '👁', dica: `Viu ${quandoMsg(t.visto)}`, st: 'ok' } : { icone: '👁', dica: 'Ainda não viu', st: 'off' });
-  }
-  return (
-    <span className="flex min-w-0 items-center gap-3">
-      <Pilula titulo={titulo} />
-      {itens.length > 0 && <Bolinhas itens={itens} />}
-    </span>
-  );
+function sinalDaTarefa(t: LinhaTarefa, hoje: string): import('../_ui/Avatares').Bolinha[] {
+  if (t.antes) return t.antes.prazo && t.antes.prazo < hoje ? [{ icone: '🚨', dica: `Atrasada desde ${ddmm(t.antes.prazo)}`, st: 'atr' }] : [];
+  if (!t.wpp) return [];
+  const b: import('../_ui/Avatares').Bolinha[] = [
+    t.wpp.n
+      ? { icone: '📤', dica: `Enviado no grupo${t.wpp.n > 1 ? ` (${t.wpp.n}×)` : ''}${t.wpp.ultimo ? ` · ${quandoMsg(t.wpp.ultimo)}` : ''}`, st: 'ok' }
+      : { icone: '📤', dica: 'Não enviado no grupo', st: 'atr' },
+  ];
+  if (/aprova/i.test(t.titulo)) b.push(t.visto ? { icone: '👁', dica: `Viu ${quandoMsg(t.visto)}`, st: 'ok' } : { icone: '👁', dica: 'Ainda não viu', st: 'off' });
+  return b;
 }

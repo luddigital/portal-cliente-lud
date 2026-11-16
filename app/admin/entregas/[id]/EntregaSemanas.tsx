@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { rotas, nomeCurtoDoProjeto } from '@/lib/rotas';
 import { corDaEtapa } from '@/lib/corEtapa';
-import { MenuPropriedades, NOME_COLUNA, usePropriedades, type Coluna } from '../../_ui/Propriedades';
+import { AvatarPessoa, AvatarProjeto, Cadeado, LegendaSinal, Sinal, type Bolinha } from '../../_ui/Avatares';
 import { PreviaPostModal, prefetchPrevia } from '../../aprovacoes/PreviaPostModal';
 import { BotaoLembreteWpp } from '../../aprovacoes/BotaoLembreteWpp';
 import { ModalMensagem, type ItemPendenciaUi } from '@/app/admin/projetos/[id]/PendenciasCliente';
@@ -96,7 +96,7 @@ function Selo({ handle, href, foto }: { handle: string; href: string; foto?: str
   );
 }
 
-const BTN = 'inline-flex items-center whitespace-nowrap rounded-full border border-[#D6D6D9] bg-white px-3 py-[5px] text-[12px] font-extrabold hover:bg-[#F4F4F5]';
+const BTN = 'inline-flex min-w-[136px] items-center justify-center whitespace-nowrap rounded-full border border-[#D6D6D9] bg-white px-3 py-[5px] text-[12px] font-extrabold hover:bg-[#F4F4F5]';
 const diaSpIso = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(iso));
 
 /** DL do post à esquerda do título: só a data, compacta, na cor do prazo. */
@@ -181,7 +181,7 @@ function StatusTrilha({ i, hojeIso, semTag = false, emLinha = false }: { i: Item
     if (/altera/i.test(i.rotulo)) passos.push({ icone: '↺', rotulo: 'Alteração pedida', data: '', st: 'ok' });
     if (i.responsavel)
       passos.push({
-        icone: <AvatarPessoa nome={i.responsavel} foto={i.responsavelAvatar ?? null} grande />,
+        icone: <AvatarPequeno nome={i.responsavel} foto={i.responsavelAvatar ?? null} grande />,
         rotulo: `Com ${i.responsavel}`,
         data: i.responsavel.split(' ')[0],
         st: 'ok',
@@ -224,7 +224,7 @@ function StatusTrilha({ i, hojeIso, semTag = false, emLinha = false }: { i: Item
 }
 
 /** Foto pequena do responsável (ou a inicial, quando o Notion não tem foto). */
-function AvatarPessoa({ nome, foto, grande = false }: { nome: string; foto: string | null; grande?: boolean }) {
+function AvatarPequeno({ nome, foto, grande = false }: { nome: string; foto: string | null; grande?: boolean }) {
   const t = grande ? 'h-7 w-7 text-[11px]' : 'h-[18px] w-[18px] text-[9.5px]';
   return foto ? (
     // eslint-disable-next-line @next/next/no-img-element
@@ -258,7 +258,7 @@ function BarraSegmentos({ total, partes }: { total: number; partes: { n: number;
   );
 }
 
-const BTN_VERDE_O = 'inline-flex items-center whitespace-nowrap rounded-full border border-[#8BC4A0] bg-white px-3 py-[5px] text-[12px] font-extrabold text-[#1E6B3A] hover:bg-[#EEF7EA]';
+const BTN_VERDE_O = 'inline-flex min-w-[136px] items-center justify-center whitespace-nowrap rounded-full border border-[#8BC4A0] bg-white px-3 py-[5px] text-[12px] font-extrabold text-[#1E6B3A] hover:bg-[#EEF7EA]';
 
 export function EntregaSemanas({
   entregaId,
@@ -295,14 +295,19 @@ export function EntregaSemanas({
   const [aviso, setAviso] = useState<string | null>(null);
   const [feitosAgora, setFeitosAgora] = useState<Record<string, string>>({});
   const [visao, setVisao] = useState<Visao>(extra ? 'extra' : 'data');
-  // Colunas das tabelas (mesma ordem em todo o portal); a escolha vale pra todas as entregas.
-  const props_ = usePropriedades('entregas-v3', ['data', 'post', 'projeto', 'status', 'acao']);
+  // Aprovação: a 1ª vez com o cliente (data oficial) e a reaprovação (2ª e 3ª) em abas separadas.
+  const temReaprovacao = gruposDoServidor.some((g) => g.itens.some((i) => i.reaprovacao));
+  const [rodadaAba, setRodadaAba] = useState<'primeira' | 'reaprovacao'>('primeira');
+  // Filtro (fica num botão só): cliente, responsável e um atalho de situação.
+  const [fCliente, setFCliente] = useState('');
+  const [fResp, setFResp] = useState('');
+  const [fSit, setFSit] = useState<'' | 'nao_enviado' | 'nao_visto' | 'travado'>('');
   // Lembra a última visão escolhida (só depois de montar, pra não brigar com o servidor).
   useEffect(() => {
     if (extra) return;
     try {
       const v = window.localStorage.getItem('lud-visao-entrega');
-      if (v === 'cliente' || v === 'semanas') setVisao(v);
+      if (v === 'cliente') setVisao(v);
     } catch {
       /* sem storage */
     }
@@ -325,6 +330,25 @@ export function EntregaSemanas({
       })),
     [gruposDoServidor, feitosAgora],
   );
+
+  const gruposTabela = useMemo(() => {
+    const ok = (i: ItemEntrega) => {
+      if (temReaprovacao && (rodadaAba === 'reaprovacao') !== !!i.reaprovacao) return false;
+      if (fResp && (i.responsavel ?? i.pessoa ?? '') !== fResp) return false;
+      if (fSit === 'travado') return i.relacao === 'antes';
+      if (fSit === 'nao_enviado') return i.relacao !== 'antes' && comOCliente(i) && !(i.mensagens ?? []).length;
+      if (fSit === 'nao_visto') return i.relacao !== 'antes' && comOCliente(i) && !i.visto;
+      return true;
+    };
+    return grupos
+      .filter((g) => !fCliente || g.projetoId === fCliente)
+      .map((g) => ({ ...g, itens: g.itens.filter(ok) }))
+      .filter((g) => g.itens.length > 0);
+  }, [grupos, temReaprovacao, rodadaAba, fCliente, fResp, fSit]);
+  const contaAbertos = (reap: boolean) => grupos.reduce((n, g) => n + g.itens.filter((i) => !feito(i) && !!i.reaprovacao === reap).length, 0);
+  const clientesDaEntrega = grupos.map((g) => ({ id: g.projetoId, nome: nomeCurtoDoProjeto(g.projetoNome || g.nome) })).sort((a, b) => a.nome.localeCompare(b.nome));
+  const pessoasDaEntrega = [...new Set(grupos.flatMap((g) => g.itens.filter((i) => !feito(i)).map((i) => i.responsavel ?? i.pessoa ?? '')).filter(Boolean))].sort();
+  const nFiltros = Number(!!fCliente) + Number(!!fResp) + Number(!!fSit);
 
   // Entrega diária (ex.: Conferir Postagem) separa por dia; as outras, por semana.
   const chaveDe = (d: string) => (diaria ? d.slice(0, 10) : segunda(d));
@@ -442,7 +466,7 @@ export function EntregaSemanas({
   const acao = (i: ItemEntrega, g: GrupoEntrega) => (
     <>{aqui(i) && i.postId && tipo === 'envio' ? (
                           <button type="button" onClick={() => setEnvio({ grupo: { ...g, itens: [i] }, separado: true })} className={BTN_VERDE_O}>
-                            Enviar
+                            Enviar no grupo
                           </button>
                         ) : comOCliente(i) && i.postId ? (
                           <BotaoLembreteWpp
@@ -463,9 +487,29 @@ export function EntregaSemanas({
 
   return (
     <div className="flex flex-col gap-4">
+      {temReaprovacao && visao !== 'extra' && (
+        <div className="flex gap-1 border-b border-[#EDEDEF]">
+          {(
+            [
+              ['primeira', entregaNome, contaAbertos(false), false],
+              ['reaprovacao', 'Reaprovação', contaAbertos(true), true],
+            ] as [typeof rodadaAba, string, number, boolean][]
+          ).map(([id, rot, n, vermelho]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setRodadaAba(id)}
+              className={`-mb-px flex items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-[14px] ${rodadaAba === id ? 'border-[#111113] font-bold text-[#111113]' : 'border-transparent text-[#636369] hover:text-[#111113]'}`}
+            >
+              {rot}
+              <span className={`rounded-full px-1.5 text-[11.5px] ${vermelho && n > 0 ? 'bg-[var(--prazo-atrasado)] font-bold text-white' : 'bg-[#F0F0F1] text-[#636369]'}`}>{n}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex w-fit gap-1 rounded-[12px] bg-[#F0F0F1] p-1">
-        {([...(extra ? [['extra', extra.rotulo]] : []), ['data', '📅 Por data'], ['cliente', '👤 Por cliente'], ['semanas', '🗓 Por semana']] as [Visao, string][]).map(([id, rot]) => (
+        {([...(extra ? [['extra', extra.rotulo]] : []), ['data', '📅 Por data'], ['cliente', '👤 Por cliente']] as [Visao, string][]).map(([id, rot]) => (
           <button
             key={id}
             type="button"
@@ -477,7 +521,62 @@ export function EntregaSemanas({
         ))}
       </div>
         {(visao === 'data' || visao === 'cliente') && (
-          <MenuPropriedades disponiveis={['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'acao']} {...props_} />
+          <span className="flex items-center gap-3.5">
+            <details className="relative">
+              <summary className={`inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold [&::-webkit-details-marker]:hidden ${nFiltros ? 'border-[#111113] bg-[#111113] text-white' : 'border-[#E2E2E5] bg-white text-[#46464B] hover:bg-[#F4F4F5]'}`}>
+                Filtrar{nFiltros ? ` · ${nFiltros}` : ''} <span className="text-[10px]">▾</span>
+              </summary>
+              <div className="absolute right-0 top-[calc(100%+6px)] z-30 flex w-[240px] flex-col gap-2.5 rounded-[12px] border border-[#E9E9EB] bg-white p-3 shadow-[0_8px_24px_rgba(17,17,19,0.12)]">
+                <label className="flex flex-col gap-1 text-[11px] font-semibold text-[#8A8A90]">
+                  Cliente
+                  <select value={fCliente} onChange={(e) => setFCliente(e.target.value)} className="rounded-[8px] border border-[#E2E2E5] px-2 py-1.5 text-[13px] text-[#111113]">
+                    <option value="">Todos</option>
+                    {clientesDaEntrega.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome.startsWith('@') ? c.nome : `@${c.nome}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-[11px] font-semibold text-[#8A8A90]">
+                  Responsável
+                  <select value={fResp} onChange={(e) => setFResp(e.target.value)} className="rounded-[8px] border border-[#E2E2E5] px-2 py-1.5 text-[13px] text-[#111113]">
+                    <option value="">Todos</option>
+                    {pessoasDaEntrega.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      ['', 'Todos'],
+                      ['nao_enviado', '📤 Não enviados'],
+                      ['nao_visto', '👁 Não vistos'],
+                      ['travado', '🔒 Travados'],
+                    ] as [typeof fSit, string][]
+                  ).map(([id, rot]) => (
+                    <button
+                      key={id || 'todos'}
+                      type="button"
+                      onClick={() => setFSit(id)}
+                      className={`rounded-full border px-2.5 py-1 text-[12px] font-semibold ${fSit === id ? 'border-[#111113] bg-[#111113] text-white' : 'border-[#E2E2E5] text-[#46464B] hover:bg-[#F4F4F5]'}`}
+                    >
+                      {rot}
+                    </button>
+                  ))}
+                </span>
+                {nFiltros > 0 && (
+                  <button type="button" onClick={() => (setFCliente(''), setFResp(''), setFSit(''))} className="self-start text-[12px] font-semibold text-[#636369] hover:text-[#111113]">
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            </details>
+            <LegendaSinal />
+          </span>
         )}
       </div>
 
@@ -493,13 +592,11 @@ export function EntregaSemanas({
       {visao === 'extra' && extra?.conteudo}
       {(visao === 'data' || visao === 'cliente') && (
         <TabelaEntrega
-          grupos={grupos}
+          grupos={gruposTabela}
           porCliente={visao === 'cliente'}
           hojeIso={hojeIso}
           fotos={fotos}
           acao={acao}
-          tipo={tipo}
-          colunas={props_.colunas}
           abrir={(i) => i.postId && setPrevia({ postId: i.postId, tarefaId: i.tarefaId })}
         />
       )}
@@ -673,7 +770,7 @@ export function EntregaSemanas({
                               <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-[#636369]">
                                 {i.responsavel && (
                                   <span className="flex items-center gap-1.5">
-                                    <AvatarPessoa nome={i.responsavel} foto={i.responsavelAvatar ?? null} />
+                                    <AvatarPequeno nome={i.responsavel} foto={i.responsavelAvatar ?? null} />
                                     <b className="font-bold text-[#46464B]">{i.responsavel.split(' ')[0]}</b>
                                   </span>
                                 )}
@@ -827,8 +924,9 @@ function BotaoConcluirTarefa({ tarefaId, nome, classe, onFeito }: { tarefaId: st
 }
 
 /**
- * Visão em tabela, no jeito do Notion: o que está aberto, agrupado por data
- * (Atrasado, Hoje, Chegando, Mais pra frente) ou por cliente. Concluídos ficam fora.
+ * Visão em tabela (igual em todas as entregas): o que está aberto, por data
+ * (Atrasados, Esta semana, Próxima semana, semanas seguintes) ou por cliente.
+ * Colunas fixas: Data · 🔒 · Status · Post · Projeto · Resp. · Sinal · ação.
  */
 function TabelaEntrega({
   grupos,
@@ -837,11 +935,7 @@ function TabelaEntrega({
   fotos,
   acao,
   abrir,
-  tipo,
-  colunas,
 }: {
-  colunas: Coluna[];
-  tipo: TipoEntrega;
   grupos: GrupoEntrega[];
   porCliente: boolean;
   hojeIso: string;
@@ -854,163 +948,150 @@ function TabelaEntrega({
     .flatMap((g) => g.itens.filter((i) => !feito(i)).map((i) => ({ i, g, handle: nomeCurtoDoProjeto(g.projetoNome || g.nome), data: i.prazo?.slice(0, 10) ?? null })))
     .sort((a, b) => (a.data ?? '9999').localeCompare(b.data ?? '9999') || a.handle.localeCompare(b.handle));
 
-  const blocos: { id: string; titulo: React.ReactNode; linhas: Linha[] }[] = [];
+  const blocos: { id: string; titulo: React.ReactNode; sub?: string; linhas: Linha[] }[] = [];
   if (porCliente) {
     const m = new Map<string, Linha[]>();
     for (const l of linhas) m.set(l.g.projetoId, [...(m.get(l.g.projetoId) ?? []), l]);
     for (const [pid, ls] of [...m.entries()].sort((a, b) => a[1][0].handle.localeCompare(b[1][0].handle)))
       blocos.push({
         id: pid,
-        titulo: <Projeto handle={ls[0].handle} foto={fotos[pid] ?? null} />,
+        titulo: (
+          <span className="flex items-center gap-2">
+            <AvatarProjeto handle={ls[0].handle} nome={ls[0].g.projetoNome} foto={fotos[pid] ?? null} tamanho={24} />
+            {ls[0].handle.startsWith('@') ? ls[0].handle : `@${ls[0].handle}`}
+          </span>
+        ),
         linhas: ls,
       });
   } else {
-    const faixa = (d: string | null) => (!d ? 'sem' : d < hojeIso ? 'atr' : d === hojeIso ? 'hoje' : dias(hojeIso, d) <= 7 ? 'cheg' : 'depois');
-    const nomes: [string, string][] = [
-      ['atr', '🚨 Atrasado'],
-      ['hoje', '🔥 Hoje'],
-      ['cheg', '🚧 Chegando'],
-      ['depois', '📅 Mais pra frente'],
-      ['sem', 'Sem data'],
-    ];
-    for (const [id, t] of nomes) {
-      const ls = linhas.filter((l) => faixa(l.data) === id);
-      if (id === 'depois') {
-        // Mais pra frente: um bloco por DL (o prazo), com a data no título.
-        for (const d of [...new Set(ls.map((l) => l.data as string))].sort())
-          blocos.push({
-            id: `dl-${d}`,
-            titulo: (
-              <span className="inline-flex items-baseline gap-1.5 rounded-[10px] px-2.5 py-1" style={{ background: corDaData(d, hojeIso).bg, color: corDaData(d, hojeIso).fg }}>
-                <span className="text-[10.5px] font-extrabold uppercase tracking-[0.06em]">DL</span>
-                <b className="text-[13.5px]">{curta(d)}</b>
-              </span>
-            ),
-            linhas: ls.filter((l) => l.data === d),
-          });
-        continue;
-      }
-      if (ls.length || id === 'atr' || id === 'hoje') blocos.push({ id, titulo: t, linhas: ls });
+    // Atrasados primeiro; depois uma tabela por semana (segunda a domingo).
+    const seg0 = segunda(hojeIso);
+    const atr = linhas.filter((l) => l.data && l.data < hojeIso);
+    blocos.push({ id: 'atr', titulo: <span className="text-[var(--prazo-atrasado)]">Atrasados</span>, linhas: atr });
+    const porSemana = new Map<string, Linha[]>();
+    for (const l of linhas) if (l.data && l.data >= hojeIso) porSemana.set(segunda(l.data), [...(porSemana.get(segunda(l.data)) ?? []), l]);
+    for (const s0 of [...porSemana.keys()].sort()) {
+      const n = Math.round(dias(seg0, s0) / 7);
+      blocos.push({
+        id: `sem-${s0}`,
+        titulo: n === 0 ? 'Esta semana' : n === 1 ? 'Próxima semana' : `Semana de ${ddmm(s0)}`,
+        sub: `${ddmm(s0)} a ${ddmm(soma(s0, 6))}`,
+        linhas: porSemana.get(s0)!,
+      });
     }
+    const sem = linhas.filter((l) => !l.data);
+    if (sem.length) blocos.push({ id: 'sem', titulo: 'Sem data', linhas: sem });
   }
 
   if (!linhas.length)
-    return <div className="rounded-[16px] border border-[#E9E9EB] bg-white px-5 py-8 text-center text-[13px] text-[#636369]">Tudo concluído por aqui. 🎉</div>;
+    return <div className="rounded-[16px] border border-[#E9E9EB] bg-white px-5 py-8 text-center text-[13px] text-[#636369]">Nada por aqui. 🎉</div>;
 
   const TH = 'px-3 py-2 text-left text-[12px] font-semibold text-[#8A8A90] whitespace-nowrap';
-  const LARG: Partial<Record<Coluna, string>> = { data: 'w-[96px]', tarefa: 'w-[250px]', status: 'w-[420px]', projeto: 'w-[80px]', pessoa: 'w-[130px]', acao: 'w-[160px]' };
-  const cols = colunas.filter((c) => !(porCliente && c === 'projeto'));
-  // Bloco de um dia só (Hoje, ou uma DL): a data já está no título, não repete na coluna.
-  const umDia = (id: string) => id === 'hoje' || id.startsWith('dl-');
-  const celula = (c: Coluna, { i, g, handle, data }: (typeof linhas)[number]) => {
-    switch (c) {
-      case 'data':
-        return (
-          <td key={c} className="whitespace-nowrap px-3 py-2 text-[12.5px] font-semibold tabular-nums" style={{ color: data ? quandoComEmoji(data, hojeIso).cor : '#A1A1A8' }}>
-            {data ? quandoComEmoji(data, hojeIso).texto : '—'}
-          </td>
-        );
-      case 'tarefa':
-        return (
-          <td key={c} className="px-3 py-2">
-            {/* A tarefa desta entrega (a etapa atual do post fica no Status). */}
-            <Chip texto={i.titulo} cor={corDaEtapa(i.titulo)} />
-          </td>
-        );
-      case 'status':
-        return (
-          <td key={c} className="px-3 py-2">
-            {i.relacao === 'antes' ? (
-              <TagBloqueio titulo={i.atualTitulo ?? i.rotulo} pessoa={i.responsavel} avatar={i.responsavelAvatar ?? null} prazo={i.atualPrazo} hojeIso={hojeIso} />
-            ) : (
-              <StatusTrilha i={i} hojeIso={hojeIso} emLinha />
-            )}
-          </td>
-        );
-      case 'post':
-        return (
-          <td key={c} className="px-3 py-2.5">
-            <button
-              type="button"
-              onMouseEnter={() => i.postId && prefetchPrevia(i.postId)}
-              onClick={() => abrir(i)}
-              className="text-left text-[13.5px] font-semibold text-[#111113] underline decoration-[#D6D6D9] underline-offset-[3px] hover:decoration-[#111113]"
-            >
-              {i.postTitulo}
-            </button>
-            {i.reaprovacao && <span className="ml-2 text-[11px] font-bold text-[var(--cal-alteracao)]">reaprovação</span>}
-          </td>
-        );
-      case 'projeto':
-        return (
-          <td key={c} className="px-3 py-2.5">
-            <Projeto handle={handle} foto={fotos[g.projetoId] ?? null} soAvatar />
-          </td>
-        );
-      case 'pessoa':
-        return (
-          <td key={c} className="px-3 py-2.5 text-[12.5px] text-[#46464B]">
-            {i.responsavel ? (
-              <span className="flex items-center gap-1.5" title={i.atualTitulo ?? undefined}>
-                <AvatarPessoa nome={i.responsavel} foto={i.responsavelAvatar ?? null} />
-                <b className="font-semibold">{i.responsavel.split(' ')[0]}</b>
-              </span>
-            ) : (
-              <span className="text-[#A1A1A8]">—</span>
-            )}
-          </td>
-        );
-      case 'acao':
-        return (
-          <td key={c} className="whitespace-nowrap px-3 py-2.5 text-right">
-            <span className="inline-flex justify-end">{acao(i, g)}</span>
-          </td>
-        );
+  const comCliente = (i: ItemEntrega) => i.relacao !== 'antes' && comOCliente(i);
+  const sinal = (i: ItemEntrega): Bolinha[] => {
+    if (comCliente(i)) {
+      const msgs = i.mensagens ?? [];
+      const ult = [...msgs].sort((a, b) => b.enviadoEm.localeCompare(a.enviadoEm))[0];
+      const b: Bolinha[] = [
+        msgs.length
+          ? { icone: '📤', dica: `Enviado no grupo${msgs.length > 1 ? ` (${msgs.length}×)` : ''} · último ${ddmm(diaSpIso(ult.enviadoEm))}`, st: 'ok' }
+          : { icone: '📤', dica: ENTREGA_DE_MATERIAIS ? 'Ninguém cobrou no grupo ainda' : 'Não enviado no grupo', st: 'atr' },
+      ];
+      if (!ENTREGA_DE_MATERIAIS) b.push(i.visto ? { icone: '👁', dica: `Viu ${ddmm(diaSpIso(i.visto.ultima))}`, st: 'ok' } : { icone: '👁', dica: 'Ainda não viu', st: 'off' });
+      return b;
     }
+    if (i.atualPrazo && i.atualPrazo.slice(0, 10) < hojeIso) return [{ icone: '🚨', dica: `Atrasada desde ${ddmm(i.atualPrazo)}`, st: 'atr' }];
+    return [];
   };
+  const tituloStatus = (i: ItemEntrega) => (i.relacao === 'antes' ? i.atualTitulo ?? i.rotulo : nomeDaTag(i));
+
   return (
     <div className="flex flex-col gap-5">
       {blocos.map((b) => (
-        <details key={b.id} open className="group">
-          <summary className="flex cursor-pointer list-none items-center gap-2 py-1 [&::-webkit-details-marker]:hidden">
-            <span className="text-[11px] text-[#8A8A90] transition-transform group-open:rotate-90">▶</span>
+        <section key={b.id} className="flex flex-col gap-1.5">
+          <div className="flex items-baseline gap-2 py-1">
             <b className="text-[15px]">{b.titulo}</b>
-            <span className="text-[12.5px] text-[#8A8A90]">{b.linhas.length}</span>
-          </summary>
-          <div className="mt-1.5 overflow-x-auto rounded-[12px] border border-[#EDEDEF] bg-white">
+            <span className="text-[12.5px] text-[#A1A1A8]">
+              {b.sub ? `${b.sub} · ` : ''}
+              {b.linhas.length}
+            </span>
+          </div>
+          <div className="overflow-x-auto rounded-[12px] border border-[#EDEDEF] bg-white">
             {b.linhas.length === 0 ? (
               <p className="px-4 py-4 text-center text-[12.5px] text-[#A1A1A8]">Nada aqui.</p>
             ) : (
-              <table className="w-full min-w-[960px] table-fixed border-collapse">
+              <table className="w-full min-w-[1040px] table-fixed border-collapse">
                 <thead>
                   <tr className="border-b border-[#EDEDEF]">
-                    {cols.filter((c) => !(c === 'data' && umDia(b.id))).map((c) => (
-                      <th key={c} className={`${TH} ${LARG[c] ?? ''} ${c === 'acao' ? 'text-right' : ''}`}>
-                        {c === 'acao' ? '' : NOME_COLUNA[c]}
-                      </th>
-                    ))}
+                    <th className={`${TH} w-[76px]`}>Data</th>
+                    <th className="w-[44px]" />
+                    <th className={`${TH} w-[210px]`}>Status</th>
+                    <th className={`${TH} w-[400px]`}>Post</th>
+                    <th className={`${TH} w-[68px] text-center`}>Projeto</th>
+                    <th className={`${TH} w-[60px] text-center`}>Resp.</th>
+                    <th className={`${TH} w-[92px]`}>Sinal</th>
+                    <th className={TH} />
                   </tr>
                 </thead>
                 <tbody>
-                  {b.linhas.filter((l) => l.i.relacao !== 'antes').map((l) => (
-                    <tr key={l.i.tarefaId} className="border-b border-[#F2F2F4] align-middle last:border-0 hover:bg-[#FAFAFA]">
-                      {cols.filter((c) => !(c === 'data' && umDia(b.id))).map((c) => celula(c, l))}
-                    </tr>
-                  ))}
-                  {b.linhas.some((l) => l.i.relacao === 'antes') && (
-                    <>
-                      {b.linhas.filter((l) => l.i.relacao === 'antes').map((l) => (
-                        <tr key={l.i.tarefaId} className="border-b border-[#F2F2F4] bg-[#FCFCFC] align-middle text-[#8A8A90] last:border-0">
-                          {cols.filter((c) => !(c === 'data' && umDia(b.id))).map((c) => celula(c, l))}
-                        </tr>
-                      ))}
-                    </>
-                  )}
+                  {b.linhas.map(({ i, g, handle, data }) => {
+                    const trav = i.relacao === 'antes';
+                    const quem = i.responsavel ?? i.pessoa;
+                    return (
+                      <tr key={i.tarefaId} className={`border-b border-[#F2F2F4] align-middle last:border-0 ${trav ? 'bg-[#FCFCFC]' : 'hover:bg-[#FAFAFA]'}`}>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-[12.5px] font-semibold tabular-nums" style={{ color: data && data < hojeIso ? 'var(--prazo-atrasado)' : '#46464B' }}>
+                          {data ? ddmm(data) : '—'}
+                        </td>
+                        <td className="py-2.5 pl-1">{trav && <Cadeado />}</td>
+                        <td className="px-3 py-2.5">
+                          <span className="flex items-center gap-1.5">
+                            <Chip texto={tituloStatus(i)} cor={corDaEtapa(tituloStatus(i))} />
+                            {i.reaprovacao && i.rodada > 1 && (
+                              <span className="rounded-[6px] bg-[#F2D0EA] px-1.5 text-[11px] font-extrabold text-[#6A2B5F]" title={`${i.rodada}ª vez com o cliente`}>
+                                {i.rodada}ª
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <button
+                            type="button"
+                            onMouseEnter={() => i.postId && prefetchPrevia(i.postId)}
+                            onClick={() => abrir(i)}
+                            className="block w-full truncate text-left text-[13.5px] font-semibold text-[#111113] hover:underline"
+                            title={i.postTitulo}
+                          >
+                            {i.postTitulo}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="flex justify-center">
+                            <AvatarProjeto handle={handle} nome={g.projetoNome} foto={fotos[g.projetoId] ?? null} />
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="flex justify-center">
+                            {comCliente(i) ? (
+                              <AvatarPessoa nome={quem ?? g.nome} foto={i.responsavelAvatar ?? fotos[g.projetoId] ?? null} titulo={`Com o cliente${quem ? ` (${quem})` : ''}`} />
+                            ) : quem ? (
+                              <AvatarPessoa nome={quem} foto={i.responsavelAvatar ?? null} titulo={`Com ${quem}`} />
+                            ) : (
+                              <span className="text-[#A1A1A8]">—</span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Sinal itens={sinal(i)} />
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5">{acao(i, g)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
           </div>
-        </details>
+        </section>
       ))}
     </div>
   );
@@ -1070,7 +1151,7 @@ export function TagBloqueio({
         <span className="flex items-center gap-1.5 whitespace-nowrap text-[11.5px]">
           {pessoa && (
             <span className="flex shrink-0 items-center gap-1 text-[#46464B]" title={`Com ${pessoa}`}>
-              <AvatarPessoa nome={pessoa} foto={avatar} />
+              <AvatarPequeno nome={pessoa} foto={avatar} />
               {pessoa.split(' ')[0]}
             </span>
           )}

@@ -8,10 +8,10 @@ import { useEffect, useState } from 'react';
  * A escolha fica guardada no navegador de quem usa (só admin).
  */
 
-export type Coluna = 'data' | 'tarefa' | 'status' | 'post' | 'projeto' | 'pessoa' | 'acao';
+export type Coluna = 'data' | 'tarefa' | 'status' | 'post' | 'projeto' | 'pessoa' | 'sinal' | 'acao';
 
 // Tarefa e Status lado a lado: a tag da tarefa e a do que está segurando ficam juntas.
-export const ORDEM_PADRAO: Coluna[] = ['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'acao'];
+export const ORDEM_PADRAO: Coluna[] = ['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao'];
 
 export const NOME_COLUNA: Record<Coluna, string> = {
   data: 'Data',
@@ -19,7 +19,8 @@ export const NOME_COLUNA: Record<Coluna, string> = {
   status: 'Status',
   post: 'Post',
   projeto: 'Projeto',
-  pessoa: 'Com quem',
+  pessoa: 'Resp.',
+  sinal: 'Sinal',
   acao: 'Ação',
 };
 
