@@ -4,20 +4,54 @@ import { useState } from 'react';
 import type { NotaHistorico } from '@/lib/historico-post';
 
 /**
- * Comentários do post em 2 conversas lado a lado (empilha no mobile). As duas ficam no post do Notion:
+ * Comentários do post num card só, largura total, com 2 abas. As duas conversas ficam no post do Notion:
  *   - Com o cliente → "💬 email" (aparece no histórico com o cliente)
  *   - Nota interna  → "🔒 Nota interna · email" (só a equipe; o portal nunca mostra pro cliente)
  */
 export function ComentariosLud({ postId, notas = [] }: { postId: string; tarefaId?: string | null; notas?: NotaHistorico[] }) {
+  const [aba, setAba] = useState<'cliente' | 'interna'>('cliente');
+  const doCliente = notas.filter((n) => TIPOS_CLIENTE.has(n.tipo));
+  const internas = notas.filter((n) => n.tipo === 'interna');
+  const abas = [
+    { id: 'cliente' as const, rotulo: 'Com o cliente', n: doCliente.length, cor: 'var(--cal-agendado)', dica: 'cliente vê' },
+    { id: 'interna' as const, rotulo: 'Nota interna', n: internas.length, cor: 'var(--prazo-hoje)', dica: 'só a equipe' },
+  ];
   return (
-    <section>
-      <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-[15px] font-semibold text-ink">Comentários</h3>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-t3">2 conversas separadas</span>
+    <section className="w-full overflow-hidden rounded-2xl border border-[rgba(21,21,33,0.08)] bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-[rgba(21,21,33,0.06)] px-4">
+        <div className="flex items-center gap-1" role="tablist">
+          <h3 className="mr-3 py-3 text-[15px] font-semibold text-ink">Comentários</h3>
+          {abas.map((x) => {
+            const on = aba === x.id;
+            return (
+              <button
+                key={x.id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => setAba(x.id)}
+                className={`-mb-px flex items-center gap-2 border-b-2 px-3 py-3 text-[13px] font-semibold transition ${on ? '' : 'border-transparent text-t3 hover:text-ink'}`}
+                style={on ? { borderColor: x.cor, color: x.cor } : undefined}
+              >
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: x.cor, opacity: on ? 1 : 0.5 }} />
+                {x.rotulo}
+                {x.n > 0 && <span className="rounded-full bg-[rgba(21,21,33,0.06)] px-1.5 text-[11px] font-bold text-t2">{x.n}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] ${aba === 'interna' ? 'bg-[var(--prazo-hoje)] text-white' : 'border border-[rgba(59,103,137,0.3)] bg-white text-[var(--cal-agendado)]'}`}
+        >
+          {aba === 'interna' ? 'só a equipe' : 'cliente vê'}
+        </span>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Painel postId={postId} interno={false} notas={notas.filter((n) => TIPOS_CLIENTE.has(n.tipo))} />
-        <Painel postId={postId} interno notas={notas.filter((n) => n.tipo === 'interna')} />
+      {/* As duas ficam montadas: trocar de aba não perde o que estava escrito. */}
+      <div className={aba === 'cliente' ? '' : 'hidden'}>
+        <Painel postId={postId} interno={false} notas={doCliente} />
+      </div>
+      <div className={aba === 'interna' ? 'bg-[var(--prazo-hoje-soft)]/30' : 'hidden'}>
+        <Painel postId={postId} interno notas={internas} />
       </div>
     </section>
   );
@@ -72,31 +106,15 @@ function Painel({ postId, interno, notas }: { postId: string; interno: boolean; 
     }
   }
 
-  const cor = interno ? 'var(--prazo-hoje)' : 'var(--cal-agendado)';
   return (
-    <div
-      className={`flex flex-col overflow-hidden rounded-2xl ${interno ? 'border-2 border-dashed border-[var(--prazo-hoje)]/40 bg-[var(--prazo-hoje-soft)]/30' : 'border border-[rgba(21,21,33,0.08)] bg-white'}`}
-    >
-      <div
-        className={`flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3 ${interno ? 'border-[var(--prazo-hoje)]/20 bg-[var(--prazo-hoje-soft)]/60' : 'border-[rgba(21,21,33,0.06)] bg-[var(--cal-agendado-soft)]'}`}
-      >
-        <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: cor }}>
-          <span className="inline-block h-2 w-2 rounded-full" style={{ background: cor }} />
-          {interno ? 'Nota interna' : 'Com o cliente'}
-        </div>
-        <span
-          className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em] ${interno ? 'bg-[var(--prazo-hoje)] text-white' : 'border border-[rgba(59,103,137,0.3)] bg-white text-[var(--cal-agendado)]'}`}
-        >
-          {interno ? 'só a equipe' : 'cliente vê'}
-        </span>
-      </div>
+    <div>
       <div className="flex flex-col gap-2.5 p-4">
         {lista.length === 0 ? (
           <p className="text-[11.5px] leading-[1.5] text-t3">
             {interno ? 'Anotações da equipe: decisões, contexto, pendências. O cliente não vê.' : 'Conversa com o cliente sobre esse post. Fica no post do Notion e no histórico.'}
           </p>
         ) : (
-          <div className="flex max-h-[280px] flex-col gap-2 overflow-y-auto">
+          <div className="flex max-h-[420px] flex-col gap-2 overflow-y-auto">
             {lista.map((n) => (
               <div key={n.id} className="rounded-[12px] bg-white/80 px-3 py-2 text-[12.5px] ring-1 ring-[rgba(21,21,33,0.06)]">
                 <b style={{ color: n.tipo === 'cliente_comentou' || n.tipo === 'cliente_alteracao' ? 'var(--cal-agendado)' : undefined }}>{autorDaNota(n)}</b>{' '}

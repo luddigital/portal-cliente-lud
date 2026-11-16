@@ -973,7 +973,7 @@ export default async function PostDetalhePage({
         {!semArte && cardTarefas}
         {!semArte && !pedidoAlteracao && painelAlteracao}
 
-        {/* Comentários (2 painéis: Com o cliente + Nota interna) */}
+        {/* Comentários: um card largura total com abas (Com o cliente / Nota interna) */}
         <ComentariosLud postId={post.id} tarefaId={tarefaId} notas={notasDoHistorico} />
 
         <ComunicacaoCard
