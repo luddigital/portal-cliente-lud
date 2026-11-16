@@ -288,7 +288,28 @@ export default async function PostDetalhePage({
         ? `/etapa/${searchParams.from}`
         : '/');
 
+  // Cliente só vê o post quando ele está liberado pra ele: tem uma tarefa do
+  // cliente aberta e pronta (Aprovação, Materiais…) ou o post já foi postado.
+  // Antes disso o post ainda está com a equipe e comentário ali não chega em ninguém.
   if (!podeVerInterno) {
+    const liberadaPraCliente =
+      post.status === 'Postado' || !!(await findTarefaClienteProntaDoPost(post.id).catch(() => null));
+    if (!liberadaPraCliente) {
+      return (
+        <main className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+          <span className="text-[40px]" aria-hidden="true">
+            🛠️
+          </span>
+          <h1 className="text-[22px] font-bold tracking-[-0.02em] text-ink">Esse post ainda está com a gente</h1>
+          <p className="text-[14.5px] leading-relaxed text-t2">
+            A equipe ainda está produzindo. Quando ele estiver pronto pra você ver, a gente avisa no grupo do WhatsApp.
+          </p>
+          <a href={voltarPara} className="rounded-full bg-ink px-5 py-2 text-[13.5px] font-bold text-white hover:opacity-90">
+            Voltar
+          </a>
+        </main>
+      );
+    }
     await registrarVisualizacao(post.id, tarefaId, session.email);
   }
 
