@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { lerCopyDoPost, lerInfoDoPostEsteira, getHorarioDoProjeto, getPostComDetalhes, getProjetoNome, lerComentariosDoPost, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
+import { lerSecoesDoPost, lerCopyDoPost, lerInfoDoPostEsteira, getHorarioDoProjeto, getPostComDetalhes, getProjetoNome, lerComentariosDoPost, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
 import { lerHistoricoComunicacao } from '@/lib/supabase';
 import { notasDoPost, tarefasClienteDoHistorico } from '@/lib/historico-post';
 import { compararNoFluxo } from '@/lib/etapas-projeto';
@@ -84,12 +84,15 @@ export async function GET(
   const briefingP = ehAdmin
     ? Promise.all([lerInfoDoPostEsteira(params.id).catch(() => null), lerCopyDoPost(params.id).catch(() => null)])
     : Promise.resolve([null, null] as const);
-  const [listas, historico, [brutas, colaboradores, comentarios], [projetoNome, hora], [info, copy]] = await Promise.all([
+  // Todas as seções da página do Notion (só equipe): o popup mostra tudo, sem "ver mais".
+  const secoesP = ehAdmin ? lerSecoesDoPost(params.id).catch(() => []) : Promise.resolve([]);
+  const [listas, historico, [brutas, colaboradores, comentarios], [projetoNome, hora], [info, copy], secoes] = await Promise.all([
     Promise.all(post.driveLinks.map(arquivosDoLink)),
     ehAdmin ? lerHistoricoComunicacao(post.id).catch(() => historicoVazio) : Promise.resolve(historicoVazio),
     extrasP,
     projetoP,
     briefingP,
+    secoesP,
   ]);
   const arquivos: Arquivo[] = listas.flat();
   // Histórico resumido do popup: mesma montagem da página do post.
@@ -135,5 +138,6 @@ export async function GET(
     briefing: info?.briefing ?? null,
     roteiro: copy?.voice ?? null,
     cards: copy?.carrossel ?? null,
+    secoes,
   });
 }

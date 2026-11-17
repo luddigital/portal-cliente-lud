@@ -2990,6 +2990,52 @@ function ehHeading(b: any): boolean {
   return b.type === 'heading_1' || b.type === 'heading_2' || b.type === 'heading_3';
 }
 
+/**
+ * Todas as seções da página do post no Notion, na ordem em que aparecem
+ * (Ideia do Post, Briefing do Post, Referências, Informações, Materiais,
+ * Texto do Voice Over, Roteiro…). Cada título (heading ou callout com título
+ * em negrito) abre uma seção; o que vem embaixo vira linhas. Usado no popup
+ * interno do post. Seções vazias, a legenda e "Skills usadas" ficam de fora.
+ */
+export type LinhaSecao = { tipo: 'p' | 'li' | 'ol'; texto: string; destaque?: boolean; negrito?: boolean };
+export type SecaoDoPost = { titulo: string; linhas: LinhaSecao[] };
+
+async function _lerSecoesDoPost(postId: string): Promise<SecaoDoPost[]> {
+  const blocos = await coletarBlocosRecursivo(postId);
+  const out: SecaoDoPost[] = [];
+  let atual: SecaoDoPost | null = null;
+  const ignorar = /^(legenda|v[íi]deo|arte|skills usadas|tarefas cliente)$/i;
+  let pulando = false;
+  for (const b of blocos) {
+    if (b.type === 'tab' || b.type === 'child_database' || b.type === 'divider' || b.type === 'column_list' || b.type === 'column') continue;
+    const rt: any[] = b[b.type]?.rich_text ?? [];
+    const texto = rt.map((r: any) => r.plain_text).join('').trim();
+    const todoNegrito = rt.length > 0 && rt.every((r: any) => r.annotations?.bold || !r.plain_text.trim());
+    const ehTitulo = ehHeading(b) || (b.type === 'callout' && texto && texto.length <= 60 && todoNegrito);
+    if (ehTitulo) {
+      const t = texto.replace(/[:\s]+$/, '');
+      pulando = ignorar.test(t);
+      atual = pulando ? null : { titulo: t, linhas: [] };
+      if (atual) out.push(atual);
+      continue;
+    }
+    if (pulando || !atual || !texto) continue;
+    const destaque = rt.some((r: any) => r.annotations?.color && r.annotations.color !== 'default');
+    const negrito = todoNegrito && texto.length <= 80;
+    const tipo = b.type === 'bulleted_list_item' || b.type === 'to_do' ? 'li' : b.type === 'numbered_list_item' ? 'ol' : 'p';
+    // Parágrafos com quebra de linha viram linhas separadas (mantém o "Rótulo: texto").
+    for (const parte of texto.split('\n').map((x: string) => x.trim()).filter(Boolean)) {
+      atual.linhas.push({ tipo, texto: parte, ...(destaque ? { destaque } : {}), ...(negrito ? { negrito } : {}) });
+    }
+  }
+  return out.filter((s) => s.linhas.length > 0);
+}
+
+const _lerSecoesDoPostCached = unstable_cache(_lerSecoesDoPost, ['secoes-do-post-v1'], { revalidate: 60, tags: [TAG_POSTS] });
+export async function lerSecoesDoPost(postId: string): Promise<SecaoDoPost[]> {
+  return _lerSecoesDoPostCached(postId);
+}
+
 async function lerLegendaDoPost(postId: string): Promise<string | null> {
   try {
     const blocks = await coletarBlocosRecursivo(postId);
