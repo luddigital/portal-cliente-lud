@@ -147,8 +147,8 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         if (!t.prazo) return <span className="text-[#A1A1A8]">—</span>;
         const d = paraHoje[t.id] ? hoje : t.prazo.slice(0, 10);
         return (
-          <span className="whitespace-nowrap text-[12.5px] font-semibold tabular-nums" style={{ color: d < hoje ? 'var(--prazo-atrasado)' : '#46464B' }}>
-            {ddmm(d)}
+          <span className="whitespace-nowrap text-[12.5px] font-semibold tabular-nums" style={{ color: d < hoje ? 'var(--prazo-atrasado)' : d === hoje ? '#8A3B0E' : '#46464B' }}>
+            {d === hoje ? 'hoje' : Date.parse(`${d}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`) === 86_400_000 ? 'amanhã' : ddmm(d)}
           </span>
         );
       }

@@ -1073,13 +1073,13 @@ function TabelaEntrega({
             {b.linhas.length === 0 ? (
               <p className="px-4 py-4 text-center text-[12.5px] text-[#A1A1A8]">Nada aqui.</p>
             ) : (
-              <table className="w-full min-w-[1040px] table-fixed border-collapse">
+              <table className="w-full min-w-[1100px] table-fixed border-collapse">
                 <thead>
                   <tr className="border-b border-[#EDEDEF]">
                     <th className={`${TH} w-[76px]`}>Data</th>
                     <th className="w-[44px]" />
-                    <th className={`${TH} w-[210px]`}>Status</th>
-                    <th className={`${TH} w-[400px]`}>Post</th>
+                    <th className={`${TH} w-[290px]`}>Status</th>
+                    <th className={`${TH} w-[380px]`}>Post</th>
                     <th className={`${TH} w-[68px] text-center`}>Projeto</th>
                     <th className={`${TH} w-[60px] text-center`}>Resp.</th>
                     <th className={`${TH} w-[92px]`}>Sinal</th>
@@ -1092,13 +1092,15 @@ function TabelaEntrega({
                     const quem = i.responsavel ?? i.pessoa;
                     return (
                       <tr key={i.tarefaId} className={`border-b border-[#F2F2F4] align-middle last:border-0 ${trav ? 'bg-[#FCFCFC]' : 'hover:bg-[#FAFAFA]'}`}>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-[12.5px] font-semibold tabular-nums" style={{ color: data && data < hojeIso ? 'var(--prazo-atrasado)' : '#46464B' }}>
-                          {data ? ddmm(data) : '—'}
+                        <td className="whitespace-nowrap px-3 py-2.5 text-[12.5px] font-semibold tabular-nums" style={{ color: data && data < hojeIso ? 'var(--prazo-atrasado)' : data === hojeIso ? '#8A3B0E' : '#46464B' }}>
+                          {!data ? '—' : data === hojeIso ? 'hoje' : dias(hojeIso, data) === 1 ? 'amanhã' : ddmm(data)}
                         </td>
                         <td className="py-2.5 pl-1">{trav && <Cadeado />}</td>
                         <td className="px-3 py-2.5">
-                          <span className="flex items-center gap-1.5">
-                            <Chip texto={tituloStatus(i)} cor={corDaEtapa(tituloStatus(i))} />
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="min-w-0 truncate" title={tituloStatus(i)}>
+                              <Chip texto={tituloStatus(i)} cor={corDaEtapa(tituloStatus(i))} />
+                            </span>
                             {i.reaprovacao && i.rodada > 1 && (
                               <span className="rounded-[6px] bg-[#F2D0EA] px-1.5 text-[11px] font-extrabold text-[#6A2B5F]" title={`${i.rodada}ª vez com o cliente`}>
                                 {i.rodada}ª
