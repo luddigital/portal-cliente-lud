@@ -494,6 +494,25 @@ export function EntregaSemanas({
                         )}</>
   );
 
+  /** Vários posts do mesmo cliente numa mensagem só, no grupo do cliente. */
+  const acaoCliente = (g: GrupoEntrega) => {
+    const prontos = g.itens.filter((i) => aqui(i) && i.postId);
+    if (tipo === 'envio' && prontos.length > 0)
+      return (
+        <button type="button" onClick={() => setEnvio({ grupo: { ...g, itens: g.itens.filter((i) => !feito(i)) }, separado: false })} className="btn-enviar">
+          Enviar {plural(prontos.length, 'post', 'posts')} no grupo
+        </button>
+      );
+    const comCli = g.itens.filter((i) => aqui(i) && i.postId);
+    if (tipo === 'cliente' && comCli.length > 0)
+      return (
+        <button type="button" onClick={() => setMensagem({ ...g, itens: g.itens.filter((i) => !feito(i)) })} className="btn-enviar">
+          {ENTREGA_DE_MATERIAIS ? 'Cobrar' : 'Lembrar'} {plural(comCli.length, 'post', 'posts')} no grupo
+        </button>
+      );
+    return null;
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {temReaprovacao && visao !== 'extra' && (
@@ -606,6 +625,7 @@ export function EntregaSemanas({
           hojeIso={hojeIso}
           fotos={fotos}
           acao={acao}
+          acaoCliente={acaoCliente}
           abrir={(i) => i.postId && setPrevia({ postId: i.postId, tarefaId: i.tarefaId })}
         />
       )}
@@ -944,7 +964,10 @@ function TabelaEntrega({
   fotos,
   acao,
   abrir,
+  acaoCliente,
 }: {
+  /** Botão no topo de cada cliente (visão Por cliente): manda vários posts de uma vez. */
+  acaoCliente?: (g: GrupoEntrega) => React.ReactNode;
   grupos: GrupoEntrega[];
   porCliente: boolean;
   hojeIso: string;
@@ -957,7 +980,7 @@ function TabelaEntrega({
     .flatMap((g) => g.itens.filter((i) => !feito(i)).map((i) => ({ i, g, handle: nomeCurtoDoProjeto(g.projetoNome || g.nome), data: i.prazo?.slice(0, 10) ?? null })))
     .sort((a, b) => (a.data ?? '9999').localeCompare(b.data ?? '9999') || a.handle.localeCompare(b.handle));
 
-  type Bloco = { id: string; titulo: React.ReactNode; sub?: string; linhas: Linha[]; cliente?: boolean; dentro?: boolean };
+  type Bloco = { id: string; titulo: React.ReactNode; sub?: string; linhas: Linha[]; cliente?: boolean; dentro?: boolean; g?: GrupoEntrega };
   const blocos: Bloco[] = [];
   // Atrasados primeiro; depois uma tabela por semana (segunda a domingo).
   const seg0 = segunda(hojeIso);
@@ -987,6 +1010,7 @@ function TabelaEntrega({
       blocos.push({
         id: `cli-${pid}`,
         cliente: true,
+        g: ls[0].g,
         titulo: (
           <span className="flex items-center gap-2.5">
             <AvatarProjeto handle={ls[0].handle} nome={ls[0].g.projetoNome} foto={fotos[pid] ?? null} />
@@ -1059,6 +1083,7 @@ function TabelaEntrega({
           <div key={b.id} className="mt-3 flex items-center gap-2 border-t border-[#EDEDEF] pt-5 first:mt-0 first:border-0 first:pt-0">
             <b className="text-[18px] tracking-[-0.01em]">{b.titulo}</b>
             <span className="text-[13px] text-[#A1A1A8]">{b.linhas.length}</span>
+            {b.g && acaoCliente && <span className="ml-auto">{acaoCliente(b.g)}</span>}
           </div>
         ) : (
         <section key={b.id} className={`flex flex-col gap-1.5 ${b.dentro ? 'pl-4' : ''}`}>

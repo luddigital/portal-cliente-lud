@@ -20,6 +20,11 @@ import { lerConferencias } from '@/lib/conferencia';
 import { getHorarioDoProjeto } from '@/lib/notion';
 import { getFotoDoInstagramDoProjeto } from '@/lib/instagram';
 import { ehCriacaoDePauta } from './pautaDados';
+import { AbasDaEntrega } from './AbasDaEntrega';
+
+/** Materiais para Produção e a aprovação desses materiais ficam na mesma página. */
+const MATERIAIS = '2b5d04d23b4a8027b258c0fe766c0928';
+const APROVACAO_MATERIAIS = '2b5d04d23b4a80a6b5b9e47e1ea2ac49';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +38,7 @@ export default async function EntregaPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { cliente?: string };
+  searchParams: { cliente?: string; aba?: string };
 }) {
   // "Aprovações" saiu: cada reaprovação está na página própria (Aprovação | Post, | Arte…).
   if (ehEntregaAprovacoes(params.id)) redirect(rotas.entrega('2b5d04d23b4a804d9176c7a743f336d1'));
@@ -43,6 +48,38 @@ export default async function EntregaPage({
   }
   // Criação de Pauta tem tela própria com todos os clientes.
   const ent = await getEntregaCompleta(params.id).catch(() => null);
+  // "Aprovação | Materiais para Produção" mora dentro de "Materiais para Produção", numa aba.
+  if (semTraco(params.id) === APROVACAO_MATERIAIS) redirect(`${rotas.entrega(MATERIAIS)}?aba=aprovacao`);
+  if (semTraco(params.id) === MATERIAIS) {
+    return (
+      <Pagina>
+        <Suspense fallback={<div className="h-[92px] animate-pulse rounded-[14px] bg-[#F0F0F1]" />}>
+          <Topo id={params.id} />
+        </Suspense>
+        <AbasDaEntrega
+          inicial={searchParams.aba === 'aprovacao' ? 1 : 0}
+          abas={[
+            {
+              rotulo: '📦 Materiais para produção',
+              conteudo: (
+                <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] bg-[#F0F0F1]" />}>
+                  <Semanas id={MATERIAIS} />
+                </Suspense>
+              ),
+            },
+            {
+              rotulo: '✅ Aprovação dos materiais',
+              conteudo: (
+                <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] bg-[#F0F0F1]" />}>
+                  <Semanas id={APROVACAO_MATERIAIS} />
+                </Suspense>
+              ),
+            },
+          ]}
+        />
+      </Pagina>
+    );
+  }
   if (ent && ehCriacaoDePauta(ent.nome)) {
     return (
       <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] bg-[#F0F0F1]" />}>
