@@ -957,39 +957,48 @@ function TabelaEntrega({
     .flatMap((g) => g.itens.filter((i) => !feito(i)).map((i) => ({ i, g, handle: nomeCurtoDoProjeto(g.projetoNome || g.nome), data: i.prazo?.slice(0, 10) ?? null })))
     .sort((a, b) => (a.data ?? '9999').localeCompare(b.data ?? '9999') || a.handle.localeCompare(b.handle));
 
-  const blocos: { id: string; titulo: React.ReactNode; sub?: string; linhas: Linha[] }[] = [];
+  type Bloco = { id: string; titulo: React.ReactNode; sub?: string; linhas: Linha[]; cliente?: boolean; dentro?: boolean };
+  const blocos: Bloco[] = [];
+  // Atrasados primeiro; depois uma tabela por semana (segunda a domingo).
+  const seg0 = segunda(hojeIso);
+  const porSemanas = (ls: Linha[], prefixo: string, dentro: boolean, sempreAtrasados: boolean) => {
+    const atr = ls.filter((l) => l.data && l.data < hojeIso);
+    if (atr.length || sempreAtrasados) blocos.push({ id: `${prefixo}atr`, titulo: <span className="text-[var(--prazo-atrasado)]">Atrasados</span>, linhas: atr, dentro });
+    const porSemana = new Map<string, Linha[]>();
+    for (const l of ls) if (l.data && l.data >= hojeIso) porSemana.set(segunda(l.data), [...(porSemana.get(segunda(l.data)) ?? []), l]);
+    for (const s0 of [...porSemana.keys()].sort()) {
+      const n = Math.round(dias(seg0, s0) / 7);
+      blocos.push({
+        id: `${prefixo}sem-${s0}`,
+        titulo: n === 0 ? 'Esta semana' : n === 1 ? 'Próxima semana' : `Semana de ${ddmm(s0)}`,
+        sub: `${ddmm(s0)} a ${ddmm(soma(s0, 6))}`,
+        linhas: porSemana.get(s0)!,
+        dentro,
+      });
+    }
+    const sem = ls.filter((l) => !l.data);
+    if (sem.length) blocos.push({ id: `${prefixo}sem`, titulo: 'Sem data', linhas: sem, dentro });
+  };
   if (porCliente) {
+    // Cada cliente com as mesmas semanas da visão por data.
     const m = new Map<string, Linha[]>();
     for (const l of linhas) m.set(l.g.projetoId, [...(m.get(l.g.projetoId) ?? []), l]);
-    for (const [pid, ls] of [...m.entries()].sort((a, b) => a[1][0].handle.localeCompare(b[1][0].handle)))
+    for (const [pid, ls] of [...m.entries()].sort((a, b) => a[1][0].handle.localeCompare(b[1][0].handle))) {
       blocos.push({
-        id: pid,
+        id: `cli-${pid}`,
+        cliente: true,
         titulo: (
-          <span className="flex items-center gap-2">
-            <AvatarProjeto handle={ls[0].handle} nome={ls[0].g.projetoNome} foto={fotos[pid] ?? null} tamanho={24} />
+          <span className="flex items-center gap-2.5">
+            <AvatarProjeto handle={ls[0].handle} nome={ls[0].g.projetoNome} foto={fotos[pid] ?? null} />
             {ls[0].handle.startsWith('@') ? ls[0].handle : `@${ls[0].handle}`}
           </span>
         ),
         linhas: ls,
       });
-  } else {
-    // Atrasados primeiro; depois uma tabela por semana (segunda a domingo).
-    const seg0 = segunda(hojeIso);
-    const atr = linhas.filter((l) => l.data && l.data < hojeIso);
-    blocos.push({ id: 'atr', titulo: <span className="text-[var(--prazo-atrasado)]">Atrasados</span>, linhas: atr });
-    const porSemana = new Map<string, Linha[]>();
-    for (const l of linhas) if (l.data && l.data >= hojeIso) porSemana.set(segunda(l.data), [...(porSemana.get(segunda(l.data)) ?? []), l]);
-    for (const s0 of [...porSemana.keys()].sort()) {
-      const n = Math.round(dias(seg0, s0) / 7);
-      blocos.push({
-        id: `sem-${s0}`,
-        titulo: n === 0 ? 'Esta semana' : n === 1 ? 'Próxima semana' : `Semana de ${ddmm(s0)}`,
-        sub: `${ddmm(s0)} a ${ddmm(soma(s0, 6))}`,
-        linhas: porSemana.get(s0)!,
-      });
+      porSemanas(ls, `${pid}-`, true, false);
     }
-    const sem = linhas.filter((l) => !l.data);
-    if (sem.length) blocos.push({ id: 'sem', titulo: 'Sem data', linhas: sem });
+  } else {
+    porSemanas(linhas, '', false, true);
   }
 
   if (!linhas.length)
@@ -1045,10 +1054,16 @@ function TabelaEntrega({
 
   return (
     <div className="flex flex-col gap-5">
-      {blocos.map((b) => (
-        <section key={b.id} className="flex flex-col gap-1.5">
+      {blocos.map((b) =>
+        b.cliente ? (
+          <div key={b.id} className="mt-3 flex items-center gap-2 border-t border-[#EDEDEF] pt-5 first:mt-0 first:border-0 first:pt-0">
+            <b className="text-[18px] tracking-[-0.01em]">{b.titulo}</b>
+            <span className="text-[13px] text-[#A1A1A8]">{b.linhas.length}</span>
+          </div>
+        ) : (
+        <section key={b.id} className={`flex flex-col gap-1.5 ${b.dentro ? 'pl-4' : ''}`}>
           <div className="flex items-baseline gap-2 py-1">
-            <b className="text-[15px]">{b.titulo}</b>
+            <b className={b.dentro ? 'text-[14px]' : 'text-[15px]'}>{b.titulo}</b>
             <span className="text-[12.5px] text-[#A1A1A8]">
               {b.sub ? `${b.sub} · ` : ''}
               {b.linhas.length}
@@ -1130,7 +1145,8 @@ function TabelaEntrega({
             )}
           </div>
         </section>
-      ))}
+        ),
+      )}
     </div>
   );
 }

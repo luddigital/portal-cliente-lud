@@ -5712,8 +5712,24 @@ export async function registrarMateriaisNoPost(
   return true;
 }
 
-/** Tarefas abertas de vários posts (status real de cada post), por post. */
-export async function listarTarefasAbertasDosPosts(
+/**
+ * Tarefas abertas de vários posts (status real de cada post), por post.
+ * Guardado por 1 min (a página de entrega chama isso pra dezenas de posts a cada abertura).
+ */
+export async function listarTarefasAbertasDosPosts(postIds: string[]): Promise<Map<string, TarefaDoProjeto[]>> {
+  const ids = [...new Set(postIds)].sort();
+  if (!ids.length) return new Map();
+  const entradas = await _tarefasAbertasDosPostsCached(ids.join(','));
+  return new Map(entradas);
+}
+
+const _tarefasAbertasDosPostsCached = unstable_cache(
+  async (idsJuntos: string) => [...(await _listarTarefasAbertasDosPosts(idsJuntos.split(','))).entries()],
+  ['tarefas-abertas-dos-posts-v1'],
+  { revalidate: 60, tags: [TAG_TAREFAS] },
+);
+
+async function _listarTarefasAbertasDosPosts(
   postIds: string[],
 ): Promise<Map<string, TarefaDoProjeto[]>> {
   const out = new Map<string, TarefaDoProjeto[]>();
@@ -5728,8 +5744,10 @@ export async function listarTarefasAbertasDosPosts(
     }
   }
   const unicos = [...new Set(postIds.filter((id) => !ehPostDoPortal(id)))];
-  for (let i = 0; i < unicos.length; i += 25) {
-    const lote = unicos.slice(i, i + 25);
+  const lotes: string[][] = [];
+  for (let i = 0; i < unicos.length; i += 25) lotes.push(unicos.slice(i, i + 25));
+  // Os lotes vão juntos pro Notion (antes era um depois do outro).
+  await Promise.all(lotes.map(async (lote) => {
     let cursor: string | undefined;
     do {
       const res = await notion.databases.query({
@@ -5775,7 +5793,7 @@ export async function listarTarefasAbertasDosPosts(
       }
       cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
     } while (cursor);
-  }
+  }));
   return out;
 }
 
