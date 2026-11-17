@@ -87,6 +87,24 @@ function emojiDaSecao(t: string): string {
   return '📄';
 }
 
+/** Links do texto viram um link curto (só o site), em vez da URL inteira estourando o card. */
+const RX_URL = /(https?:\/\/[^\s)]+)/g;
+function comLinks(texto: string): React.ReactNode {
+  if (!RX_URL.test(texto)) return texto;
+  return texto.split(RX_URL).map((parte, k) => {
+    if (!/^https?:\/\//.test(parte)) return parte.replace(/:\s*$/, ': ');
+    let site = parte;
+    try {
+      site = new URL(parte).hostname.replace(/^www\./, '');
+    } catch {}
+    return (
+      <a key={k} href={parte} target="_blank" rel="noreferrer" title={parte} className="font-semibold text-[#24466B] underline decoration-[#B9D3EC] underline-offset-2 hover:decoration-[#24466B]">
+        {site} ↗
+      </a>
+    );
+  });
+}
+
 /** Uma seção do Notion como card: rótulos viram subtítulos, listas viram listas, sugestão visual em rosa. */
 function CardSecao({ s }: { s: Secao }) {
   const linhas = s.linhas.filter((l) => !(/briefing do post/i.test(s.titulo) && ehRotuloDoTopo(l.texto)));
@@ -100,7 +118,7 @@ function CardSecao({ s }: { s: Secao }) {
       blocos.push(
         <Tag key={k} className={`flex flex-col gap-1 pl-5 text-[13px] leading-[1.5] text-[#2C2C30] ${l.tipo === 'ol' ? 'list-decimal' : 'list-disc'}`}>
           {grupo.map((g, j) => (
-            <li key={j}>{g.texto}</li>
+            <li key={j}>{comLinks(g.texto)}</li>
           ))}
         </Tag>,
       );
@@ -109,7 +127,7 @@ function CardSecao({ s }: { s: Secao }) {
     if (l.destaque) {
       blocos.push(
         <p key={k} className="rounded-[8px] bg-[#FBEFF4] px-2.5 py-1.5 text-[12.5px] leading-[1.45] text-[#A8476B]">
-          {l.texto}
+          {comLinks(l.texto)}
         </p>,
       );
       continue;
@@ -135,26 +153,29 @@ function CardSecao({ s }: { s: Secao }) {
       <p key={k} className="text-[13px] leading-[1.55] text-[#2C2C30]">
         {r && r.rotulo.length <= 28 ? (
           <>
-            <b className="font-bold text-[#111113]">{r.rotulo}:</b> {r.resto}
+            <b className="font-bold text-[#111113]">{r.rotulo}:</b> {comLinks(r.resto)}
           </>
         ) : (
-          l.texto
+          comLinks(l.texto)
         )}
       </p>,
     );
   }
   return (
-    <section className="flex flex-col gap-2 rounded-[16px] border border-[#EDEDEF] bg-white p-4">
-      <b className="mb-0.5 flex items-center gap-2 text-[14px]">
+    // Toggle: o card abre e fecha pelo título (Ideia e Briefing começam abertos).
+    <details open={/ideia|briefing/i.test(s.titulo)} className="group min-w-0 break-words rounded-[16px] border border-[#EDEDEF] bg-white [overflow-wrap:anywhere]">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[14px] font-bold [&::-webkit-details-marker]:hidden">
+        <span className="text-[10px] text-[#A1A1A8] transition-transform group-open:rotate-90">▶</span>
         <span className="w-[18px] text-center">{emojiDaSecao(s.titulo)}</span>
         {s.titulo}
-      </b>
-      {blocos}
-    </section>
+        <span className="ml-auto text-[11.5px] font-medium text-[#A1A1A8] group-open:hidden">{linhas.length} {linhas.length === 1 ? 'item' : 'itens'}</span>
+      </summary>
+      <div className="flex flex-col gap-2 px-4 pb-4">{blocos}</div>
+    </details>
   );
 }
 /** Seções curtas só de lista (Informações, Materiais) ficam lado a lado. */
-const secaoCurta = (s: Secao) => s.linhas.length <= 6 && s.linhas.every((l) => l.tipo !== 'p');
+const secaoCurta = (s: Secao) => s.linhas.length <= 6 && s.linhas.every((l) => l.tipo !== 'p' && !/https?:\/\//.test(l.texto));
 
 const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
