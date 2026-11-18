@@ -139,7 +139,7 @@ function SecaoPlana({ s, id }: { s: Secao; id: string }) {
       );
       continue;
     }
-    if (l.destaque) {
+    if (l.destaque && !ehRoteiro(s.titulo)) {
       blocos.push(
         <p key={k} className="rounded-[8px] bg-[#FBEFF4] px-2.5 py-1.5 text-[12.5px] leading-[1.45] text-[#A8476B]">
           {comLinks(l.texto)}
@@ -237,6 +237,18 @@ function SecaoMateriais({ s, id, recebidos, tarefaId }: { s: Secao; id: string; 
     </section>
   );
 }
+
+/** Ordem fixa do índice: ideia, briefing, referências, roteiro (copy/cards/voice), materiais; o resto depois. */
+function pesoDaSecao(t: string): number {
+  if (/ideia/i.test(t)) return 0;
+  if (/briefing/i.test(t)) return 1;
+  if (/refer/i.test(t)) return 2;
+  if (/roteiro|copy|card|carrossel|voice|take|grava/i.test(t)) return 3;
+  if (/materia/i.test(t)) return 4;
+  if (/informa/i.test(t)) return 5;
+  return 6;
+}
+const ehRoteiro = (t: string) => pesoDaSecao(t) === 3;
 
 /** Lê o "Briefing do Post": objetivo, funil e o que precisamos do cliente (vão pro topo). */
 function categoriasDoBriefing(secoes: Secao[]) {
@@ -756,7 +768,7 @@ export function PreviaPostModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111113]/60 p-4" onClick={fechar}>
-      <div className="relative flex max-h-[92vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative flex max-h-[92vh] w-full max-w-[1320px] flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Cabeçalho */}
         <div className="flex items-center justify-between gap-3 border-b border-[#E9E9EB] px-6 py-4">
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -951,23 +963,22 @@ export function PreviaPostModal({
                 ))}
               {aba === 'post' &&
                 (() => {
-                  const secoes = preview.secoes ?? [];
+                  const secoes = (preview.secoes ?? []).map((sec, ordem) => ({ sec, ordem })).sort((a, b) => pesoDaSecao(a.sec.titulo) - pesoDaSecao(b.sec.titulo) || a.ordem - b.ordem).map((x) => x.sec);
                   const idSec = (k: number) => `secao-${k}`;
                   const materiaisTarefa = fluxo.find((t) => /materia/i.test(t.titulo) && !/aprova/i.test(t.titulo)) ?? null;
                   const recebidos = !!materiaisTarefa && !materiaisTarefa.aberta;
                   const indice = [
                     ...secoes.map((sec, k) => ({ id: idSec(k), titulo: sec.titulo })),
-                    { id: 'secao-legenda', titulo: 'Legenda' },
                   ];
                   const ir = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   return (
-                    <div className="grid gap-6 lg:grid-cols-[180px_minmax(0,1fr)_300px]">
+                    <div className="grid gap-6 lg:grid-cols-[170px_minmax(0,1fr)_380px]">
                       {/* Índice: clicar rola até a seção */}
                       <nav className="hidden flex-col gap-0.5 lg:sticky lg:top-0 lg:flex lg:self-start">
                         <span className="px-3 pb-2 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Neste post</span>
                         {indice.map((it) => (
                           <button key={it.id} type="button" onClick={() => ir(it.id)} className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13.5px] font-medium text-[#46464B] hover:bg-[#F4F4F5] hover:text-[#111113]">
-                            <span className="w-[18px] text-center">{it.titulo === 'Legenda' ? '✍️' : emojiDaSecao(it.titulo)}</span>
+                            <span className="w-[18px] text-center">{emojiDaSecao(it.titulo)}</span>
                             <span className="truncate">{it.titulo}</span>
                           </button>
                         ))}
@@ -1001,32 +1012,6 @@ export function PreviaPostModal({
                             <SecaoPlana key={k} s={sec} id={idSec(k)} />
                           ),
                         )}
-                        <section id="secao-legenda" className="flex scroll-mt-4 flex-col gap-2.5 border-t border-[#F0F0F2] py-6 first:border-0 first:pt-0">
-                          <div className="flex items-center gap-2.5 text-[16px] font-extrabold tracking-[-0.01em]">
-                            <span className="w-5 text-center">✍️</span>Legenda
-                            {preview.legenda && (
-                              <button type="button" onClick={copiarLegenda} className="ml-auto text-[12.5px] font-extrabold hover:underline">
-                                {copiado ? 'Copiada' : 'Copiar'}
-                              </button>
-                            )}
-                          </div>
-                          {preview.legenda ? (
-                            <>
-                              <p className="whitespace-pre-line text-[13.5px] leading-[1.55] text-[#111113]">{preview.legenda.replace(/(\s*#[\p{L}0-9_]+)+\s*$/u, '')}</p>
-                              {hashtags.length > 0 && (
-                                <span className="flex flex-wrap gap-1.5">
-                                  {hashtags.map((h) => (
-                                    <span key={h} className="rounded-full bg-[#E4EBDF] px-2 py-0.5 text-[11.5px] font-bold text-[#2E5520]">
-                                      {h}
-                                    </span>
-                                  ))}
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <p className="text-[12.5px] text-[#636369]">Sem legenda definida.</p>
-                          )}
-                        </section>
                       </div>
 
                       {/* Direita: arte e programação, fixas */}
@@ -1101,6 +1086,49 @@ export function PreviaPostModal({
                       )}
                     </>
                   )}
+                        <section className="flex flex-col gap-2.5 rounded-[16px] border border-[#E9E9EB] p-4">
+                          <div className="flex items-center gap-2.5 text-[14.5px] font-extrabold">
+                            <span className="w-5 text-center">✍️</span>Legenda
+                            {preview.legenda && (
+                              <button type="button" onClick={copiarLegenda} className="ml-auto text-[12.5px] font-extrabold hover:underline">
+                                {copiado ? 'Copiada' : 'Copiar'}
+                              </button>
+                            )}
+                          </div>
+                          {preview.legenda ? (
+                            <>
+                              <p className="whitespace-pre-line text-[13.5px] leading-[1.55] text-[#111113]">{preview.legenda.replace(/(\s*#[\p{L}0-9_]+)+\s*$/u, '')}</p>
+                              {hashtags.length > 0 && (
+                                <span className="flex flex-wrap gap-1.5">
+                                  {hashtags.map((h) => (
+                                    <span key={h} className="rounded-full bg-[#E4EBDF] px-2 py-0.5 text-[11.5px] font-bold text-[#2E5520]">
+                                      {h}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-[12.5px] text-[#636369]">Sem legenda definida.</p>
+                          )}
+                        </section>
+                        {handle && handle !== 'Projeto' && (
+                          <a
+                            href={`https://www.instagram.com/${handle.replace(/^@/, '')}/`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-3 rounded-[16px] border border-[#E9E9EB] p-3 hover:bg-[#FAFAFB]"
+                          >
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-[18px] text-white" style={{ background: 'linear-gradient(45deg,#F9CE34,#EE2A7B 55%,#6228D7)' }}>
+                              ◎
+                            </span>
+                            <span className="flex min-w-0 flex-col">
+                              <b className="truncate text-[13.5px] text-[#111113]">{handle}</b>
+                              <span className="text-[12px] text-[#8A8A90]">ver o perfil no Instagram</span>
+                            </span>
+                            <span className="ml-auto text-[13px] font-extrabold text-[#111113]">↗</span>
+                          </a>
+                        )}
                   <CaixaProgramacao
                     postId={postId}
                     data={preview.dataPostagem}
