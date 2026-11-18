@@ -670,11 +670,14 @@ export function prefetchPrevia(postId: string | null | undefined) {
 export function PreviaPostModal({
   postId,
   tarefaId,
-  fechar,
+  fechar = () => {},
+  pagina = false,
 }: {
   postId: string;
   tarefaId?: string | null;
-  fechar: () => void;
+  fechar?: () => void;
+  /** Visão inteira do post (/post/[id], Visão Lud.): o mesmo conteúdo do popup, maior e sem a moldura. */
+  pagina?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -722,7 +725,7 @@ export function PreviaPostModal({
   // ESC fecha; setas trocam a arte.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') fechar();
+      if (e.key === 'Escape' && !pagina) fechar();
       if (preview && preview.arquivos.length > 1) {
         if (e.key === 'ArrowLeft') setAtivo((i) => Math.max(0, i - 1));
         if (e.key === 'ArrowRight') setAtivo((i) => Math.min(preview.arquivos.length - 1, i + 1));
@@ -807,8 +810,11 @@ export function PreviaPostModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111113]/60 p-4" onClick={fechar}>
-      <div className="relative flex max-h-[92vh] w-full max-w-[1320px] flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className={pagina ? 'mx-auto w-full max-w-[1560px] px-4 py-6 sm:px-6' : 'fixed inset-0 z-50 flex items-center justify-center bg-[#111113]/60 p-4'} onClick={pagina ? undefined : fechar}>
+      <div
+        className={pagina ? 'relative flex w-full flex-col rounded-[24px] border border-[#E9E9EB] bg-white' : 'relative flex max-h-[92vh] w-full max-w-[1320px] flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl'}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Cabeçalho */}
         <div className="flex items-center justify-between gap-3 border-b border-[#E9E9EB] px-6 py-4">
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -820,7 +826,7 @@ export function PreviaPostModal({
             </span>
             <div className="min-w-0">
               {preview?.projetoNome && <div className="truncate text-[12px] font-bold text-[#636369]">{handle !== 'Projeto' ? handle : preview.projetoNome}</div>}
-              <div className="truncate text-[18px] font-extrabold tracking-[-0.01em] text-[#111113]">{preview?.titulo ?? 'Carregando…'}</div>
+              <div className={`truncate font-extrabold tracking-[-0.01em] text-[#111113] ${pagina ? 'text-[24px]' : 'text-[18px]'}`}>{preview?.titulo ?? 'Carregando…'}</div>
               {preview &&
                 (() => {
                   const c = categoriasDoBriefing(preview.secoes ?? []);
@@ -884,12 +890,16 @@ export function PreviaPostModal({
                 )}
               </span>
             )}
-            <a href={hrefCompleto} className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-[#D6D6D9] bg-white px-3.5 text-[13px] font-extrabold text-[#111113] hover:bg-[#F4F4F5]">
-              ↗ <span className="hidden sm:inline">Abrir completo</span>
-            </a>
-            <button type="button" onClick={fechar} aria-label="Fechar" className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F4F4F5] text-[18px] text-[#46464B] hover:bg-[#E9E9EB]">
-              ×
-            </button>
+            {!pagina && (
+              <>
+                <a href={hrefCompleto} className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-[#D6D6D9] bg-white px-3.5 text-[13px] font-extrabold text-[#111113] hover:bg-[#F4F4F5]">
+                  ↗ <span className="hidden sm:inline">Abrir completo</span>
+                </a>
+                <button type="button" onClick={fechar} aria-label="Fechar" className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F4F4F5] text-[18px] text-[#46464B] hover:bg-[#E9E9EB]">
+                  ×
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -918,7 +928,7 @@ export function PreviaPostModal({
         )}
 
         {/* Corpo */}
-        <div className="flex-1 overflow-y-auto">
+        <div className={pagina ? '' : 'flex-1 overflow-y-auto'}>
           {erro && <div className="m-6 rounded-[12px] bg-[#F6CFCB] p-4 text-[13px] text-[#7E211C]">{erro}</div>}
           {!preview && !erro && (
             <div className="space-y-4 p-6">
@@ -1018,9 +1028,9 @@ export function PreviaPostModal({
                   ];
                   const ir = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   return (
-                    <div className="grid gap-6 lg:grid-cols-[170px_minmax(0,1fr)_380px]">
+                    <div className={`grid gap-6 ${pagina ? 'lg:grid-cols-[200px_minmax(0,1fr)_460px] gap-8' : 'lg:grid-cols-[170px_minmax(0,1fr)_380px]'}`}>
                       {/* Índice: clicar rola até a seção */}
-                      <nav className="hidden flex-col gap-0.5 lg:sticky lg:top-0 lg:flex lg:self-start">
+                      <nav className={`hidden flex-col gap-0.5 lg:sticky lg:flex lg:self-start ${pagina ? 'lg:top-[72px]' : 'lg:top-0'}`}>
                         <span className="px-3 pb-2 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Neste post</span>
                         {indice.map((it) => (
                           <button key={it.id} type="button" onClick={() => ir(it.id)} className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13.5px] font-medium text-[#46464B] hover:bg-[#F4F4F5] hover:text-[#111113]">
@@ -1068,7 +1078,7 @@ export function PreviaPostModal({
                       </div>
 
                       {/* Direita: arte e programação, fixas */}
-                      <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-0 lg:self-start">
+                      <div className={`flex min-w-0 flex-col gap-3 lg:sticky lg:self-start ${pagina ? 'lg:top-[72px]' : 'lg:top-0'}`}>
                   {semArte ? (
                     <div className="flex aspect-[9/12] max-h-[420px] w-full flex-col items-center justify-center gap-1 rounded-[18px] bg-[#F7F7F8] text-center">
                       <span className="text-[28px]">{emojiDoFormato(preview.formato) ?? '📝'}</span>
