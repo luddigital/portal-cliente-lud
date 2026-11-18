@@ -249,7 +249,10 @@ function categoriasDoBriefing(secoes: Secao[]) {
     return l ? separarRotulo(l.texto)!.resto : null;
   };
   const curto = (t: string | null) => (t ? t.replace(/\s*\(.*\)\s*$/, '').trim() : null);
-  return { objetivo: curto(valor(/^objetivo$/i)), funil: curto(valor(/^funil$/i)), precisamos: valor(/^o que precisamos de voc[êe]$/i) };
+  const funil = curto(valor(/^funil$/i))?.split(/[,;·]/)[0].trim() ?? null;
+  const prec = valor(/^o que precisamos de voc[êe]$/i);
+  // "Nada" / "nenhum" não é pedido: não mostra.
+  return { objetivo: curto(valor(/^objetivo$/i)), funil, precisamos: prec && !/^(nada|nenhum|n[ãa]o precisa)/i.test(prec.trim()) ? prec : null };
 }
 /** "Informações + materiais" → "Info + material" (o texto inteiro fica no title). */
 const precisamosCurto = (t: string) =>
