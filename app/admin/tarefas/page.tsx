@@ -4,7 +4,7 @@ import { hojeEmSaoPaulo } from '@/lib/lembrete-aprovacao';
 import { compararNoFluxo, ehTarefaDoCliente, ehTarefaModeloDoPost, rotuloDaTarefaAtual } from '@/lib/etapas-projeto';
 import { nomeCurtoDoProjeto } from '@/lib/rotas';
 import { getFotoDoInstagramDoProjeto } from '@/lib/instagram';
-import { lerEnviosRecentesDosPosts, lerVisualizacoes, type EnvioDoPost } from '@/lib/supabase';
+import { lerEnviosRecentesDosPosts, lerVisualizacoes, lerVisualizacoesDetalhe, type EnvioDoPost } from '@/lib/supabase';
 import { Trilha } from '../_components/Trilha';
 import { TarefasNotion, type LinhaTarefa } from './TarefasNotion';
 
@@ -62,6 +62,7 @@ async function Lista({ pessoa, projeto }: { pessoa?: string; projeto?: string })
     lerEnviosRecentesDosPosts(idsCliente, 45).catch(() => ({}) as Record<string, EnvioDoPost[]>),
     lerVisualizacoes(idsCliente).catch(() => ({}) as Awaited<ReturnType<typeof lerVisualizacoes>>),
   ]);
+  const vistasDetalhe = await lerVisualizacoesDetalhe(idsCliente).catch(() => ({}) as Record<string, string[]>);
   const assunto = (titulo: string) =>
     /aprova|enviar post/i.test(titulo) ? 'aprovacao' : /materia|pr[ée]vi|conte[úu]do|voice|informa/i.test(titulo) ? 'materiais' : null;
   const menos10 = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) - 10 * 86_400_000).toISOString().slice(0, 10);
@@ -73,6 +74,19 @@ async function Lista({ pessoa, projeto }: { pessoa?: string; projeto?: string })
     );
     const ultimo = ms.map((m) => m.enviadoEm).sort().pop() ?? null;
     return { n: ms.length, ultimo };
+  };
+  /** Linha do tempo do sinal: envios no grupo e visualizações do cliente, na ordem em que aconteceram. */
+  const tempoDa = (t: TarefaDeTodos) => {
+    if (!t.postId || !ehTarefaDoCliente(t.titulo)) return [];
+    const a = assunto(t.titulo);
+    const desde = t.prazo ? menos10(t.prazo) : '';
+    const ev = [
+      ...(envios[t.postId] ?? [])
+        .filter((m) => (!desde || m.enviadoEm.slice(0, 10) >= desde) && (!a || !m.assunto || m.assunto === a))
+        .map((m) => ({ q: m.enviadoEm, t: 'envio' as const, m: m.momento })),
+      ...(/aprova/i.test(t.titulo) ? (vistasDetalhe[t.postId] ?? []).filter((v) => !desde || v.slice(0, 10) >= desde) : []).map((v) => ({ q: v, t: 'visto' as const, m: '' })),
+    ].sort((x, y) => Date.parse(x.q) - Date.parse(y.q));
+    return ev.slice(-10);
   };
 
   // Foto do Instagram de cada projeto (a coluna Projeto mostra só o avatar).
@@ -99,6 +113,7 @@ async function Lista({ pessoa, projeto }: { pessoa?: string; projeto?: string })
     projetoFoto: t.projetoId ? fotos.get(t.projetoId) ?? null : null,
     doCliente: ehTarefaDoCliente(t.titulo),
     wpp: wppDa(t),
+    tempo: tempoDa(t),
     // Bloqueada: o post ainda está numa etapa anterior (quem segura e até quando).
     antes: (() => {
       if (t.pronto || !t.postId) return null;

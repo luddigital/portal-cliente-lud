@@ -34,6 +34,8 @@ export type LinhaTarefa = {
   /** Tarefa do cliente: mensagens no grupo nesse ciclo (null = tarefa da equipe). */
   wpp: { n: number; ultimo: string | null } | null;
   visto: string | null;
+  /** Envios no grupo e visualizações do cliente, na ordem (linha do tempo do sinal). */
+  tempo?: { q: string; t: 'envio' | 'visto'; m: string }[];
   antes: { titulo: string; pessoa: string | null; avatar: string | null; prazo: string | null } | null;
 };
 
@@ -62,6 +64,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
   const amanha = soma(hoje, 1);
   const fimSemana = soma(hoje, 7);
   const [feitas, setFeitas] = useState<Record<string, true>>({});
+  const [tempoAberto, setTempoAberto] = useState<Record<string, boolean>>({});
   const [paraHoje, setParaHoje] = useState<Record<string, true>>({});
   const [pessoa, setPessoa] = useState<string>(pessoaInicial || 'todas');
   const [previa, setPrevia] = useState<{ postId: string; tarefaId: string } | null>(null);
@@ -171,7 +174,22 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
           return <span className="inline-flex whitespace-nowrap rounded-full bg-[#E3ECF7] px-2.5 py-[3px] text-[12px] font-bold text-[#24466B]">Com o cliente</span>;
         return <span className="inline-flex whitespace-nowrap rounded-full bg-[#D8EDCF] px-2.5 py-[3px] text-[12px] font-bold text-[#2E5520]">Iniciar</span>;
       case 'sinal':
-        return <Sinal itens={sinalDaTarefa(t, hoje)} />;
+        return (
+          <span className="flex items-center gap-1.5">
+            <Sinal itens={sinalDaTarefa(t, hoje)} />
+            {(t.tempo?.length ?? 0) > 0 && (
+              <button
+                type="button"
+                onClick={() => setTempoAberto((o) => ({ ...o, [t.id]: !o[t.id] }))}
+                title="Linha do tempo"
+                aria-expanded={!!tempoAberto[t.id]}
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] text-[#8A8A90] hover:bg-[#F0F0F1] hover:text-[#111113]"
+              >
+                <span className={`transition-transform ${tempoAberto[t.id] ? 'rotate-90' : ''}`}>▶</span>
+              </button>
+            )}
+          </span>
+        );
       case 'post':
         return t.postId ? (
           <button
@@ -302,7 +320,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
                     </tr>
                   </thead>
                   <tbody>
-                    {ls.filter((t) => !t.antes).map((t) => (
+                    {ls.filter((t) => !t.antes).map((t) => [
                       <tr key={t.id} className="border-b border-[#F2F2F4] last:border-0 hover:bg-[#FAFAFA]">
                         <td className="py-2 pl-3">
                           <button
@@ -320,8 +338,16 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
                             {celula(c, t)}
                           </td>
                         ))}
-                      </tr>
-                    ))}
+                      </tr>,
+                      tempoAberto[t.id] && t.tempo?.length ? (
+                        <tr key={`${t.id}-tempo`} className="border-b border-[#F2F2F4] bg-[#FAFAFB]">
+                          <td />
+                          <td colSpan={colunas.length} className="px-3 py-3">
+                            <LinhaDoTempo tempo={t.tempo} aprovacao={/aprova/i.test(t.titulo)} />
+                          </td>
+                        </tr>
+                      ) : null,
+                    ])}
                     {ls.filter((t) => t.antes).map((t) => (
                       <tr key={t.id} className="border-b border-[#F2F2F4] bg-[#FCFCFC] last:border-0">
                         <td className="py-2 pl-3" title="Ainda não dá pra concluir: falta a etapa anterior">
@@ -351,6 +377,44 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
 function Avatar({ nome, foto, grande = false }: { nome: string; foto: string | null; grande?: boolean }) {
   // Mesmo avatar do resto do portal (foto ou inicial em pastel), só no tamanho pequeno.
   return <AvatarPadrao nome={nome} foto={foto} tamanho={grande ? 24 : 16} />;
+}
+
+function rotuloMomento(m: string): string {
+  if (m === 'quinta') return 'Envio de quinta';
+  if (m === 'separado' || m === 'avulso') return 'Envio avulso';
+  if (m === 'reaprovacao') return 'Reaprovação';
+  if (m === 'geral') return 'Mensagem da entrega';
+  if (m.startsWith('auto_') || m.startsWith('envio_auto')) return 'Lembrete automático';
+  if (['sexta', 'segunda_manha', 'segunda_tarde', 'terca'].includes(m)) return 'Lembrete';
+  return 'Mensagem no grupo';
+}
+
+/** Linha do tempo: o que mandamos e quando o cliente abriu, na ordem. No fim, se ainda não viu o último envio. */
+function LinhaDoTempo({ tempo, aprovacao }: { tempo: NonNullable<LinhaTarefa['tempo']>; aprovacao: boolean }) {
+  const ultimo = tempo[tempo.length - 1];
+  const falta = aprovacao && ultimo?.t === 'envio';
+  const itens = [
+    ...tempo.map((e) =>
+      e.t === 'envio'
+        ? { icone: '📤', rot: rotuloMomento(e.m), q: quandoMsg(e.q), bg: '#E4EBDF', fg: '#2E5520', borda: 'solid' }
+        : { icone: '👁', rot: 'Cliente viu', q: quandoMsg(e.q), bg: '#E3ECF7', fg: '#24466B', borda: 'solid' },
+    ),
+    ...(falta ? [{ icone: '👁', rot: 'Ainda não viu', q: 'esperando o cliente', bg: '#FFFFFF', fg: '#8A8A90', borda: 'dashed' }] : []),
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-y-2">
+      {itens.map((it, k) => (
+        <span key={k} className="flex items-center">
+          {k > 0 && <span className="mx-1.5 h-[2px] w-5 shrink-0 bg-[#E2E2E5]" />}
+          <span className="flex items-center gap-2 rounded-full px-2.5 py-1" style={{ background: it.bg, color: it.fg, border: `1.5px ${it.borda} ${it.borda === 'dashed' ? '#D6D6D9' : 'transparent'}` }}>
+            <span className="text-[12px]">{it.icone}</span>
+            <span className="text-[12px] font-bold">{it.rot}</span>
+            <span className="text-[11.5px] font-medium opacity-80">{it.q}</span>
+          </span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 const quandoMsg = (iso: string) => {

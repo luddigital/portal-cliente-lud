@@ -636,6 +636,20 @@ export async function lerVisualizacoes(
   return out;
 }
 
+/** Cada visualização do cliente por post (mais antiga primeiro), pra linha do tempo do sinal. */
+export async function lerVisualizacoesDetalhe(postIds: string[]): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {};
+  if (postIds.length === 0) return out;
+  const sb = await supabaseAdmin();
+  const { data, error } = await sb.from('post_visualizacoes').select('post_id, visto_em').in('post_id', postIds).order('visto_em', { ascending: true });
+  if (error) {
+    console.warn('[post_visualizacoes]', error.message);
+    return out;
+  }
+  for (const r of data ?? []) (out[r.post_id] ??= []).push(r.visto_em);
+  return out;
+}
+
 /** Lembrete avulso (botão 📱 lembrar) entra no mesmo histórico da régua. */
 export async function registrarEnvioAvulso(e: {
   projetoId: string;
