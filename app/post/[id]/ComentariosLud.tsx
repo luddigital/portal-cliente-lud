@@ -8,7 +8,7 @@ import type { NotaHistorico } from '@/lib/historico-post';
  *   - Com o cliente → "💬 email" (aparece no histórico com o cliente)
  *   - Nota interna  → "🔒 Nota interna · email" (só a equipe; o portal nunca mostra pro cliente)
  */
-export function ComentariosLud({ postId, notas = [] }: { postId: string; tarefaId?: string | null; notas?: NotaHistorico[] }) {
+export function ComentariosLud({ postId, notas = [], cronologico = false }: { postId: string; tarefaId?: string | null; notas?: NotaHistorico[]; cronologico?: boolean }) {
   const [aba, setAba] = useState<'cliente' | 'interna'>('cliente');
   const doCliente = notas.filter((n) => TIPOS_CLIENTE.has(n.tipo));
   const internas = notas.filter((n) => n.tipo === 'interna');
@@ -48,10 +48,10 @@ export function ComentariosLud({ postId, notas = [] }: { postId: string; tarefaI
       </div>
       {/* As duas ficam montadas: trocar de aba não perde o que estava escrito. */}
       <div className={aba === 'cliente' ? '' : 'hidden'}>
-        <Painel postId={postId} interno={false} notas={doCliente} />
+        <Painel postId={postId} interno={false} notas={doCliente} cronologico={cronologico} />
       </div>
       <div className={aba === 'interna' ? 'bg-[var(--prazo-hoje-soft)]/30' : 'hidden'}>
-        <Painel postId={postId} interno notas={internas} />
+        <Painel postId={postId} interno notas={internas} cronologico={cronologico} />
       </div>
     </section>
   );
@@ -78,12 +78,12 @@ export function autorDaNota(n: NotaHistorico): string {
   return n.autor.split('@')[0];
 }
 
-function Painel({ postId, interno, notas }: { postId: string; interno: boolean; notas: NotaHistorico[] }) {
+function Painel({ postId, interno, notas, cronologico = false }: { postId: string; interno: boolean; notas: NotaHistorico[]; cronologico?: boolean }) {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [novas, setNovas] = useState<NotaHistorico[]>([]);
-  const lista = [...novas, ...notas].sort((a, b) => b.quando.localeCompare(a.quando));
+  const lista = [...novas, ...notas].sort((a, b) => (cronologico ? a.quando.localeCompare(b.quando) : b.quando.localeCompare(a.quando)));
 
   async function enviar() {
     if (texto.trim().length < 2) return;

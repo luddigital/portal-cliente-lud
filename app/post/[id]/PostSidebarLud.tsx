@@ -1038,14 +1038,19 @@ export function HistoricoResumo({
   tarefasCliente = [],
   max = 4,
   hrefCompleto,
+  cronologico = false,
 }: {
   historico: { visualizacoes: { email: string; vistoEm: string }[]; envios: EnvioHistorico[] };
   notas?: NotaHistorico[];
   tarefasCliente?: TarefaClienteHistorico[];
   max?: number;
   hrefCompleto?: string;
+  /** Tudo, do mais antigo pro mais recente (o mais novo por último). */
+  cronologico?: boolean;
 }) {
-  const todas = montarLinhasDoTempo(historico, notas);
+  const todasDesc = montarLinhasDoTempo(historico, notas);
+  const todas = cronologico ? [...todasDesc].reverse() : todasDesc;
+  if (cronologico) max = Infinity;
   const linhas: (LinhaDoTempo & { vezes: number })[] = [];
   for (const l of todas) {
     const ultima = linhas[linhas.length - 1];

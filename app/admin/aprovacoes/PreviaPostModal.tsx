@@ -58,19 +58,6 @@ const separarRotulo = (t: string) => {
   const m = t.match(/^([^:]{2,40}):\s*(.*)$/);
   return m ? { rotulo: m[1].trim(), resto: m[2].trim() } : null;
 };
-function etiquetasDoBriefing(secoes: Secao[]): { emoji: string; texto: string }[] {
-  const b = secoes.find((x) => /briefing do post/i.test(x.titulo));
-  if (!b) return [];
-  const out: { emoji: string; texto: string }[] = [];
-  for (const [rx, emoji] of ROTULOS_TOPO) {
-    const l = b.linhas.find((x) => {
-      const r = separarRotulo(x.texto);
-      return r && rx.test(r.rotulo) && r.resto;
-    });
-    if (l) out.push({ emoji, texto: separarRotulo(l.texto)!.resto.replace(/\s*\(.*\)\s*$/, '') });
-  }
-  return out;
-}
 const ehRotuloDoTopo = (t: string) => {
   const r = separarRotulo(t);
   return !!r && (/^formato$/i.test(r.rotulo) || ROTULOS_TOPO.some(([rx]) => rx.test(r.rotulo)));
@@ -105,9 +92,37 @@ function comLinks(texto: string): React.ReactNode {
   });
 }
 
-/** Uma seção do Notion como card: rótulos viram subtítulos, listas viram listas, sugestão visual em rosa. */
-function CardSecao({ s }: { s: Secao }) {
-  const linhas = s.linhas.filter((l) => !(/briefing do post/i.test(s.titulo) && ehRotuloDoTopo(l.texto)));
+/** Linhas que não entram na prévia: rótulos que já estão no topo, notas de atualização, subtítulo que repete a seção. */
+function linhasVisiveis(s: Secao): Secao['linhas'] {
+  return s.linhas.filter((l) => {
+    if (/briefing do post/i.test(s.titulo) && ehRotuloDoTopo(l.texto)) return false;
+    if (/^atualiza[çc][ãa]o\b/i.test(l.texto.trim())) return false;
+    const t = l.texto.trim().replace(/:$/, '').toLowerCase();
+    if (/briefing/i.test(s.titulo) && /^briefing (para|pra) (a )?equipe$/.test(t)) return false;
+    return true;
+  });
+}
+
+/** Seção do Notion sem moldura (a prévia é uma leitura só, separada por linhas finas). */
+function SecaoPlana({ s, id }: { s: Secao; id: string }) {
+  const linhas = linhasVisiveis(s);
+  if (!linhas.length) return null;
+  // Informações: cada pergunta num cartão numerado.
+  if (/informa/i.test(s.titulo) && linhas.every((l) => l.tipo !== 'p' || /\?$/.test(l.texto.trim()))) {
+    return (
+      <section id={id} className="flex scroll-mt-4 flex-col gap-3 border-t border-[#F0F0F2] py-6 first:border-0 first:pt-0">
+        <TituloSecao titulo={s.titulo} />
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          {linhas.map((l, k) => (
+            <div key={k} className="flex gap-2.5 rounded-[12px] border border-[#EDEDEF] px-3 py-2.5">
+              <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[#F0F0F1] text-[11px] font-extrabold">{k + 1}</span>
+              <span className="text-[13px] font-semibold leading-[1.45] text-[#111113]">{comLinks(l.texto)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
   const blocos: React.ReactNode[] = [];
   for (let k = 0; k < linhas.length; k++) {
     const l = linhas[k];
@@ -133,49 +148,117 @@ function CardSecao({ s }: { s: Secao }) {
       continue;
     }
     const r = separarRotulo(l.texto);
-    if (l.negrito && !r?.resto) {
+    if ((l.negrito && !r?.resto) || (r && !r.resto)) {
       blocos.push(
-        <span key={k} className="mt-1 text-[12.5px] font-extrabold text-[#111113]">
-          {l.texto.replace(/:$/, '')}
+        <span key={k} className="mt-1 text-[13px] font-extrabold text-[#111113]">
+          {(r?.rotulo ?? l.texto).replace(/:$/, '')}
         </span>,
       );
       continue;
     }
-    if (r && !r.resto) {
-      blocos.push(
-        <span key={k} className="mt-1.5 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">
-          {r.rotulo}
-        </span>,
-      );
-      continue;
-    }
+    // "Ideia do post:" dentro do Briefing repete o título da seção de cima: mostra só o texto.
+    const repete = r && /ideia do post/i.test(r.rotulo) && !/ideia/i.test(s.titulo);
     blocos.push(
-      <p key={k} className="text-[13px] leading-[1.55] text-[#2C2C30]">
-        {r && r.rotulo.length <= 28 ? (
+      <p key={k} className="text-[13.5px] leading-[1.55] text-[#2C2C30]">
+        {r && r.rotulo.length <= 28 && !repete ? (
           <>
             <b className="font-bold text-[#111113]">{r.rotulo}:</b> {comLinks(r.resto)}
           </>
         ) : (
-          comLinks(l.texto)
+          comLinks(repete ? r!.resto : l.texto)
         )}
       </p>,
     );
   }
   return (
-    // Toggle: o card abre e fecha pelo título (Ideia e Briefing começam abertos).
-    <details open={/ideia|briefing/i.test(s.titulo)} className="group min-w-0 break-words rounded-[16px] border border-[#EDEDEF] bg-white [overflow-wrap:anywhere]">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[14px] font-bold [&::-webkit-details-marker]:hidden">
-        <span className="text-[10px] text-[#A1A1A8] transition-transform group-open:rotate-90">▶</span>
-        <span className="w-[18px] text-center">{emojiDaSecao(s.titulo)}</span>
-        {s.titulo}
-        <span className="ml-auto text-[11.5px] font-medium text-[#A1A1A8] group-open:hidden">{linhas.length} {linhas.length === 1 ? 'item' : 'itens'}</span>
-      </summary>
-      <div className="flex flex-col gap-2 px-4 pb-4">{blocos}</div>
-    </details>
+    <section id={id} className="flex min-w-0 scroll-mt-4 flex-col gap-2.5 break-words border-t border-[#F0F0F2] py-6 [overflow-wrap:anywhere] first:border-0 first:pt-0">
+      <TituloSecao titulo={s.titulo} />
+      {blocos}
+    </section>
   );
 }
-/** Seções curtas só de lista (Informações, Materiais) ficam lado a lado. */
-const secaoCurta = (s: Secao) => s.linhas.length <= 6 && s.linhas.every((l) => l.tipo !== 'p' && !/https?:\/\//.test(l.texto));
+function TituloSecao({ titulo, direita }: { titulo: string; direita?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5 text-[16px] font-extrabold tracking-[-0.01em] text-[#111113]">
+      <span className="w-5 text-center">{emojiDaSecao(titulo)}</span>
+      {titulo}
+      {direita && <span className="ml-auto text-[12.5px] font-semibold text-[#8A8A90]">{direita}</span>}
+    </div>
+  );
+}
+/** Materiais: o que pedimos vira quadradinho; enquanto a etapa de materiais estiver aberta, conta como não recebido. */
+function SecaoMateriais({ s, id, recebidos, tarefaId }: { s: Secao; id: string; recebidos: boolean; tarefaId: string | null }) {
+  const itens = linhasVisiveis(s).filter((l) => l.texto.trim().length > 1);
+  const [enviando, setEnviando] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function anexar(files: FileList | null) {
+    if (!files?.length || !tarefaId) return;
+    setEnviando(true);
+    setMsg(null);
+    try {
+      const fd = new FormData();
+      Array.from(files).forEach((f) => fd.append('arquivos', f));
+      const r = await fetch(`/api/admin/tarefas/${tarefaId}/anexar`, { method: 'POST', body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `Erro ${r.status}`);
+      setMsg(`${files.length} ${files.length === 1 ? 'arquivo enviado' : 'arquivos enviados'} pro Drive do post`);
+    } catch (e: any) {
+      setMsg(e?.message ?? 'Não consegui enviar.');
+    } finally {
+      setEnviando(false);
+    }
+  }
+  const icone = (t: string) => (/foto|imagem|print/i.test(t) ? '📸' : /v[íi]deo|reels/i.test(t) ? '🎬' : /[áa]udio|voz|voice/i.test(t) ? '🎙' : /link/i.test(t) ? '🔗' : '📎');
+  return (
+    <section id={id} className="flex scroll-mt-4 flex-col gap-3 border-t border-[#F0F0F2] py-6 first:border-0 first:pt-0">
+      <TituloSecao titulo={s.titulo} direita={recebidos ? <span className="text-[#2E5520]">recebidos</span> : <span className="text-[#B42318]">nada recebido ainda</span>} />
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {itens.map((l, k) => (
+          <div key={k} className={`overflow-hidden rounded-[12px] border bg-white ${recebidos ? 'border-[#EDEDEF]' : 'border-[#EDEDEF]'}`}>
+            <div className={`relative flex aspect-[4/3] items-center justify-center text-[24px] ${recebidos ? 'bg-[#EEF4EA]' : 'border-b-[1.5px] border-dashed border-[#E2E2E5] bg-[#FAFAFB]'}`}>
+              {icone(l.texto)}
+              {recebidos && <span className="absolute right-2 top-2 flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[#2E7D4F] text-[11px] text-white">✓</span>}
+            </div>
+            <div className="px-2.5 pb-2 pt-2 text-[12.5px] font-bold leading-[1.35] text-[#111113]">{l.texto}</div>
+            <div className={`px-2.5 pb-2.5 text-[11.5px] ${recebidos ? 'text-[#2E5520]' : 'font-semibold text-[#B42318]'}`}>{recebidos ? 'recebido' : 'falta'}</div>
+          </div>
+        ))}
+        {tarefaId && (
+          <label className="flex cursor-pointer flex-col overflow-hidden rounded-[12px] border-[1.5px] border-dashed border-[#B9B9BE] bg-[#FAFAFB] hover:bg-[#F4F4F5]">
+            <input type="file" multiple className="hidden" onChange={(e) => anexar(e.target.files)} disabled={enviando} />
+            <span className="flex aspect-[4/3] items-center justify-center">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#111113] text-[20px] font-bold text-white">{enviando ? '…' : '+'}</span>
+            </span>
+            <span className="px-2.5 pt-2 text-[12.5px] font-bold text-[#111113]">Adicionar material</span>
+            <span className="px-2.5 pb-2.5 text-[11.5px] text-[#8A8A90]">{msg ?? 'vai pro Drive do post'}</span>
+          </label>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Lê o "Briefing do Post": objetivo, funil e o que precisamos do cliente (vão pro topo). */
+function categoriasDoBriefing(secoes: Secao[]) {
+  const b = secoes.find((x) => /briefing do post/i.test(x.titulo));
+  const valor = (rx: RegExp) => {
+    const l = b?.linhas.find((x) => {
+      const r = separarRotulo(x.texto);
+      return r && rx.test(r.rotulo) && r.resto;
+    });
+    return l ? separarRotulo(l.texto)!.resto : null;
+  };
+  const curto = (t: string | null) => (t ? t.replace(/\s*\(.*\)\s*$/, '').trim() : null);
+  return { objetivo: curto(valor(/^objetivo$/i)), funil: curto(valor(/^funil$/i)), precisamos: valor(/^o que precisamos de voc[êe]$/i) };
+}
+/** "Informações + materiais" → "Info + material" (o texto inteiro fica no title). */
+const precisamosCurto = (t: string) =>
+  t
+    .replace(/informa[çc](ões|ão)/gi, 'Info')
+    .replace(/materiais/gi, 'material')
+    .replace(/\s*\(.*\)\s*$/, '')
+    .trim()
+    .slice(0, 28);
 
 const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
@@ -558,6 +641,7 @@ export function PreviaPostModal({
   const [aba, setAba] = useState<'post' | 'tarefas' | 'comentarios' | 'historico'>('post');
   const houveMutacao = useRef(false);
   const hoje = hojeSP();
+  const [altAberto, setAltAberto] = useState(false);
 
   async function carregar() {
     return (await buscarPrevia(postId, true)) as Preview;
@@ -641,7 +725,31 @@ export function PreviaPostModal({
     }
   }
 
-  const chip = 'inline-flex items-center gap-1.5 rounded-full bg-[#F4F4F5] px-2.5 py-[3px] text-[11.5px] font-bold text-[#46464B]';
+  /** Pedir alteração de arte e/ou copy (o mesmo da página completa): no popover do topo e na aba Tarefas. */
+  function blocoAlteracao() {
+    if (!preview) return null;
+    const pedido = preview.tarefas.find((t) => t.titulo.trim() === 'Alteração | Post' && t.aberta && !t.finalizada);
+    const resp = (titulo: string) => preview.tarefas.filter((t) => t.titulo.trim() === titulo).find((t) => t.pessoaNome)?.pessoaNome ?? null;
+    const comentarios = (preview.notas ?? [])
+      .filter((n) => n.tipo === 'cliente_comentou' || n.tipo === 'cliente_alteracao')
+      .map((n) => ({
+        quando: n.quando,
+        tipo: (n.tipo === 'cliente_alteracao' ? 'alteracao' : 'comentou') as 'alteracao' | 'comentou',
+        autor: n.autor ?? null,
+        trecho: n.corpo || n.titulo,
+      }));
+    return (
+      <div onClickCapture={() => (houveMutacao.current = true)}>
+        <SolicitarAlteracao
+          key={postId}
+          postId={postId}
+          pedido={pedido ? { tarefaId: pedido.tarefaId, prazo: pedido.prazo } : null}
+          comentarios={comentarios}
+          responsaveis={{ arte: resp('Arte'), copy: resp('Briefing & Copy') }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#111113]/60 p-4" onClick={fechar}>
@@ -658,32 +766,68 @@ export function PreviaPostModal({
             <div className="min-w-0">
               {preview?.projetoNome && <div className="truncate text-[12px] font-bold text-[#636369]">{handle !== 'Projeto' ? handle : preview.projetoNome}</div>}
               <div className="truncate text-[18px] font-extrabold tracking-[-0.01em] text-[#111113]">{preview?.titulo ?? 'Carregando…'}</div>
-              {preview && (
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  {preview.dataPostagem && <span className={chip}><span>📅</span>{dataPostagemTexto(preview.dataPostagem)}</span>}
-                  {preview.formato && <span className={chip}><span>{emojiDoFormato(preview.formato) ?? '📝'}</span>{preview.formato}{preview.arquivos.length > 1 ? ` · ${preview.arquivos.length}` : ''}</span>}
-                  {etiquetasDoBriefing(preview.secoes ?? []).map((e) => (
-                    <span key={e.emoji} className={chip} title={e.texto}>
-                      <span>{e.emoji}</span>
-                      <span className="max-w-[220px] truncate">{e.texto}</span>
-                    </span>
-                  ))}
-                </div>
-              )}
+              {preview &&
+                (() => {
+                  const c = categoriasDoBriefing(preview.secoes ?? []);
+                  const nivel = c.funil ? (/topo/i.test(c.funil) ? 0 : /meio/i.test(c.funil) ? 1 : /fundo/i.test(c.funil) ? 2 : -1) : -1;
+                  const sep = <span className="h-[18px] w-px bg-[#E2E2E5]" aria-hidden />;
+                  return (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      {/* Dados do post: texto cinza, sem caixa */}
+                      {preview.dataPostagem && <span className="whitespace-nowrap text-[12.5px] font-semibold text-[#636369]">📅 {dataPostagemTexto(preview.dataPostagem)}</span>}
+                      {preview.formato && <span className="whitespace-nowrap text-[12.5px] font-semibold text-[#636369]">{emojiDoFormato(preview.formato) ?? '📝'} {preview.formato}</span>}
+                      {(c.objetivo || nivel >= 0) && sep}
+                      {/* Categorias: etiqueta com o nome do campo */}
+                      {c.objetivo && (
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-[#E8E4FA] px-2 py-[3px] text-[12px] font-extrabold text-[#3E2F8F]" title={`Objetivo: ${c.objetivo}`}>
+                          <small className="text-[9.5px] uppercase tracking-[0.08em] opacity-65">Objetivo</small>
+                          <span className="max-w-[160px] truncate">{c.objetivo}</span>
+                        </span>
+                      )}
+                      {c.funil && (
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-[#F4F4F5] px-2 py-[3px] text-[12px] font-extrabold text-[#111113]" title="Funil: topo · meio · fundo">
+                          <small className="text-[9.5px] uppercase tracking-[0.08em] opacity-65">Funil</small>
+                          {nivel >= 0 && (
+                            <span className="inline-flex items-center gap-[3px]">
+                              {['#2E7D4F', '#D99A2B', '#D9564F'].map((cor, k) => (
+                                <i key={k} className="inline-block h-[9px] w-[9px] rounded-full" style={{ background: k === nivel ? cor : '#D6D6D9' }} />
+                              ))}
+                            </span>
+                          )}
+                          {c.funil}
+                        </span>
+                      )}
+                      {c.precisamos && (
+                        <>
+                          {sep}
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border-[1.5px] border-dashed border-[#E7B96A] bg-[#FFF8EC] px-2.5 py-[2px] text-[12px] font-extrabold text-[#7A4A0B]" title={`O que precisamos: ${c.precisamos}`}>
+                            🙋 {precisamosCurto(c.precisamos)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {preview && (
-              <button
-                type="button"
-                onClick={() => {
-                  setAba('tarefas');
-                  setTimeout(() => document.getElementById('pedir-alteracao')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-                }}
-                className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-[#D6D6D9] bg-white px-3.5 text-[13px] font-extrabold text-[#111113] hover:bg-[#F4F4F5]"
-              >
-                ✏️ <span className="hidden sm:inline">Pedir alteração</span>
-              </button>
+              <span className="relative">
+                <button
+                  type="button"
+                  onClick={() => setAltAberto((v) => !v)}
+                  aria-expanded={altAberto}
+                  className={`inline-flex h-10 items-center gap-1.5 rounded-[12px] border px-3.5 text-[13px] font-extrabold text-[#111113] hover:bg-[#F4F4F5] ${altAberto ? 'border-[#111113] bg-[#F4F4F5]' : 'border-[#D6D6D9] bg-white'}`}
+                >
+                  ✏️ <span className="hidden sm:inline">Pedir alteração</span> <span className="text-[10px] opacity-60">▾</span>
+                </button>
+                {altAberto && (
+                  <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-[380px] rounded-[16px] border border-[#E9E9EB] bg-white p-4 shadow-[0_14px_36px_rgba(17,17,19,0.16)]">
+                    <b className="mb-2 flex items-center gap-2 text-[14px]">✏️ Pedir alteração</b>
+                    {blocoAlteracao()}
+                  </div>
+                )}
+              </span>
             )}
             <a href={hrefCompleto} className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-[#D6D6D9] bg-white px-3.5 text-[13px] font-extrabold text-[#111113] hover:bg-[#F4F4F5]">
               ↗ <span className="hidden sm:inline">Abrir completo</span>
@@ -734,12 +878,13 @@ export function PreviaPostModal({
             <div className="flex flex-col gap-5 p-6">
               {/* Onde o post está: uma linha só, etapas recolhidas */}
               {fluxo.length > 0 && (
-                <section className="flex flex-col gap-2.5 rounded-[16px] border border-[#EDEDEF] px-4 py-3">
+                <section
+                  className={`flex flex-col gap-2.5 rounded-[16px] border px-4 py-3 ${agora?.prazo && agora.prazo.slice(0, 10) < hoje ? 'border-[#F2B8B0] bg-[#FBE3E0]' : 'border-[#EDEDEF]'}`}
+                >
                   {agora ? (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <span className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Agora</span>
                       <b className="text-[14px] text-[#111113]">{agora.titulo}</b>
-                      {agora.pessoa && <span className="text-[12.5px] text-[#636369]">com {agora.pessoa.split(' ')[0]}</span>}
+                      {agora.pessoa && <span className="text-[12.5px] text-[#636369]" title={`Com ${agora.pessoa}`}>{agora.pessoa.split(' ')[0]}</span>}
                       <PrazoDaEtapa key={agora.tarefaId} tarefaId={agora.tarefaId} prazo={agora.prazo} hoje={hoje} onMudou={mudarPrazoLocal} />
                       <span className="ml-auto flex items-center gap-2">
                         {ehTarefaDoCliente(agora.titulo) && (
@@ -778,52 +923,111 @@ export function PreviaPostModal({
                 </section>
               )}
 
-              {/* Pedir alteração de arte e/ou copy (o mesmo da página completa) */}
-              {aba === 'tarefas' &&
-                (() => {
-                  const pedido = preview.tarefas.find((t) => t.titulo.trim() === 'Alteração | Post' && t.aberta && !t.finalizada);
-                  const resp = (titulo: string) => preview.tarefas.filter((t) => t.titulo.trim() === titulo).find((t) => t.pessoaNome)?.pessoaNome ?? null;
-                  const comentarios = (preview.notas ?? [])
-                    .filter((n) => n.tipo === 'cliente_comentou' || n.tipo === 'cliente_alteracao')
-                    .map((n) => ({
-                      quando: n.quando,
-                      tipo: (n.tipo === 'cliente_alteracao' ? 'alteracao' : 'comentou') as 'alteracao' | 'comentou',
-                      autor: n.autor ?? null,
-                      trecho: n.corpo || n.titulo,
-                    }));
-                  return (
-                    <div id="pedir-alteracao" className="order-last rounded-[18px] border border-[#E9E9EB] p-4" onClickCapture={() => (houveMutacao.current = true)}>
-                      <b className="mb-2 flex items-center gap-2 text-[14px]">
-                        <span>✏️</span>Pedir alteração
-                      </b>
-                      <SolicitarAlteracao
-                        key={postId}
-                        postId={postId}
-                        pedido={pedido ? { tarefaId: pedido.tarefaId, prazo: pedido.prazo } : null}
-                        comentarios={comentarios}
-                        responsaveis={{ arte: resp('Arte'), copy: resp('Briefing & Copy') }}
-                      />
-                    </div>
-                  );
-                })()}
+              {aba === 'tarefas' && (
+                <div id="pedir-alteracao" className="order-last rounded-[18px] border border-[#E9E9EB] p-4">
+                  <b className="mb-2 flex items-center gap-2 text-[14px]">
+                    <span>✏️</span>Pedir alteração
+                  </b>
+                  {blocoAlteracao()}
+                </div>
+              )}
 
               {aba === 'tarefas' && (
                 <div className="rounded-[18px] border border-[#E9E9EB] p-4">
                   <TodasTarefasCard tarefas={preview.tarefas} colaboradores={preview.colaboradores ?? {}} podeEditarPrazo semMoldura linkAdmin compacto />
                 </div>
               )}
-              {aba === 'comentarios' && <ComentariosLud postId={postId} notas={preview.notas ?? []} />}
+              {aba === 'comentarios' && <ComentariosLud postId={postId} notas={preview.notas ?? []} cronologico />}
               {aba === 'historico' &&
                 (preview.historico ? (
                   <section className="rounded-[18px] border border-[#E9E9EB] p-4">
-                    <HistoricoResumo historico={preview.historico} notas={preview.notas ?? []} tarefasCliente={preview.tarefasCliente ?? []} hrefCompleto={hrefCompleto} />
+                    <HistoricoResumo historico={preview.historico} notas={preview.notas ?? []} tarefasCliente={preview.tarefasCliente ?? []} cronologico />
                   </section>
                 ) : (
                   <p className="text-[13px] text-[#636369]">Sem histórico por aqui ainda.</p>
                 ))}
-              <div className={`grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] ${aba === 'post' ? '' : 'hidden'}`}>
-                {/* Esquerda: arte, legenda e programação */}
-                <div className="flex min-w-0 flex-col gap-4">
+              {aba === 'post' &&
+                (() => {
+                  const secoes = preview.secoes ?? [];
+                  const idSec = (k: number) => `secao-${k}`;
+                  const materiaisTarefa = fluxo.find((t) => /materia/i.test(t.titulo) && !/aprova/i.test(t.titulo)) ?? null;
+                  const recebidos = !!materiaisTarefa && !materiaisTarefa.aberta;
+                  const indice = [
+                    ...secoes.map((sec, k) => ({ id: idSec(k), titulo: sec.titulo })),
+                    { id: 'secao-legenda', titulo: 'Legenda' },
+                  ];
+                  const ir = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  return (
+                    <div className="grid gap-6 lg:grid-cols-[180px_minmax(0,1fr)_300px]">
+                      {/* Índice: clicar rola até a seção */}
+                      <nav className="hidden flex-col gap-0.5 lg:sticky lg:top-0 lg:flex lg:self-start">
+                        <span className="px-3 pb-2 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Neste post</span>
+                        {indice.map((it) => (
+                          <button key={it.id} type="button" onClick={() => ir(it.id)} className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13.5px] font-medium text-[#46464B] hover:bg-[#F4F4F5] hover:text-[#111113]">
+                            <span className="w-[18px] text-center">{it.titulo === 'Legenda' ? '✍️' : emojiDaSecao(it.titulo)}</span>
+                            <span className="truncate">{it.titulo}</span>
+                          </button>
+                        ))}
+                      </nav>
+
+                      {/* Meio: tudo do Notion numa leitura só */}
+                      <div className="flex min-w-0 flex-col">
+                        {secoes.length === 0 && (preview.ideia || preview.briefing || preview.roteiro || preview.cards) && (
+                          <section className="flex flex-col gap-3 pb-6">
+                            {(
+                              [
+                                ['💡 Ideia do post', preview.ideia],
+                                ['📋 Briefing', preview.briefing],
+                                ['🎙️ Roteiro', preview.roteiro],
+                                ['🗂️ Cards', preview.cards],
+                              ] as const
+                            )
+                              .filter(([, t]) => !!t)
+                              .map(([rot, t]) => (
+                                <div key={rot} className="flex flex-col gap-1">
+                                  <b className="text-[15px]">{rot}</b>
+                                  <p className="whitespace-pre-line text-[13.5px] leading-[1.55] text-[#2C2C30]">{t}</p>
+                                </div>
+                              ))}
+                          </section>
+                        )}
+                        {secoes.map((sec, k) =>
+                          /materia/i.test(sec.titulo) ? (
+                            <SecaoMateriais key={k} s={sec} id={idSec(k)} recebidos={recebidos} tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null} />
+                          ) : (
+                            <SecaoPlana key={k} s={sec} id={idSec(k)} />
+                          ),
+                        )}
+                        <section id="secao-legenda" className="flex scroll-mt-4 flex-col gap-2.5 border-t border-[#F0F0F2] py-6 first:border-0 first:pt-0">
+                          <div className="flex items-center gap-2.5 text-[16px] font-extrabold tracking-[-0.01em]">
+                            <span className="w-5 text-center">✍️</span>Legenda
+                            {preview.legenda && (
+                              <button type="button" onClick={copiarLegenda} className="ml-auto text-[12.5px] font-extrabold hover:underline">
+                                {copiado ? 'Copiada' : 'Copiar'}
+                              </button>
+                            )}
+                          </div>
+                          {preview.legenda ? (
+                            <>
+                              <p className="whitespace-pre-line text-[13.5px] leading-[1.55] text-[#111113]">{preview.legenda.replace(/(\s*#[\p{L}0-9_]+)+\s*$/u, '')}</p>
+                              {hashtags.length > 0 && (
+                                <span className="flex flex-wrap gap-1.5">
+                                  {hashtags.map((h) => (
+                                    <span key={h} className="rounded-full bg-[#E4EBDF] px-2 py-0.5 text-[11.5px] font-bold text-[#2E5520]">
+                                      {h}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-[12.5px] text-[#636369]">Sem legenda definida.</p>
+                          )}
+                        </section>
+                      </div>
+
+                      {/* Direita: arte e programação, fixas */}
+                      <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-0 lg:self-start">
                   {semArte ? (
                     <div className="flex aspect-[9/12] max-h-[420px] w-full flex-col items-center justify-center gap-1 rounded-[18px] bg-[#F7F7F8] text-center">
                       <span className="text-[28px]">{emojiDoFormato(preview.formato) ?? '📝'}</span>
@@ -894,33 +1098,6 @@ export function PreviaPostModal({
                       )}
                     </>
                   )}
-                  <section className="flex flex-col gap-2 rounded-[18px] border border-[#E9E9EB] p-4">
-                    <div className="flex items-baseline justify-between">
-                      <b className="flex items-center gap-2 text-[14px]"><span>✍️</span>Legenda</b>
-                      {preview.legenda && (
-                        <button type="button" onClick={copiarLegenda} className="text-[12.5px] font-extrabold hover:underline">
-                          {copiado ? 'Copiada' : 'Copiar'}
-                        </button>
-                      )}
-                    </div>
-                    {preview.legenda ? (
-                      <>
-                        <p className="whitespace-pre-line text-[13px] leading-[1.55] text-[#111113]">{preview.legenda.replace(/(\s*#[\p{L}0-9_]+)+\s*$/u, '')}</p>
-                        {hashtags.length > 0 && (
-                          <span className="flex flex-wrap gap-1.5">
-                            {hashtags.map((h) => (
-                              <span key={h} className="rounded-full bg-[#E4EBDF] px-2 py-0.5 text-[11.5px] font-bold text-[#2E5520]">
-                                {h}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-[12.5px] text-[#636369]">Sem legenda definida.</p>
-                    )}
-                  </section>
-
                   <CaixaProgramacao
                     postId={postId}
                     data={preview.dataPostagem}
@@ -929,41 +1106,10 @@ export function PreviaPostModal({
                     situacao={/postad|publicad/i.test(preview.status ?? '') ? 'postado' : /agendad|programad/i.test(preview.status ?? '') ? 'programado' : 'nao'}
                     feed={[]}
                   />
-                </div>
-
-                {/* Direita: tudo o que está na página do Notion, em cards */}
-                <div className="flex min-w-0 flex-col gap-4">
-                  {(preview.secoes ?? []).length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      {(preview.secoes ?? []).map((sec, i) => (
-                        <div key={i} className={secaoCurta(sec) ? '' : 'sm:col-span-2'}>
-                          <CardSecao s={sec} />
-                        </div>
-                      ))}
+                      </div>
                     </div>
-                  ) : (
-                    (preview.ideia || preview.briefing || preview.roteiro || preview.cards) && (
-                      <section className="flex flex-col gap-3 rounded-[16px] border border-[#EDEDEF] p-4">
-                        {(
-                          [
-                            ['💡 Ideia do post', preview.ideia],
-                            ['📋 Briefing', preview.briefing],
-                            ['🎙️ Roteiro', preview.roteiro],
-                            ['🗂️ Cards', preview.cards],
-                          ] as const
-                        )
-                          .filter(([, t]) => !!t)
-                          .map(([rot, t]) => (
-                            <div key={rot} className="flex flex-col gap-1">
-                              <b className="text-[13.5px]">{rot}</b>
-                              <p className="whitespace-pre-line text-[13px] leading-[1.55] text-[#2C2C30]">{t}</p>
-                            </div>
-                          ))}
-                      </section>
-                    )
-                  )}
-                </div>
-              </div>
+                  );
+                })()}
             </div>
           )}
         </div>
