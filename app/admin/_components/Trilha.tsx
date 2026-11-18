@@ -10,6 +10,8 @@ export { rotas, nomeCurtoDoProjeto } from '@/lib/rotas';
 export type ItemTrilha = { rotulo: string; href?: string };
 
 export function Trilha({ itens, className = '' }: { itens: ItemTrilha[]; className?: string }) {
+  // Página de primeiro nível (só ela mesma no caminho): o título já diz onde você está.
+  if (itens.length <= 1) return null;
   return (
     <nav aria-label="Caminho" className={`flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-t2 ${className}`}>
       {itens.map((it, i) => {

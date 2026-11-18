@@ -276,7 +276,6 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
           );
         })}
       </div>
-      <p className="-mt-2 text-[12.5px] text-[#8A8A90]">{ABAS.find((a) => a.id === aba)?.dica}</p>
 
       {grupos.length === 0 ? (
         <div className="rounded-[14px] border border-[#EDEDEF] bg-white px-5 py-10 text-center text-[13px] text-[#8A8A90]">Nada por aqui. 🎉</div>
