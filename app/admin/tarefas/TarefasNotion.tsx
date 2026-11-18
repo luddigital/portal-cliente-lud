@@ -177,7 +177,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         return (
           <span className="flex items-center gap-1.5">
             <Sinal itens={sinalDaTarefa(t, hoje)} />
-            {(t.tempo?.length ?? 0) > 0 && (
+            {!t.antes && (t.tempo?.length ?? 0) > 0 && (
               <button
                 type="button"
                 onClick={() => setTempoAberto((o) => ({ ...o, [t.id]: !o[t.id] }))}
