@@ -54,7 +54,7 @@ const soma = (iso: string, n: number) => {
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 // Botões da coluna Ação: todos do mesmo tamanho, alinhados à direita.
 /** Concluir: verde, pra ficar claro que é o botão de terminar a tarefa. */
-const BOTAO_CONCLUIR = 'inline-flex w-[136px] items-center justify-center gap-1 whitespace-nowrap rounded-full border border-[#2E7D4F] bg-[#2E7D4F] py-[5px] text-[12px] font-bold text-white hover:bg-[#256A42]';
+const BOTAO_CONCLUIR = 'inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-full border border-[#2E7D4F] bg-[#2E7D4F] px-3 py-[3px] text-[11.5px] font-bold text-white hover:bg-[#256A42]';
 const BOTAO = 'inline-flex w-[136px] items-center justify-center whitespace-nowrap rounded-full border border-[#D6D6D9] bg-white py-[5px] text-[12px] font-bold text-[#111113] hover:bg-[#F4F4F5]';
 
 export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: LinhaTarefa[]; hoje: string; pessoaInicial?: string }) {
