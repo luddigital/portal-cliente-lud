@@ -225,7 +225,7 @@ function SecaoMateriais({ s, id, tarefaId }: { s: Secao; id: string; tarefaId: s
         direita={
           arquivos.length ? (
             <span className="rounded-full bg-[#D8EDCF] px-2 py-0.5 text-[#2E5520]">{arquivos.length} {arquivos.length === 1 ? 'recebido' : 'recebidos'}</span>
-          ) : (
+          ) : textos.length ? null : (
             <span className="rounded-full bg-[#FBE3E0] px-2 py-0.5 text-[#B42318]">nada recebido ainda</span>
           )
         }
