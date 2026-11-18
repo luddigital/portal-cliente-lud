@@ -1,3 +1,4 @@
+import { waitUntil } from '@vercel/functions';
 import { Client } from '@notionhq/client';
 import { fetchDoNotion } from './notionFetch';
 import { unstable_cache, revalidateTag } from 'next/cache';
@@ -46,6 +47,27 @@ export function invalidarCachesAposMudanca() {
   // Também limpa nossos memory caches
   tarefasPorCategoriaCache.invalidate();
   postsDoMesCache.invalidate();
+  reaquecerTelasInternas();
+}
+
+/**
+ * Depois de uma mudança, refaz o cache das telas internas em segundo plano
+ * (/api/cron/aquecer-admin), pra próxima página não esperar o Notion.
+ * No máximo uma vez a cada 30 s por servidor.
+ */
+let ultimoReaquecimento = 0;
+function reaquecerTelasInternas() {
+  const secret = process.env.CRON_SECRET;
+  const base = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : process.env.NEXT_PUBLIC_APP_URL;
+  if (!secret || !base || Date.now() - ultimoReaquecimento < 30_000) return;
+  ultimoReaquecimento = Date.now();
+  // Espera 3 s pra pegar o Notion já com a mudança gravada.
+  const p = new Promise((r) => setTimeout(r, 3000)).then(() =>
+    fetch(`${base}/api/cron/aquecer-admin`, { headers: { authorization: `Bearer ${secret}` }, cache: 'no-store' }).catch(() => null),
+  );
+  try {
+    waitUntil(p);
+  } catch {}
 }
 
 /**

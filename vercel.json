@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/avisos-aprovacao",
       "schedule": "0 12,16,20 * * 1-5"
+    },
+    {
+      "path": "/api/cron/aquecer-admin",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
