@@ -441,6 +441,13 @@ function sinalDaTarefa(t: LinhaTarefa, hoje: string): import('../_ui/Avatares').
       : { icone: '📤', dica: 'Ainda não foi pro grupo', st: 'atr' },
   ];
   if (/aprova/i.test(t.titulo))
-    b.push(t.visto ? { icone: '👁', dica: 'Cliente viu o post', st: 'ok', linhas: [`Última vez ${quandoMsg(t.visto)}`] } : { icone: '👁', dica: 'Cliente ainda não abriu o post', st: 'off' });
+    // O visto só vale se for DEPOIS do último envio: senão o cliente ainda não viu o que mandamos agora.
+    b.push(
+      !t.visto
+        ? { icone: '👁', dica: 'Cliente ainda não abriu o post', st: 'off' }
+        : t.wpp.ultimo && Date.parse(t.visto) < Date.parse(t.wpp.ultimo)
+          ? { icone: '👁', dica: `Ainda não viu o envio de ${quandoMsg(t.wpp.ultimo)}`, st: 'off', linhas: [`Viu antes, ${quandoMsg(t.visto)}`] }
+          : { icone: '👁', dica: 'Cliente viu o post', st: 'ok', linhas: [`Última vez ${quandoMsg(t.visto)}`] },
+    );
   return b;
 }

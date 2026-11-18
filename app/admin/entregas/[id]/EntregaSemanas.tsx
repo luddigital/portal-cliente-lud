@@ -346,7 +346,11 @@ export function EntregaSemanas({
       if (fResp && (i.responsavel ?? i.pessoa ?? '') !== fResp) return false;
       if (fSit === 'travado') return i.relacao === 'antes';
       if (fSit === 'nao_enviado') return i.relacao !== 'antes' && comOCliente(i) && !(i.mensagens ?? []).length;
-      if (fSit === 'nao_visto') return i.relacao !== 'antes' && comOCliente(i) && !i.visto;
+      if (fSit === 'nao_visto') {
+        // Não visto = nunca abriu ou abriu antes do último envio.
+        const ult = [...(i.mensagens ?? [])].map((m) => Date.parse(m.enviadoEm)).sort((a, b) => b - a)[0];
+        return i.relacao !== 'antes' && comOCliente(i) && (!i.visto || (!!ult && Date.parse(i.visto.ultima) < ult));
+      }
       return true;
     };
     return grupos
@@ -1048,17 +1052,23 @@ function TabelaEntrega({
               linhas: i.prazoCliente ? [`Prazo do cliente: ${curta(i.prazoCliente.slice(0, 10))}`] : [],
             },
       ];
-      if (!ENTREGA_DE_MATERIAIS)
+      if (!ENTREGA_DE_MATERIAIS) {
+        // O visto só vale se for DEPOIS do último envio: senão o cliente ainda não viu o que mandamos agora.
+        const ultimoEnvio = msgs[0]?.enviadoEm ?? null;
+        const vezes = i.visto ? `${i.visto.total} ${i.visto.total === 1 ? 'visualização' : 'visualizações'}` : '';
         b.push(
-          i.visto
-            ? {
-                icone: '👁',
-                dica: 'Cliente viu o post',
-                st: 'ok',
-                linhas: [`Última vez ${quandoFoi(i.visto.ultima, hojeIso)}`, `${i.visto.total} ${i.visto.total === 1 ? 'visualização' : 'visualizações'}`],
-              }
-            : { icone: '👁', dica: 'Cliente ainda não abriu o post', st: 'off' },
+          !i.visto
+            ? { icone: '👁', dica: 'Cliente ainda não abriu o post', st: 'off' }
+            : ultimoEnvio && Date.parse(i.visto.ultima) < Date.parse(ultimoEnvio)
+              ? {
+                  icone: '👁',
+                  dica: `Ainda não viu o envio de ${quandoFoi(ultimoEnvio, hojeIso)}`,
+                  st: 'off',
+                  linhas: [`Viu antes, ${quandoFoi(i.visto.ultima, hojeIso)}`, vezes],
+                }
+              : { icone: '👁', dica: 'Cliente viu o post', st: 'ok', linhas: [`Última vez ${quandoFoi(i.visto.ultima, hojeIso)}`, vezes] },
         );
+      }
       return b;
     }
     if (i.atualPrazo && i.atualPrazo.slice(0, 10) < hojeIso) {
