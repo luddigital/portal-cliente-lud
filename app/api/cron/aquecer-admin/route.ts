@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { listAllClientes, listAllProjetos, listEntregas, listPostsNoIntervalo, listarTarefasAbertasDeTodos } from '@/lib/notion';
+import { apagarTagsDoDia, listAllClientes, listAllProjetos, listEntregas, listPostsNoIntervalo, listarTarefasAbertasDeTodos } from '@/lib/notion';
 import { carregarEntrega } from '@/lib/entrega-dados';
 import { carregarQuadro } from '@/app/admin/entregas/quadro';
 
@@ -18,6 +18,8 @@ export async function GET(req: Request) {
   if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'não autorizado' }, { status: 401 });
   }
+  // Depois de uma mudança: o Notion pode ter respondido a versão velha no primeiro refresh, então apaga e refaz.
+  if (new URL(req.url).searchParams.get('invalidar') === '1') apagarTagsDoDia();
   const t0 = Date.now();
   const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
   const [y, m] = hoje.split('-').map(Number);

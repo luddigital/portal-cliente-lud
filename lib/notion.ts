@@ -2,6 +2,7 @@ import { waitUntil } from '@vercel/functions';
 import { Client } from '@notionhq/client';
 import { fetchDoNotion } from './notionFetch';
 import { unstable_cache, revalidateTag } from 'next/cache';
+import { cookies } from 'next/headers';
 import { env } from './env';
 import { lerProjetosOcultosDoCliente } from './supabase';
 import {
@@ -40,6 +41,12 @@ const TAG_PROJETOS_OCULTOS = 'projetos-ocultos-do-cliente';
  * Invalida os caches do Next.js relacionados a dados que mudaram.
  * Chamado depois de aprovar, pedir alteração ou enviar material.
  */
+/** Usado pelo aquecimento depois de uma mudança: apaga de novo só as tags, sem reaquecer em loop. */
+export function apagarTagsDoDia() {
+  revalidateTag(TAG_TAREFAS);
+  revalidateTag(TAG_POSTS);
+}
+
 export function invalidarCachesAposMudanca() {
   revalidateTag(TAG_TAREFAS);
   revalidateTag(TAG_POSTS);
@@ -47,7 +54,41 @@ export function invalidarCachesAposMudanca() {
   // Também limpa nossos memory caches
   tarefasPorCategoriaCache.invalidate();
   postsDoMesCache.invalidate();
+  try {
+    cookies().set('lud_mudou', String(Date.now()), { maxAge: 120, path: '/' });
+  } catch {}
   reaquecerTelasInternas();
+}
+
+/** Quem acabou de mexer (cookie de 2 min) vê sempre a versão nova, sem a reserva. */
+function acabouDeMudar(): boolean {
+  try {
+    const v = Number(cookies().get('lud_mudou')?.value ?? 0);
+    return Date.now() - v < 120_000;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tarefas concluídas nos últimos 3 min por quem está usando. O Notion às vezes
+ * ainda devolve a tarefa como aberta logo depois de concluir; com isso ela some na hora.
+ */
+const COOKIE_FEITAS = 'lud_feitas';
+function lerFeitasRecentes(): Set<string> {
+  try {
+    const bruto = JSON.parse(decodeURIComponent(cookies().get(COOKIE_FEITAS)?.value ?? '[]')) as [string, number][];
+    return new Set(bruto.filter(([, t]) => Date.now() - t < 180_000).map(([id]) => id.replace(/-/g, '')));
+  } catch {
+    return new Set();
+  }
+}
+function marcarFeitaRecente(tarefaId: string) {
+  try {
+    const bruto = (JSON.parse(decodeURIComponent(cookies().get(COOKIE_FEITAS)?.value ?? '[]')) as [string, number][]).filter(([, t]) => Date.now() - t < 180_000);
+    bruto.push([tarefaId.replace(/-/g, ''), Date.now()]);
+    cookies().set(COOKIE_FEITAS, encodeURIComponent(JSON.stringify(bruto.slice(-40))), { maxAge: 180, path: '/' });
+  } catch {}
 }
 
 /**
@@ -61,9 +102,9 @@ function reaquecerTelasInternas() {
   const base = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : process.env.NEXT_PUBLIC_APP_URL;
   if (!secret || !base || Date.now() - ultimoReaquecimento < 30_000) return;
   ultimoReaquecimento = Date.now();
-  // Espera 3 s pra pegar o Notion já com a mudança gravada.
-  const p = new Promise((r) => setTimeout(r, 3000)).then(() =>
-    fetch(`${base}/api/cron/aquecer-admin`, { headers: { authorization: `Bearer ${secret}` }, cache: 'no-store' }).catch(() => null),
+  // Espera 5 s pra pegar o Notion já com a mudança gravada.
+  const p = new Promise((r) => setTimeout(r, 5000)).then(() =>
+    fetch(`${base}/api/cron/aquecer-admin?invalidar=1`, { headers: { authorization: `Bearer ${secret}` }, cache: 'no-store' }).catch(() => null),
   );
   try {
     waitUntil(p);
@@ -190,6 +231,7 @@ function cacheComReserva<A extends any[], R>(
   const principal = unstable_cache(fn, chave, opcoes);
   const reserva = unstable_cache(fn, [...chave, 'reserva'], { revalidate: 120 });
   return async (...args: A) => {
+    if (acabouDeMudar()) return principal(...args);
     const p = principal(...args);
     const rapido = await Promise.race([p.then((v) => ({ v })), new Promise<null>((r) => setTimeout(() => r(null), 1500))]);
     if (rapido) return rapido.v;
@@ -4433,6 +4475,7 @@ export async function reabrirTarefa(tarefaId: string, status: string): Promise<v
 }
 
 export async function concluirTarefa(tarefaId: string): Promise<void> {
+  marcarFeitaRecente(tarefaId);
   if (ehTarefaDoPortal(tarefaId)) {
     await concluirTarefaDoPortal(tarefaId);
     return;
@@ -6227,7 +6270,9 @@ const _listarTarefasAbertasDeTodosCached = cacheComReserva(
 );
 
 export async function listarTarefasAbertasDeTodos(): Promise<TarefaDeTodos[]> {
-  return _listarTarefasAbertasDeTodosCached();
+  const feitas = lerFeitasRecentes();
+  const ls = await _listarTarefasAbertasDeTodosCached();
+  return feitas.size ? ls.filter((t) => !feitas.has(t.id.replace(/-/g, ''))) : ls;
 }
 
 // ---------------------------------------------------------------------------
