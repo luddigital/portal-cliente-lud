@@ -53,6 +53,8 @@ const soma = (iso: string, n: number) => {
 };
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 // Botões da coluna Ação: todos do mesmo tamanho, alinhados à direita.
+/** Concluir: verde, pra ficar claro que é o botão de terminar a tarefa. */
+const BOTAO_CONCLUIR = 'inline-flex w-[136px] items-center justify-center gap-1 whitespace-nowrap rounded-full border border-[#2E7D4F] bg-[#2E7D4F] py-[5px] text-[12px] font-bold text-white hover:bg-[#256A42]';
 const BOTAO = 'inline-flex w-[136px] items-center justify-center whitespace-nowrap rounded-full border border-[#D6D6D9] bg-white py-[5px] text-[12px] font-bold text-[#111113] hover:bg-[#F4F4F5]';
 
 export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: LinhaTarefa[]; hoje: string; pessoaInicial?: string }) {
@@ -87,7 +89,10 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
 
   const [aba, setAba] = useState<Aba>(() => (porAba.atr.length ? 'atr' : 'hoje'));
   // Abas de um dia só (Hoje, Amanhã): a data já está na aba, não repete na coluna.
-  const colunas = props_.colunas.filter((c) => !(c === 'data' && (aba === 'hoje' || aba === 'amanha')));
+  // Status vem antes do nome da tarefa (o que importa primeiro é se dá pra começar).
+  const colunas = props_.colunas
+    .filter((c) => !(c === 'data' && (aba === 'hoje' || aba === 'amanha')))
+    .sort((a, b) => (a === 'status' && b === 'tarefa' ? -1 : a === 'tarefa' && b === 'status' ? 1 : 0));
   const lista = porAba[aba];
 
   // Um bloco por pessoa (Sem responsável no fim).
@@ -160,7 +165,11 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
           </Link>
         );
       case 'status':
-        return <Pilula titulo={t.antes ? t.antes.titulo : t.titulo} />;
+        // Travada: a etapa em que o post está. Pronta: só "Iniciar" em verde, sem repetir o nome da tarefa.
+        if (t.antes) return <Pilula titulo={t.antes.titulo} />;
+        if (t.doCliente)
+          return <span className="inline-flex whitespace-nowrap rounded-full bg-[#E3ECF7] px-2.5 py-[3px] text-[12px] font-bold text-[#24466B]">Com o cliente</span>;
+        return <span className="inline-flex whitespace-nowrap rounded-full bg-[#D8EDCF] px-2.5 py-[3px] text-[12px] font-bold text-[#2E5520]">Iniciar</span>;
       case 'sinal':
         return <Sinal itens={sinalDaTarefa(t, hoje)} />;
       case 'post':
@@ -209,8 +218,8 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
             </span>
           ) : null;
         return (
-          <button type="button" onClick={() => concluir(t)} className={BOTAO}>
-            Concluir
+          <button type="button" onClick={() => concluir(t)} className={BOTAO_CONCLUIR}>
+            ✓ Concluir
           </button>
         );
     }
