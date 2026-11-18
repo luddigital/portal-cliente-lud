@@ -3087,7 +3087,7 @@ function ehHeading(b: any): boolean {
  * em negrito) abre uma seção; o que vem embaixo vira linhas. Usado no popup
  * interno do post. Seções vazias, a legenda e "Skills usadas" ficam de fora.
  */
-export type LinhaSecao = { tipo: 'p' | 'li' | 'ol'; texto: string; destaque?: boolean; negrito?: boolean };
+export type LinhaSecao = { tipo: 'p' | 'li' | 'ol' | 'arq'; texto: string; destaque?: boolean; negrito?: boolean; url?: string; arq?: 'imagem' | 'video' | 'audio' | 'link' | 'outro' };
 export type SecaoDoPost = { titulo: string; linhas: LinhaSecao[] };
 
 async function _lerSecoesDoPost(postId: string): Promise<SecaoDoPost[]> {
@@ -3109,6 +3109,21 @@ async function _lerSecoesDoPost(postId: string): Promise<SecaoDoPost[]> {
       if (atual) out.push(atual);
       continue;
     }
+    // Arquivos (foto, vídeo, áudio, PDF) e links colados viram itens da galeria da seção.
+    if (!pulando && atual && ['image', 'video', 'audio', 'file', 'pdf', 'embed', 'bookmark', 'link_preview'].includes(b.type)) {
+      const d = b[b.type] ?? {};
+      const url: string = d.file?.url ?? d.external?.url ?? d.url ?? '';
+      if (url) {
+        const nome =
+          (d.name as string) ||
+          (d.caption ?? []).map((r: any) => r.plain_text).join('').trim() ||
+          decodeURIComponent(url.split('?')[0].split('/').pop() ?? '') ||
+          'arquivo';
+        const arq = b.type === 'image' ? 'imagem' : b.type === 'video' ? 'video' : b.type === 'audio' ? 'audio' : ['embed', 'bookmark', 'link_preview'].includes(b.type) ? 'link' : 'outro';
+        atual.linhas.push({ tipo: 'arq', texto: nome, url, arq });
+      }
+      continue;
+    }
     if (pulando || !atual || !texto) continue;
     const destaque = rt.some((r: any) => r.annotations?.color && r.annotations.color !== 'default');
     const negrito = todoNegrito && texto.length <= 80;
@@ -3121,7 +3136,7 @@ async function _lerSecoesDoPost(postId: string): Promise<SecaoDoPost[]> {
   return out.filter((s) => s.linhas.length > 0);
 }
 
-const _lerSecoesDoPostCached = unstable_cache(_lerSecoesDoPost, ['secoes-do-post-v1'], { revalidate: 60, tags: [TAG_POSTS] });
+const _lerSecoesDoPostCached = unstable_cache(_lerSecoesDoPost, ['secoes-do-post-v2'], { revalidate: 60, tags: [TAG_POSTS] });
 export async function lerSecoesDoPost(postId: string): Promise<SecaoDoPost[]> {
   return _lerSecoesDoPostCached(postId);
 }

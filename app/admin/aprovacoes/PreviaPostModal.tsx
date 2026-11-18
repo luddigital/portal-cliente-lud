@@ -44,7 +44,7 @@ type Preview = {
   roteiro?: string | null;
   cards?: string | null;
   /** Seções da página do Notion (ideia, briefing, referências, informações, materiais, voice over, roteiro…). */
-  secoes?: { titulo: string; linhas: { tipo: 'p' | 'li' | 'ol'; texto: string; destaque?: boolean; negrito?: boolean }[] }[];
+  secoes?: { titulo: string; linhas: { tipo: 'p' | 'li' | 'ol' | 'arq'; texto: string; destaque?: boolean; negrito?: boolean; url?: string; arq?: 'imagem' | 'video' | 'audio' | 'link' | 'outro' }[] }[];
 };
 
 type Secao = NonNullable<Preview['secoes']>[number];
@@ -108,7 +108,7 @@ function SecaoPlana({ s, id }: { s: Secao; id: string }) {
   const linhas = linhasVisiveis(s);
   if (!linhas.length) return null;
   // Informações: cada pergunta num cartão numerado.
-  if (/informa/i.test(s.titulo) && linhas.every((l) => l.tipo !== 'p' || /\?$/.test(l.texto.trim()))) {
+  if (/informa/i.test(s.titulo) && linhas.every((l) => l.tipo === 'li' || l.tipo === 'ol' || /\?$/.test(l.texto.trim()))) {
     return (
       <section id={id} className="flex scroll-mt-4 flex-col gap-3 border-t border-[#F0F0F2] py-6 first:border-0 first:pt-0">
         <TituloSecao titulo={s.titulo} />
@@ -126,6 +126,14 @@ function SecaoPlana({ s, id }: { s: Secao; id: string }) {
   const blocos: React.ReactNode[] = [];
   for (let k = 0; k < linhas.length; k++) {
     const l = linhas[k];
+    if (l.tipo === 'arq') {
+      blocos.push(
+        <a key={k} href={l.url} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[#E2E2E5] px-2.5 py-1 text-[12.5px] font-semibold text-[#24466B] hover:bg-[#F4F4F5]">
+          {l.arq === 'imagem' ? '🖼' : l.arq === 'video' ? '🎬' : l.arq === 'audio' ? '🎙' : l.arq === 'link' ? '🔗' : '📎'} <span className="max-w-[320px] truncate">{l.texto}</span> ↗
+        </a>,
+      );
+      continue;
+    }
     if (l.tipo === 'li' || l.tipo === 'ol') {
       const grupo = [l];
       while (k + 1 < linhas.length && linhas[k + 1].tipo === l.tipo) grupo.push(linhas[++k]);
@@ -182,13 +190,14 @@ function TituloSecao({ titulo, direita }: { titulo: string; direita?: React.Reac
     <div className="flex items-center gap-2.5 text-[16px] font-extrabold tracking-[-0.01em] text-[#111113]">
       <span className="w-5 text-center">{emojiDaSecao(titulo)}</span>
       {titulo}
-      {direita && <span className="ml-auto text-[12.5px] font-semibold text-[#8A8A90]">{direita}</span>}
+      {direita && <span className="text-[12px] font-bold">{direita}</span>}
     </div>
   );
 }
-/** Materiais: o que pedimos vira quadradinho; enquanto a etapa de materiais estiver aberta, conta como não recebido. */
-function SecaoMateriais({ s, id, recebidos, tarefaId }: { s: Secao; id: string; recebidos: boolean; tarefaId: string | null }) {
-  const itens = linhasVisiveis(s).filter((l) => l.texto.trim().length > 1);
+/** Materiais: os arquivos que estão no Notion viram galeria; sem arquivo, aparece como não recebido. */
+function SecaoMateriais({ s, id, tarefaId }: { s: Secao; id: string; tarefaId: string | null }) {
+  const arquivos = s.linhas.filter((l) => l.tipo === 'arq' && l.url);
+  const textos = linhasVisiveis(s).filter((l) => l.tipo !== 'arq');
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   async function anexar(files: FileList | null) {
@@ -201,27 +210,47 @@ function SecaoMateriais({ s, id, recebidos, tarefaId }: { s: Secao; id: string; 
       const r = await fetch(`/api/admin/tarefas/${tarefaId}/anexar`, { method: 'POST', body: fd });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? `Erro ${r.status}`);
-      setMsg(`${files.length} ${files.length === 1 ? 'arquivo enviado' : 'arquivos enviados'} pro Drive do post`);
+      setMsg(`${files.length} ${files.length === 1 ? 'arquivo enviado' : 'arquivos enviados'} pro Drive`);
     } catch (e: any) {
       setMsg(e?.message ?? 'Não consegui enviar.');
     } finally {
       setEnviando(false);
     }
   }
-  const icone = (t: string) => (/foto|imagem|print/i.test(t) ? '📸' : /v[íi]deo|reels/i.test(t) ? '🎬' : /[áa]udio|voz|voice/i.test(t) ? '🎙' : /link/i.test(t) ? '🔗' : '📎');
+  const icone = (a: string | undefined) => (a === 'video' ? '🎬' : a === 'audio' ? '🎙' : a === 'link' ? '🔗' : '📎');
   return (
     <section id={id} className="flex scroll-mt-4 flex-col gap-3 border-t border-[#F0F0F2] py-6 first:border-0 first:pt-0">
-      <TituloSecao titulo={s.titulo} direita={recebidos ? <span className="text-[#2E5520]">recebidos</span> : <span className="text-[#B42318]">nada recebido ainda</span>} />
+      <TituloSecao
+        titulo={s.titulo}
+        direita={
+          arquivos.length ? (
+            <span className="rounded-full bg-[#D8EDCF] px-2 py-0.5 text-[#2E5520]">{arquivos.length} {arquivos.length === 1 ? 'recebido' : 'recebidos'}</span>
+          ) : (
+            <span className="rounded-full bg-[#FBE3E0] px-2 py-0.5 text-[#B42318]">nada recebido ainda</span>
+          )
+        }
+      />
+      {textos.map((l, k) => (
+        <p key={k} className="text-[13.5px] leading-[1.55] text-[#2C2C30]">
+          {comLinks(l.texto)}
+        </p>
+      ))}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        {itens.map((l, k) => (
-          <div key={k} className={`overflow-hidden rounded-[12px] border bg-white ${recebidos ? 'border-[#EDEDEF]' : 'border-[#EDEDEF]'}`}>
-            <div className={`relative flex aspect-[4/3] items-center justify-center text-[24px] ${recebidos ? 'bg-[#EEF4EA]' : 'border-b-[1.5px] border-dashed border-[#E2E2E5] bg-[#FAFAFB]'}`}>
-              {icone(l.texto)}
-              {recebidos && <span className="absolute right-2 top-2 flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[#2E7D4F] text-[11px] text-white">✓</span>}
+        {arquivos.map((l, k) => (
+          <a key={k} href={l.url} target="_blank" rel="noreferrer" title={l.texto} className="group overflow-hidden rounded-[12px] border border-[#EDEDEF] bg-white hover:border-[#B4B4B9]">
+            <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-[#F4F4F5] text-[24px]">
+              {l.arq === 'imagem' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={l.url} alt="" className="h-full w-full object-cover" />
+              ) : l.arq === 'video' ? (
+                <video src={l.url} preload="metadata" muted className="h-full w-full object-cover" />
+              ) : (
+                icone(l.arq)
+              )}
+              {l.arq === 'video' && <span className="absolute flex h-8 w-8 items-center justify-center rounded-full bg-[#111113]/70 text-[12px] text-white">▶</span>}
             </div>
-            <div className="px-2.5 pb-2 pt-2 text-[12.5px] font-bold leading-[1.35] text-[#111113]">{l.texto}</div>
-            <div className={`px-2.5 pb-2.5 text-[11.5px] ${recebidos ? 'text-[#2E5520]' : 'font-semibold text-[#B42318]'}`}>{recebidos ? 'recebido' : 'falta'}</div>
-          </div>
+            <div className="truncate px-2.5 py-2 text-[12px] font-semibold text-[#111113]">{l.texto}</div>
+          </a>
         ))}
         {tarefaId && (
           <label className="flex cursor-pointer flex-col overflow-hidden rounded-[12px] border-[1.5px] border-dashed border-[#B9B9BE] bg-[#FAFAFB] hover:bg-[#F4F4F5]">
@@ -963,10 +992,16 @@ export function PreviaPostModal({
                 ))}
               {aba === 'post' &&
                 (() => {
-                  const secoes = (preview.secoes ?? []).map((sec, ordem) => ({ sec, ordem })).sort((a, b) => pesoDaSecao(a.sec.titulo) - pesoDaSecao(b.sec.titulo) || a.ordem - b.ordem).map((x) => x.sec);
+                  const secoes = (preview.secoes ?? []).filter((x) => !/link.*insta|insta.*link/i.test(x.titulo)).map((sec, ordem) => ({ sec, ordem })).sort((a, b) => pesoDaSecao(a.sec.titulo) - pesoDaSecao(b.sec.titulo) || a.ordem - b.ordem).map((x) => x.sec);
                   const idSec = (k: number) => `secao-${k}`;
                   const materiaisTarefa = fluxo.find((t) => /materia/i.test(t.titulo) && !/aprova/i.test(t.titulo)) ?? null;
-                  const recebidos = !!materiaisTarefa && !materiaisTarefa.aberta;
+                  // Seção "Link Instagram" do Notion: vira o cartão do Instagram na direita (não repete no meio).
+                  const linkIg =
+                    (preview.secoes ?? [])
+                      .filter((x) => /link.*insta|insta.*link/i.test(x.titulo))
+                      .flatMap((x) => x.linhas.map((l) => l.url ?? l.texto.replace(/^https?:\s+\/\//i, (m) => m.replace(/\s+/g, ''))))
+                      .map((t) => t.match(/https?:\/\/\S*instagram\.com\/\S+/i)?.[0])
+                      .find(Boolean) ?? null;
                   const indice = [
                     ...secoes.map((sec, k) => ({ id: idSec(k), titulo: sec.titulo })),
                   ];
@@ -1006,8 +1041,8 @@ export function PreviaPostModal({
                           </section>
                         )}
                         {secoes.map((sec, k) =>
-                          /materia/i.test(sec.titulo) ? (
-                            <SecaoMateriais key={k} s={sec} id={idSec(k)} recebidos={recebidos} tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null} />
+                          /^materiais$/i.test(sec.titulo.trim()) ? (
+                            <SecaoMateriais key={k} s={sec} id={idSec(k)} tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null} />
                           ) : (
                             <SecaoPlana key={k} s={sec} id={idSec(k)} />
                           ),
@@ -1112,9 +1147,9 @@ export function PreviaPostModal({
                             <p className="text-[12.5px] text-[#636369]">Sem legenda definida.</p>
                           )}
                         </section>
-                        {handle && handle !== 'Projeto' && (
+                        {(linkIg || (handle && handle !== 'Projeto')) && (
                           <a
-                            href={`https://www.instagram.com/${handle.replace(/^@/, '')}/`}
+                            href={linkIg ?? `https://www.instagram.com/${(handle ?? '').replace(/^@/, '')}/`}
                             target="_blank"
                             rel="noreferrer"
                             className="flex items-center gap-3 rounded-[16px] border border-[#E9E9EB] p-3 hover:bg-[#FAFAFB]"
@@ -1123,8 +1158,8 @@ export function PreviaPostModal({
                               ◎
                             </span>
                             <span className="flex min-w-0 flex-col">
-                              <b className="truncate text-[13.5px] text-[#111113]">{handle}</b>
-                              <span className="text-[12px] text-[#8A8A90]">ver o perfil no Instagram</span>
+                              <b className="truncate text-[13.5px] text-[#111113]">{linkIg ? 'Ver o post no Instagram' : handle}</b>
+                              <span className="truncate text-[12px] text-[#8A8A90]">{linkIg ? `${handle ?? ''} · ${/\/reel\//.test(linkIg) ? 'reel' : 'post'}` : 'ver o perfil no Instagram'}</span>
                             </span>
                             <span className="ml-auto text-[13px] font-extrabold text-[#111113]">↗</span>
                           </a>
