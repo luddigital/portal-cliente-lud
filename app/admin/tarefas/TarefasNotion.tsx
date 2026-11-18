@@ -145,7 +145,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       });
   }
 
-  const LARG: Partial<Record<Coluna, string>> = { data: 'w-[76px]', tarefa: 'w-[260px]', status: 'w-[230px]', projeto: 'w-[68px] text-center', pessoa: 'w-[60px] text-center', sinal: 'w-[92px]', acao: 'w-[160px]' };
+  const LARG: Partial<Record<Coluna, string>> = { data: 'w-[76px]', tarefa: 'w-[290px]', status: 'w-[210px]', projeto: 'w-[68px] text-center', pessoa: 'w-[60px] text-center', sinal: 'w-[92px]', acao: 'w-[160px]' };
   const celula = (c: Coluna, t: LinhaTarefa) => {
     switch (c) {
       case 'data': {
@@ -160,7 +160,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       case 'tarefa':
         // Igual ao Notion: o nome da tarefa em texto. Travada fica em cinza.
         return (
-          <Link href={rotas.tarefa(t.id)} className={`block truncate text-[13.5px] hover:underline ${t.antes ? 'font-medium text-[#A1A1A8]' : 'font-semibold text-[#111113]'}`}>
+          <Link href={rotas.tarefa(t.id)} title={t.titulo} className={`block text-[13.5px] leading-[1.35] hover:underline ${t.antes ? 'font-medium text-[#A1A1A8]' : 'font-semibold text-[#111113]'}`}>
             {t.titulo}
           </Link>
         );
@@ -178,7 +178,8 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
             type="button"
             onMouseEnter={() => prefetchPrevia(t.postId)}
             onClick={() => t.postId && setPrevia({ postId: t.postId, tarefaId: t.id })}
-            className="text-left text-[13px] text-[#2C2C30] underline decoration-[#D6D6D9] underline-offset-[3px] hover:text-[#111113]"
+            title={t.postTitulo ?? 'Post'}
+            className="block w-full truncate text-left text-[13px] text-[#2C2C30] underline decoration-[#D6D6D9] underline-offset-[3px] hover:text-[#111113]"
           >
             {t.postTitulo ?? 'Post'}
           </button>
@@ -364,7 +365,7 @@ const quandoMsg = (iso: string) => {
 function Pilula({ titulo }: { titulo: string }) {
   const c = corDaEtapa(titulo);
   return (
-    <span className="shrink-0 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11.5px] font-bold" style={{ background: c.bg, color: c.fg }}>
+    <span title={titulo} className="inline-block max-w-full truncate whitespace-nowrap rounded-full px-2.5 py-[3px] align-middle text-[11.5px] font-bold" style={{ background: c.bg, color: c.fg }}>
       {titulo}
     </span>
   );
