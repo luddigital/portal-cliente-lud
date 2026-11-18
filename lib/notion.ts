@@ -176,6 +176,32 @@ function semTarefasDeEntrega<R>(r: R): R {
  * Mede quanto uma leitura grande leva quando NÃO está no cache (o que roda
  * dentro do unstable_cache). Aparece nos logs da Vercel como [tempo].
  */
+/**
+ * Cache com reserva. Igual ao unstable_cache, mas quando o cache principal foi
+ * apagado por uma mudança (concluir, enviar, Atualizar) e o Notion demora, devolve
+ * em 1,5 s a última versão guardada (reserva, renova sozinha a cada 2 min) em vez
+ * de travar a página 15 s. A consulta nova continua rodando e entra no cache.
+ */
+function cacheComReserva<A extends any[], R>(
+  fn: (...args: A) => Promise<R>,
+  chave: string[],
+  opcoes: { revalidate: number; tags?: string[] },
+): (...args: A) => Promise<R> {
+  const principal = unstable_cache(fn, chave, opcoes);
+  const reserva = unstable_cache(fn, [...chave, 'reserva'], { revalidate: 120 });
+  return async (...args: A) => {
+    const p = principal(...args);
+    const rapido = await Promise.race([p.then((v) => ({ v })), new Promise<null>((r) => setTimeout(() => r(null), 1500))]);
+    if (rapido) return rapido.v;
+    try {
+      waitUntil(p.catch(() => null));
+    } catch {}
+    const r = reserva(...args);
+    // O que chegar primeiro: a reserva (quase sempre na hora) ou a consulta nova.
+    return Promise.any([r, p]).catch(() => p);
+  };
+}
+
 function medido<A extends any[], R>(nome: string, fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
   return async (...args: A) => {
     const inicio = Date.now();
@@ -554,7 +580,7 @@ async function _listAllClientesUncached(): Promise<ClienteResumo[]> {
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
-const _listAllClientesCached = unstable_cache(
+const _listAllClientesCached = cacheComReserva(
   medido('lista de clientes', _listAllClientesUncached),
   ['list-all-clientes-v3-ativos'],
   { revalidate: 300, tags: [TAG_CLIENTES] }, // 5 min
@@ -863,7 +889,7 @@ async function _listAllProjetosUncached(): Promise<ProjetoListItem[]> {
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
-const _listAllProjetosCached = unstable_cache(
+const _listAllProjetosCached = cacheComReserva(
   medido('lista de projetos', _listAllProjetosUncached),
   ['list-all-projetos-v2-ativos'],
   { revalidate: 300, tags: [TAG_CLIENTES] }, // 5 min — bate com clientes
@@ -1418,7 +1444,7 @@ async function _listTarefasPendentesPorCategoriaUncached(
   return out;
 }
 
-const _listTarefasCached = unstable_cache(
+const _listTarefasCached = cacheComReserva(
   _listTarefasPendentesPorCategoriaUncached,
   ['tarefas-pendentes-v4-portal'],
   { revalidate: 300, tags: [TAG_TAREFAS] },
@@ -1504,7 +1530,7 @@ async function _listEntregasUncached(): Promise<EntregaItem[]> {
   });
 }
 
-const _listEntregasCached = unstable_cache(
+const _listEntregasCached = cacheComReserva(
   medido('lista de entregas', _listEntregasUncached),
   ['entregas-v3-dia'],
   { revalidate: 300, tags: [TAG_TAREFAS] },
@@ -1778,7 +1804,7 @@ const _getEntregaDetalheCached = unstable_cache(
   { revalidate: 60, tags: [TAG_TAREFAS] }, // 1 min
 );
 
-const _getEntregaCompletaCached = unstable_cache(
+const _getEntregaCompletaCached = cacheComReserva(
   medido('entrega (todos)', (entregaId: string) => _getEntregaDetalheUncached(entregaId, true)),
   ['get-entrega-completa-v4-postdata'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
@@ -1791,7 +1817,7 @@ export async function getEntregaCompleta(entregaId: string): Promise<EntregaDeta
   return (await _getEntregaCompletaCached(entregaId)) ?? _getEntregaDetalheUncached(entregaId, true);
 }
 
-const _getEntregaDoProjetoCached = unstable_cache(
+const _getEntregaDoProjetoCached = cacheComReserva(
   medido('entrega (projeto)', (entregaId: string, projetoId: string) => _getEntregaDetalheUncached(entregaId, true, projetoId)),
   ['get-entrega-do-projeto-v1'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
@@ -2497,7 +2523,7 @@ async function getFormatoMap(): Promise<Map<string, { name: string; tipo: 'post'
   return formatoCache;
 }
 
-const _listPostsDoMesCached = unstable_cache(
+const _listPostsDoMesCached = cacheComReserva(
   medido('posts do mês', listPostsDoMesUncached),
   ['posts-do-mes-v4-agendado'],
   { revalidate: 300, tags: [TAG_POSTS] },
@@ -2838,7 +2864,7 @@ async function listPostsNoIntervaloUncached(
   return out;
 }
 
-const _listPostsNoIntervaloCached = unstable_cache(
+const _listPostsNoIntervaloCached = cacheComReserva(
   medido('posts do período', listPostsNoIntervaloUncached),
   ['posts-intervalo-v4-agendado'],
   { revalidate: 300, tags: [TAG_POSTS] },
@@ -5791,7 +5817,7 @@ export async function listarTarefasAbertasDosPosts(postIds: string[]): Promise<M
   return new Map(entradas);
 }
 
-const _tarefasAbertasDosPostsCached = unstable_cache(
+const _tarefasAbertasDosPostsCached = cacheComReserva(
   async (idsJuntos: string) => [...(await _listarTarefasAbertasDosPosts(idsJuntos.split(','))).entries()],
   ['tarefas-abertas-dos-posts-v1'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
@@ -6194,7 +6220,7 @@ function formulaVerdadeira(prop: any): boolean {
   return false;
 }
 
-const _listarTarefasAbertasDeTodosCached = unstable_cache(
+const _listarTarefasAbertasDeTodosCached = cacheComReserva(
   medido('tarefas de todos', _listarTarefasAbertasDeTodosUncached),
   ['tarefas-abertas-de-todos-v3'],
   { revalidate: 120, tags: [TAG_TAREFAS] },
