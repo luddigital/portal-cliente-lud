@@ -33,6 +33,8 @@ type Preview = {
   formato: string;
   status: string | null;
   arquivos: Arquivo[];
+  /** Materiais do cliente: pasta de materiais do post no Drive + links de material (só equipe). */
+  materiais?: Arquivo[];
   tarefas: Tarefa[];
   colaboradores?: Record<string, string>;
   /** Só pro admin: últimas atualizações do post. */
@@ -195,9 +197,18 @@ function TituloSecao({ titulo, direita }: { titulo: string; direita?: React.Reac
   );
 }
 /** Materiais: os arquivos que estão no Notion viram galeria; sem arquivo, aparece como não recebido. */
-function SecaoMateriais({ s, id, tarefaId }: { s: Secao; id: string; tarefaId: string | null }) {
-  const arquivos = s.linhas.filter((l) => l.tipo === 'arq' && l.url);
-  const textos = linhasVisiveis(s).filter((l) => l.tipo !== 'arq');
+function SecaoMateriais({ s, id, tarefaId, drive }: { s: Secao; id: string; tarefaId: string | null; drive: Arquivo[] }) {
+  // Arquivos do Drive (pasta de materiais) + arquivos colados na seção do Notion: tudo vira item da galeria.
+  const arquivos = [
+    ...drive.map((a) => {
+      const t = tipoArquivo(a.mimeType, a.name);
+      return { tipo: 'arq' as const, texto: a.name, url: a.webViewLink, arq: (t === 'imagem' ? 'imagem' : t === 'video' ? 'video' : t === 'audio' ? 'audio' : 'outro') as 'imagem' | 'video' | 'audio' | 'outro', thumb: t === 'imagem' ? `/api/drive/preview/${a.id}` : null, driveId: a.id };
+    }),
+    ...s.linhas.filter((l) => l.tipo === 'arq' && l.url).map((l) => ({ ...l, thumb: l.arq === 'imagem' ? l.url! : null, driveId: null as string | null })),
+  ];
+  const arquivosVazios = !s.linhas.some((l) => l.tipo === 'arq') && drive.length === 0;
+  // Com arquivo na galeria, o aviso "já enviado" não precisa aparecer.
+  const textos = linhasVisiveis(s).filter((l) => l.tipo !== 'arq' && (arquivosVazios || !/j[áa] envi|aba post/i.test(l.texto)));
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   async function anexar(files: FileList | null) {
@@ -239,11 +250,11 @@ function SecaoMateriais({ s, id, tarefaId }: { s: Secao; id: string; tarefaId: s
         {arquivos.map((l, k) => (
           <a key={k} href={l.url} target="_blank" rel="noreferrer" title={l.texto} className="group overflow-hidden rounded-[12px] border border-[#EDEDEF] bg-white hover:border-[#B4B4B9]">
             <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-[#F4F4F5] text-[24px]">
-              {l.arq === 'imagem' ? (
+              {l.thumb ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={l.url} alt="" className="h-full w-full object-cover" />
+                <img src={l.thumb} alt="" className="h-full w-full object-cover" />
               ) : l.arq === 'video' ? (
-                <video src={l.url} preload="metadata" muted className="h-full w-full object-cover" />
+                <video src={l.driveId ? `/api/drive/preview/${l.driveId}` : l.url} preload="metadata" muted className="h-full w-full object-cover" />
               ) : (
                 icone(l.arq)
               )}
@@ -1042,7 +1053,14 @@ export function PreviaPostModal({
                         )}
                         {secoes.map((sec, k) =>
                           /^materiais$/i.test(sec.titulo.trim()) ? (
-                            <SecaoMateriais key={k} s={sec} id={idSec(k)} tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null} />
+                            <SecaoMateriais
+                              key={k}
+                              s={sec}
+                              id={idSec(k)}
+                              tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null}
+                              // "já enviado (aba Post)": o material é o arquivo do próprio post.
+                              drive={(preview.materiais ?? []).length ? preview.materiais! : sec.linhas.some((l) => /aba post|j[áa] envi/i.test(l.texto)) ? preview.arquivos : []}
+                            />
                           ) : (
                             <SecaoPlana key={k} s={sec} id={idSec(k)} />
                           ),

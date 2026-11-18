@@ -5,7 +5,7 @@ import { lerSecoesDoPost, lerCopyDoPost, lerInfoDoPostEsteira, getHorarioDoProje
 import { lerHistoricoComunicacao } from '@/lib/supabase';
 import { notasDoPost, tarefasClienteDoHistorico } from '@/lib/historico-post';
 import { compararNoFluxo } from '@/lib/etapas-projeto';
-import { extractDriveFileId, extractDriveFolderId, listFolderFiles } from '@/lib/drive';
+import { extractDriveFileId, extractDriveFolderId, listFolderFiles, listarMateriaisDoPost } from '@/lib/drive';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -86,13 +86,23 @@ export async function GET(
     : Promise.resolve([null, null] as const);
   // Todas as seções da página do Notion (só equipe): o popup mostra tudo, sem "ver mais".
   const secoesP = ehAdmin ? lerSecoesDoPost(params.id).catch(() => []) : Promise.resolve([]);
-  const [listas, historico, [brutas, colaboradores, comentarios], [projetoNome, hora], [info, copy], secoes] = await Promise.all([
+  // Materiais do cliente (só equipe): pasta de materiais do post no Drive + links de material do post.
+  const materiaisP: Promise<Arquivo[]> = ehAdmin
+    ? Promise.all([
+        listarMateriaisDoPost({ cliente: (post as any).projetoNome ?? '', postTitulo: post.titulo, dataPostagem: post.data })
+          .then((fs) => fs.map((f: any) => ({ id: f.id, name: f.name, mimeType: f.mimeType ?? '', webViewLink: f.webViewLink })))
+          .catch(() => [] as Arquivo[]),
+        Promise.all((post.materiaisLinks ?? []).map(arquivosDoLink)).then((l) => l.flat()).catch(() => [] as Arquivo[]),
+      ]).then(([a, b]) => [...a, ...b].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i))
+    : Promise.resolve([]);
+  const [listas, historico, [brutas, colaboradores, comentarios], [projetoNome, hora], [info, copy], secoes, materiais] = await Promise.all([
     Promise.all(post.driveLinks.map(arquivosDoLink)),
     ehAdmin ? lerHistoricoComunicacao(post.id).catch(() => historicoVazio) : Promise.resolve(historicoVazio),
     extrasP,
     projetoP,
     briefingP,
     secoesP,
+    materiaisP,
   ]);
   const arquivos: Arquivo[] = listas.flat();
   // Histórico resumido do popup: mesma montagem da página do post.
@@ -129,6 +139,7 @@ export async function GET(
       post.statusGeral ??
       post.status,
     arquivos,
+    materiais,
     tarefas,
     colaboradores: colaboradorPorPessoa,
     historico: ehAdmin ? historico : null,
