@@ -11,7 +11,7 @@ export function BotaoAtualizar({
   variante = 'menu',
 }: {
   /** menu: largura cheia no topo da sidebar · compacto: só ícone + "Atualizar". */
-  variante?: 'menu' | 'compacto';
+  variante?: 'menu' | 'compacto' | 'icone';
 }) {
   const router = useRouter();
   const [chamando, setChamando] = useState(false);
@@ -75,11 +75,13 @@ export function BotaoAtualizar({
       className={`inline-flex items-center justify-center gap-2 font-semibold transition disabled:cursor-wait ${
         variante === 'menu'
           ? 'w-full rounded-lg bg-navy px-3 py-2 text-[12.5px] text-white hover:opacity-90'
-          : 'rounded-full bg-navy px-3 py-1.5 text-[11.5px] text-white hover:opacity-90'
+          : variante === 'icone'
+            ? 'h-[38px] w-[38px] rounded-[11px] bg-navy text-white hover:opacity-90'
+            : 'rounded-full bg-navy px-3 py-1.5 text-[11.5px] text-white hover:opacity-90'
       } ${feito && !ocupado ? '!bg-[var(--prazo-em-dia)]' : ''}`}
     >
       {icone}
-      {texto}
+      {variante !== 'icone' && texto}
     </button>
   );
 }

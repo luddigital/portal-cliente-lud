@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { BotaoAtualizar } from './BotaoAtualizar';
 
 type Item = {
@@ -12,26 +13,24 @@ type Item = {
   soon?: boolean; // "em breve" — visual mais discreto
 };
 
-// Menu da proposta NOVA: Dashboard sozinho em cima e um bloco por grupo,
-// cada um recolhível. Cinza e discreto; o grupo da página atual abre sozinho.
-const HOME: Item[] = [{ label: 'Dashboard', href: '/admin', icon: 'home' }];
+// Menu: 5 itens fixos em cima e o resto em grupos recolhíveis ("Mais").
+// Fechado (padrão) fica só com os ícones; » abre, « fecha (a escolha fica salva no navegador).
+const FIXOS: Item[] = [
+  { label: 'Hoje', href: '/admin', icon: 'home' },
+  { label: 'Tarefas', href: '/admin/tarefas', icon: 'tarefas' },
+  { label: 'Entregas', href: '/admin/entregas', icon: 'entregas' },
+  { label: 'Calendário', href: '/admin/calendario', icon: 'calendario' },
+  { label: 'Projetos', href: '/admin/projetos', icon: 'projetos' },
+];
+const HOME = FIXOS;
 
 type Grupo = { titulo: string; icon: keyof typeof ICONES; itens: Item[] };
 const GRUPOS: Grupo[] = [
   {
-    titulo: 'Dia a dia',
-    icon: 'tarefas',
-    itens: [
-      { label: 'Tarefas', href: '/admin/tarefas', icon: 'tarefas' },
-      { label: 'Entregas', href: '/admin/entregas', icon: 'entregas' },
-      { label: 'Postagens', href: '/admin/postagens', icon: 'calendario' },
-      { label: 'Calendários', href: '/admin/calendario', icon: 'calendario' },
-    ],
-  },
-  {
     titulo: 'Produção',
     icon: 'esteira',
     itens: [
+      { label: 'Postagens', href: '/admin/postagens', icon: 'calendario' },
       { label: 'Esteira Copy', href: '/admin/esteira-copy', icon: 'esteira' },
       { label: 'Esteira Arte', href: '/admin/esteira-arte', icon: 'arte' },
       { label: 'Aprovações', href: '/admin/aprovacoes', icon: 'aprovacao' },
@@ -43,9 +42,9 @@ const GRUPOS: Grupo[] = [
     icon: 'clientes',
     itens: [
       { label: 'Clientes', href: '/admin/clientes', icon: 'clientes' },
-      { label: 'Projetos', href: '/admin/projetos', icon: 'projetos' },
       { label: 'Objetivos da semana', href: '/gestao', icon: 'processo' },
       { label: 'Reuniões', href: '/admin/reunioes', icon: 'calendario' },
+      { label: 'Contexto dos clientes', href: '/admin/contexto-clientes', icon: 'clientes' },
     ],
   },
   {
@@ -60,17 +59,6 @@ const GRUPOS: Grupo[] = [
     ],
   },
   {
-    titulo: 'Recursos',
-    icon: 'banco',
-    itens: [
-      { label: 'Contexto dos clientes', href: '/admin/contexto-clientes', icon: 'clientes' },
-      { label: 'Processo', href: '/admin/processo', icon: 'processo' },
-      { label: 'Playbooks', href: '/admin/playbooks', icon: 'tarefas', soon: true },
-      { label: 'Inbox de briefing', href: '/admin/inbox', icon: 'entregas', soon: true },
-      { label: 'Banco de materiais', href: '/admin/banco-de-materiais', icon: 'banco' },
-    ],
-  },
-  {
     titulo: 'Análise',
     icon: 'grafico',
     itens: [
@@ -79,7 +67,17 @@ const GRUPOS: Grupo[] = [
     ],
   },
   {
-    titulo: 'Configurações',
+    titulo: 'Recursos',
+    icon: 'banco',
+    itens: [
+      { label: 'Processo', href: '/admin/processo', icon: 'processo' },
+      { label: 'Banco de materiais', href: '/admin/banco-de-materiais', icon: 'banco' },
+      { label: 'Playbooks', href: '/admin/playbooks', icon: 'tarefas', soon: true },
+      { label: 'Inbox de briefing', href: '/admin/inbox', icon: 'entregas', soon: true },
+    ],
+  },
+  {
+    titulo: 'Ajustes',
     icon: 'ajustes',
     itens: [
       { label: 'Equipe', href: '/admin/equipe', icon: 'equipe' },
@@ -172,18 +170,18 @@ function ItemLink({ item, ativo, recuo = false }: { item: Item; ativo: boolean; 
   );
 }
 
-function BlocoGrupo({ grupo, pathname }: { grupo: Grupo; pathname: string }) {
+function BlocoGrupo({ grupo, pathname, abrirSempre }: { grupo: Grupo; pathname: string; abrirSempre?: boolean }) {
   const temAtivo = grupo.itens.some((it) => ehAtivo(pathname, it.href));
   return (
-    <details open={temAtivo} className="group rounded-[14px] border border-[#EFEFF1] bg-white p-1">
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-[10px] px-2 py-1.5 hover:bg-[#FAFAFA] [&::-webkit-details-marker]:hidden">
-        <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[7px] bg-[#F4F4F5] text-[#8A8A90]">
+    <details open={temAtivo || abrirSempre} className="group">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-[9px] px-2.5 py-[7px] text-[13px] text-[#46464B] hover:bg-[#F4F4F5] hover:text-[#111113] [&::-webkit-details-marker]:hidden">
+        <span className={temAtivo ? 'text-[#111113]' : 'text-[#8A8A90]'}>
           <NavIcon icon={grupo.icon} />
         </span>
-        <span className="flex-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#636369]">{grupo.titulo}</span>
+        <span className={`flex-1 ${temAtivo ? 'font-bold text-[#111113]' : ''}`}>{grupo.titulo}</span>
         <span className="text-[9px] text-[#B4B4B9] transition group-open:rotate-90">▶</span>
       </summary>
-      <div className="mt-0.5 flex flex-col gap-px">
+      <div className="mt-px flex flex-col gap-px">
         {grupo.itens.map((it) => (
           <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} recuo />
         ))}
@@ -192,26 +190,108 @@ function BlocoGrupo({ grupo, pathname }: { grupo: Grupo; pathname: string }) {
   );
 }
 
+const CHAVE_MENU = 'ludhub-menu-aberto';
+/** Largura do menu (fechado = só ícones). O conteúdo das páginas acompanha pela variável --sb. */
+function aplicarLargura(aberto: boolean) {
+  document.documentElement.style.setProperty('--sb', aberto ? '240px' : '68px');
+}
+
 export function Sidebar() {
   const pathname = usePathname() ?? '';
+  const [aberto, setAberto] = useState(false);
+  const [grupoPedido, setGrupoPedido] = useState<string | null>(null);
+  useEffect(() => {
+    let salvo = false;
+    try {
+      salvo = localStorage.getItem(CHAVE_MENU) === '1';
+    } catch {}
+    setAberto(salvo);
+    aplicarLargura(salvo);
+  }, []);
+  function trocar(v: boolean, grupo?: string) {
+    setAberto(v);
+    setGrupoPedido(grupo ?? null);
+    aplicarLargura(v);
+    try {
+      localStorage.setItem(CHAVE_MENU, v ? '1' : '0');
+    } catch {}
+  }
+
+  if (!aberto) {
+    // Fechado: só ícones, com o nome ao passar o mouse.
+    const Icone = ({ it }: { it: Item }) => {
+      const ativo = ehAtivo(pathname, it.href);
+      return (
+        <Link
+          href={it.href}
+          title={it.label}
+          className={`group/ic relative flex h-[38px] w-[38px] items-center justify-center rounded-[11px] transition ${ativo ? 'bg-[#EDEDEF] text-[#111113]' : 'text-[#8A8A90] hover:bg-[#F0F0F1] hover:text-[#111113]'}`}
+        >
+          <NavIcon icon={it.icon} />
+          <span className="pointer-events-none absolute left-[50px] z-50 hidden whitespace-nowrap rounded-[8px] bg-[#111113] px-2.5 py-1 text-[12px] font-bold text-white group-hover/ic:block">{it.label}</span>
+        </Link>
+      );
+    };
+    return (
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[68px] flex-col items-center gap-1.5 border-r border-[#E9E9EB] bg-[#FAFAFA] py-4 lg:flex">
+        <span className="mb-1 flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#111113] text-[12px] font-extrabold text-white">L</span>
+        <button type="button" onClick={() => trocar(true)} title="Abrir menu" className="mb-1 flex h-7 w-7 items-center justify-center rounded-[8px] border border-[#E2E2E5] bg-white text-[13px] text-[#46464B] hover:bg-[#F4F4F5]">
+          »
+        </button>
+        <BotaoAtualizar variante="icone" />
+        <div className="my-1 h-px w-7 bg-[#E9E9EB]" />
+        {FIXOS.map((it) => (
+          <Icone key={it.href} it={it} />
+        ))}
+        <div className="my-1 h-px w-7 bg-[#E9E9EB]" />
+        {GRUPOS.map((g) => {
+          const ativo = g.itens.some((it) => ehAtivo(pathname, it.href));
+          return (
+            <button
+              key={g.titulo}
+              type="button"
+              onClick={() => trocar(true, g.titulo)}
+              title={g.titulo}
+              className={`group/ic relative flex h-[38px] w-[38px] items-center justify-center rounded-[11px] transition ${ativo ? 'bg-[#EDEDEF] text-[#111113]' : 'text-[#8A8A90] hover:bg-[#F0F0F1] hover:text-[#111113]'}`}
+            >
+              <NavIcon icon={g.icon} />
+              <span className="pointer-events-none absolute left-[50px] z-50 hidden whitespace-nowrap rounded-[8px] bg-[#111113] px-2.5 py-1 text-[12px] font-bold text-white group-hover/ic:block">{g.titulo}</span>
+            </button>
+          );
+        })}
+        <form action="/api/auth/logout" method="post" className="mt-auto">
+          <button type="submit" title="Sair da conta" className="flex h-[38px] w-[38px] items-center justify-center rounded-[11px] text-[#8A8A90] hover:bg-[#F0F0F1] hover:text-[#111113]">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8" />
+              <path d="M17 16l5-4-5-4 M22 12H10" />
+            </svg>
+          </button>
+        </form>
+      </aside>
+    );
+  }
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[#E9E9EB] bg-[#FAFAFA] lg:flex">
-      <div className="flex items-center justify-between px-5 pb-3 pt-4">
-        <span className="text-[17px] font-extrabold tracking-[-0.02em] text-[#111113]">LudHub</span>
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#111113] text-[10px] font-bold text-white">LD</span>
+      <div className="flex items-center justify-between px-4 pb-3 pt-4">
+        <span className="flex items-center gap-2 text-[16px] font-extrabold tracking-[-0.02em] text-[#111113]">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#111113] text-[12px] text-white">L</span>
+          LudHub
+        </span>
+        <button type="button" onClick={() => trocar(false)} title="Fechar menu" className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-[#E2E2E5] bg-white text-[13px] text-[#46464B] hover:bg-[#F4F4F5]">
+          «
+        </button>
       </div>
       <div className="px-3 pb-2">
         <BotaoAtualizar />
       </div>
-      <nav className="flex flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3 pt-1">
-        <div className="rounded-[14px] border border-[#EFEFF1] bg-white p-1">
-          {HOME.map((it) => (
-            <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} />
-          ))}
-        </div>
+      <nav className="flex flex-1 flex-col gap-px overflow-y-auto px-3 pb-3 pt-1">
+        {FIXOS.map((it) => (
+          <ItemLink key={it.href} item={it} ativo={ehAtivo(pathname, it.href)} />
+        ))}
+        <span className="px-2.5 pb-1.5 pt-4 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#A1A1A8]">Mais</span>
         {GRUPOS.map((g) => (
-          <BlocoGrupo key={g.titulo} grupo={g} pathname={pathname} />
+          <BlocoGrupo key={g.titulo} grupo={g} pathname={pathname} abrirSempre={grupoPedido === g.titulo} />
         ))}
       </nav>
       <div className="border-t border-[#E9E9EB] px-3 py-3">
