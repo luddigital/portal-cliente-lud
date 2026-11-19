@@ -290,6 +290,56 @@ function pesoDaSecao(t: string): number {
 }
 const ehRoteiro = (t: string) => pesoDaSecao(t) === 3;
 
+/** Campo pra colar o link do Drive da arte/vídeo (vai pro "Link do Google Drive" do post no Notion). */
+function CampoLinkDrive({ postId, aoSalvar, temArte }: { postId: string; aoSalvar: () => void; temArte: boolean }) {
+  const [aberto, setAberto] = useState(!temArte);
+  const [url, setUrl] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  async function salvar() {
+    setSalvando(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/admin/post/${postId}/link-drive`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `Erro ${r.status}`);
+      setUrl('');
+      setAberto(false);
+      aoSalvar();
+    } catch (e: any) {
+      setErro(e?.message ?? 'Não consegui salvar.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+  if (!aberto)
+    return (
+      <button type="button" onClick={() => setAberto(true)} className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-dashed border-[#B9B9BE] bg-white px-3 py-2 text-[12.5px] font-bold text-[#46464B] hover:bg-[#F4F4F5]">
+        🔗 Adicionar link do Drive
+      </button>
+    );
+  return (
+    <div className="flex flex-col gap-2 rounded-[14px] border border-[#E9E9EB] bg-white p-3">
+      <span className="text-[12.5px] font-bold text-[#111113]">🔗 Link do Drive da arte</span>
+      <div className="flex gap-1.5">
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && url.trim() && salvar()}
+          placeholder="https://drive.google.com/…"
+          className="min-w-0 flex-1 rounded-[10px] border border-[#E2E2E5] px-2.5 py-1.5 text-[12.5px] outline-none focus:border-[#111113]"
+          disabled={salvando}
+        />
+        <button type="button" onClick={salvar} disabled={!url.trim() || salvando} className="rounded-[10px] bg-[#111113] px-3 text-[12px] font-extrabold text-white disabled:opacity-40">
+          {salvando ? '…' : 'Salvar'}
+        </button>
+      </div>
+      {erro && <span className="text-[11.5px] text-[#B42318]">{erro}</span>}
+      <span className="text-[11px] text-[#8A8A90]">Fica no campo "Link do Google Drive" do post no Notion.</span>
+    </div>
+  );
+}
+
 /** Lê o "Briefing do Post": objetivo, funil e o que precisamos do cliente (vão pro topo). */
 function categoriasDoBriefing(secoes: Secao[]) {
   const b = secoes.find((x) => /briefing do post/i.test(x.titulo));
@@ -1083,7 +1133,7 @@ export function PreviaPostModal({
                     <div className="flex aspect-[9/12] max-h-[420px] w-full flex-col items-center justify-center gap-1 rounded-[18px] bg-[#F7F7F8] text-center">
                       <span className="text-[28px]">{emojiDoFormato(preview.formato) ?? '📝'}</span>
                       <span className="text-[13px] font-bold text-[#46464B]">Arte ainda não anexada</span>
-                      <span className="text-[12px] text-[#8A8A90]">As tarefas do post estão na aba Tarefas.</span>
+                      <span className="text-[12px] text-[#8A8A90]">Cole o link do Drive aqui embaixo.</span>
                     </div>
                   ) : (
                     <>
@@ -1149,6 +1199,7 @@ export function PreviaPostModal({
                       )}
                     </>
                   )}
+                        <CampoLinkDrive postId={postId} temArte={!semArte} aoSalvar={() => { houveMutacao.current = true; carregar(); }} />
                         <section className="flex flex-col gap-2.5 rounded-[16px] border border-[#E9E9EB] p-4">
                           <div className="flex items-center gap-2.5 text-[14.5px] font-extrabold">
                             <span className="w-5 text-center">✍️</span>Legenda
