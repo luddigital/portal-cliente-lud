@@ -192,23 +192,17 @@ function BlocoGrupo({ grupo, pathname, abrirSempre }: { grupo: Grupo; pathname: 
 
 const CHAVE_MENU = 'ludhub-menu-aberto';
 
-/** Marca: o "Lud" com o pontinho lilás (mesmo desenho do ícone do app). */
+/** Marca da Lud. (logo oficial: "Lud" + "hub digital"; fechado, só o "Lud"). */
 function Marca({ so = false }: { so?: boolean }) {
-  if (so)
-    return (
-      <span className="relative flex h-9 w-9 items-center justify-center rounded-[11px] bg-[#151521] text-[15px] font-extrabold tracking-[-0.04em] text-white" aria-label="Lud.">
-        L<span className="absolute bottom-[9px] right-[8px] h-[5px] w-[5px] rounded-full bg-[#BAC4E6]" />
-      </span>
-    );
-  return (
-    <span className="flex items-baseline gap-1.5" aria-label="LudHub">
-      <span className="flex items-baseline text-[22px] font-extrabold leading-none tracking-[-0.05em] text-[#151521]">
-        Lud<span className="ml-[1px] inline-block h-[7px] w-[7px] rounded-full bg-[#8E9BD6]" />
-      </span>
-      <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#A1A1A8]">hub</span>
-    </span>
+  return so ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/logo-lud-marca.png" alt="Lud." className="h-auto w-[40px]" />
+  ) : (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/logo-lud.png" alt="Lud. hub digital" className="h-[44px] w-auto" />
   );
 }
+
 /** Largura do menu (fechado = só ícones). O conteúdo das páginas acompanha pela variável --sb. */
 function aplicarLargura(aberto: boolean) {
   document.documentElement.style.setProperty('--sb', aberto ? '240px' : '68px');
