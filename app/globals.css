@@ -274,3 +274,14 @@
   60% { width: 85%; }
   100% { width: 95%; background-position: 100% 50%; }
 }
+
+/* Admin no desktop: as páginas usam a largura toda (sem coluna estreita no meio e margens brancas). */
+@media (min-width: 1024px) {
+  .conteudo-admin > main.mx-auto,
+  .conteudo-admin > .mx-auto,
+  .conteudo-admin > div > main.mx-auto {
+    max-width: none !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+}

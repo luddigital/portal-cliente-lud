@@ -18,7 +18,7 @@ export default async function AdminLayout({
     <div className="min-h-screen">
       <Sidebar />
       <TopbarMobile />
-      <div className="transition-[padding] lg:pl-[var(--sb,68px)]">{children}</div>
+      <div className="conteudo-admin transition-[padding] lg:pl-[var(--sb,68px)]">{children}</div>
     </div>
   );
 }
