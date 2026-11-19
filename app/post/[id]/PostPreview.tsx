@@ -955,32 +955,44 @@ function Carousel({
   }
 
   // Mantém o slide ativo sincronizado com o scroll horizontal (drag/swipe).
+  // Só atualiza quando o deslize PARA (antes, no meio do deslize do celular, o card
+  // mudava e o efeito de baixo puxava o carrossel de volta: o cliente não conseguia passar).
+  const ativoRef = useRef(ativo);
+  ativoRef.current = ativo;
+  const veioDoDeslize = useRef(false);
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
-    let raf = 0;
+    let t: ReturnType<typeof setTimeout> | undefined;
     function onScroll() {
       if (!el) return;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
+      clearTimeout(t);
+      t = setTimeout(() => {
         if (!el) return;
         const w = el.clientWidth;
         if (w === 0) return;
         const idx = Math.round(el.scrollLeft / w);
-        if (idx !== ativo && idx >= 0 && idx < arquivos.length) setAtivo(idx);
-      });
+        if (idx !== ativoRef.current && idx >= 0 && idx < arquivos.length) {
+          veioDoDeslize.current = true;
+          setAtivo(idx);
+        }
+      }, 120);
     }
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
-      cancelAnimationFrame(raf);
+      clearTimeout(t);
       el.removeEventListener('scroll', onScroll);
     };
-  }, [ativo, arquivos.length, setAtivo]);
+  }, [arquivos.length, setAtivo]);
 
-  // Quando ativo muda por seta/teclado, scrolla pro slide certo.
+  // Quando ativo muda por seta/teclado, scrolla pro slide certo (não quando veio do próprio deslize).
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
+    if (veioDoDeslize.current) {
+      veioDoDeslize.current = false;
+      return;
+    }
     const w = el.clientWidth;
     const target = w * ativo;
     if (Math.abs(el.scrollLeft - target) > 4) {
