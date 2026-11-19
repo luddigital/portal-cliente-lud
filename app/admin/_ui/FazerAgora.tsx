@@ -73,7 +73,7 @@ export function FazerAgora({ itens, hoje, pessoas }: { itens: ItemFazerAgora[]; 
                     </td>
                     <td className="px-2 py-2.5">
                       <Link href={`/admin/tarefas/${t.id}`} title={t.post ?? t.titulo} className="block truncate text-[13px] text-[#2C2C30] hover:underline">
-                        {t.post ?? '—'}
+                        {t.post ?? t.projeto ?? '—'}
                       </Link>
                     </td>
                     <td className="w-[52px] px-2 py-2.5">{t.projeto && <AvatarProjeto handle={t.projeto} />}</td>
