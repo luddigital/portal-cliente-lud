@@ -1108,17 +1108,17 @@ function TabelaEntrega({
             {b.linhas.length === 0 ? (
               <p className="px-4 py-4 text-center text-[12.5px] text-[#A1A1A8]">Nada aqui.</p>
             ) : (
-              <table className="w-full min-w-[1100px] table-fixed border-collapse">
+              <table className="w-full min-w-[980px] table-fixed border-collapse">
                 <thead>
                   <tr className="border-b border-[#EDEDEF]">
                     <th className={`${TH} w-[76px]`}>Data</th>
                     <th className="w-[44px]" />
                     <th className={`${TH} w-[290px]`}>Status</th>
-                    <th className={`${TH} w-[380px]`}>Post</th>
+                    <th className={TH}>Post</th>
                     <th className={`${TH} w-[68px] text-center`}>Projeto</th>
                     <th className={`${TH} w-[60px] text-center`}>Resp.</th>
-                    <th className={`${TH} w-[92px]`}>Sinal</th>
-                    <th className={TH} />
+                    <th className={`${TH} w-[120px]`}>Sinal</th>
+                    <th className={`${TH} w-[170px]`} />
                   </tr>
                 </thead>
                 <tbody>
