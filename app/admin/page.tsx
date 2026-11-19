@@ -45,28 +45,139 @@ export default async function AdminPage({ searchParams }: { searchParams: { sema
   if (!session) redirect('/login');
   if (!env.auth.adminEmails.includes(session.email.trim().toLowerCase())) redirect('/');
   const hoje = hojeSP();
+  const hora = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  const esqueleto = (h: number) => <div className="animate-pulse rounded-[16px] bg-[#F0F0F1]" style={{ height: h }} />;
   return (
     <Pagina>
-      <Cabecalho eyebrow={dataPorExtenso(hoje)} titulo="Gestão de Projetos" acoes={<BotaoAtualizar variante="compacto" />} />
-      <Suspense fallback={<div className="h-[190px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
-        <EntregasDoDia aba={searchParams.dia === 'atrasos' ? 'atrasos' : 'hoje'} />
+      <Cabecalho eyebrow={dataPorExtenso(hoje)} titulo={`${saudacao}, Luiza`} acoes={<BotaoAtualizar variante="compacto" />} />
+      <Suspense fallback={<div className="grid gap-3.5 md:grid-cols-3">{esqueleto(92)}{esqueleto(92)}{esqueleto(92)}</div>}>
+        <Alertas />
       </Suspense>
-      <Suspense fallback={<div className="h-[380px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
-        <SemanaDosPosts deslocamento={Number(searchParams.semana) || 0} />
-      </Suspense>
-      <Suspense fallback={<div className="h-[420px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
-        <EntregasPendentes />
-      </Suspense>
-      <Suspense fallback={<div className="h-[420px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
-        <MesComNumeros />
-      </Suspense>
-      <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
-        <ProjetosDestaque tipo={searchParams.tipo ?? ''} />
-      </Suspense>
-      <Suspense fallback={<div className="h-[420px] animate-pulse rounded-[20px] border border-[#E9E9EB] bg-white" />}>
-        <TarefasDoDiaBloco />
-      </Suspense>
+      <Bloco titulo="✅ Fazer agora" aberto>
+        <Suspense fallback={esqueleto(360)}>
+          <TarefasDoDiaBloco />
+        </Suspense>
+      </Bloco>
+      <Bloco titulo="📁 Clientes" sub="ordenado por atraso" aberto>
+        <Suspense fallback={esqueleto(220)}>
+          <ClientesCompacto />
+        </Suspense>
+      </Bloco>
+      <Bloco titulo="📦 Entregas" sub="hoje, atrasos e as pendentes da semana" aberto={searchParams.dia === 'atrasos'}>
+        <Suspense fallback={esqueleto(190)}>
+          <EntregasDoDia aba={searchParams.dia === 'atrasos' ? 'atrasos' : 'hoje'} />
+        </Suspense>
+        <Suspense fallback={esqueleto(420)}>
+          <EntregasPendentes />
+        </Suspense>
+      </Bloco>
+      <Bloco titulo="🗓 Semana" sub="posts de cada dia" aberto={!!searchParams.semana}>
+        <Suspense fallback={esqueleto(380)}>
+          <SemanaDosPosts deslocamento={Number(searchParams.semana) || 0} />
+        </Suspense>
+      </Bloco>
+      <Bloco titulo="🔄 Mês da Lud." sub="ciclo do mês e números">
+        <Suspense fallback={esqueleto(420)}>
+          <MesComNumeros />
+        </Suspense>
+      </Bloco>
     </Pagina>
+  );
+}
+
+/** Bloco da home que abre e fecha (toggle). */
+function Bloco({ titulo, sub, aberto = false, children }: { titulo: string; sub?: string; aberto?: boolean; children: React.ReactNode }) {
+  return (
+    <details open={aberto} className="group rounded-[18px] border border-[#E9E9EB] bg-white">
+      <summary className="flex cursor-pointer list-none items-center gap-2.5 px-5 py-3.5 [&::-webkit-details-marker]:hidden">
+        <span className="text-[10px] text-[#8A8A90] transition group-open:rotate-90">▶</span>
+        <b className="text-[15px] font-extrabold text-[#111113]">{titulo}</b>
+        {sub && <span className="ml-auto text-[12.5px] font-semibold text-[#8A8A90]">{sub}</span>}
+      </summary>
+      <div className="flex flex-col gap-4 px-5 pb-5">{children}</div>
+    </details>
+  );
+}
+
+// ---------------------------------------------------------------- alertas do topo
+async function Alertas() {
+  const hoje = hojeSP();
+  const ini = hoje.slice(0, 8) + '01';
+  const [y, m] = hoje.split('-').map(Number);
+  const fim = `${hoje.slice(0, 8)}${new Date(Date.UTC(y, m, 0)).getUTCDate()}`;
+  const [{ tarefas }, posts] = await Promise.all([dados(), listPostsNoIntervalo(ini, fim).catch(() => [] as PostCalendario[])]);
+  const atrasadas = tarefas.filter((t) => t.prazo && t.prazo < hoje);
+  const deHoje = tarefas.filter((t) => t.prazo && t.prazo.slice(0, 10) === hoje);
+  const maisAntiga = atrasadas.map((t) => t.prazo!).sort()[0] ?? null;
+  const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+  const doCliente = atrasadas.filter((t) => /^aprova|materia|conte[uú]dos? pr[eé]vio/i.test(t.titulo)).length;
+  const porEtapa = Object.entries(
+    deHoje.reduce<Record<string, number>>((acc, t) => ((acc[etapaDe(t.titulo)] = (acc[etapaDe(t.titulo)] ?? 0) + 1), acc), {}),
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([e, n]) => `${n} ${e}`)
+    .join(' · ');
+  const postados = posts.filter((p) => p.etapa === 'publicado').length;
+  const pct = posts.length ? Math.round((100 * postados) / posts.length) : 0;
+  return (
+    <div className="grid gap-3.5 md:grid-cols-3">
+      <Link href="/admin/tarefas" className="flex flex-col gap-1 rounded-[16px] border border-[#F2B8B0] bg-[#FBE3E0] px-5 py-4 hover:brightness-[0.98]">
+        <b className="text-[16px] font-extrabold text-[#B42318]">🚨 {atrasadas.length} atrasadas</b>
+        <span className="text-[12.5px] text-[#7E211C]">
+          {maisAntiga ? `mais antiga ${dm(maisAntiga)}` : 'nada atrasado'}
+          {doCliente ? ` · ${doCliente} com o cliente` : ''}
+        </span>
+      </Link>
+      <Link href="/admin/tarefas" className="flex flex-col gap-1 rounded-[16px] border border-[#F5E6C8] bg-[#FFF8EC] px-5 py-4 hover:brightness-[0.98]">
+        <b className="text-[16px] font-extrabold text-[#8A5A0B]">☀️ {deHoje.length} pra hoje</b>
+        <span className="truncate text-[12.5px] text-[#7A4A0B]">{porEtapa || 'nada pra hoje'}</span>
+      </Link>
+      <Link href="/admin/postagens" className="flex flex-col gap-2 rounded-[16px] border border-[#D8EDCF] bg-[#EEF4EA] px-5 py-4 hover:brightness-[0.98]">
+        <b className="text-[16px] font-extrabold text-[#2E5520]">
+          ✓ {postados} de {posts.length} no ar
+        </b>
+        <span className="h-1.5 overflow-hidden rounded-full bg-[#D8EDCF]">
+          <span className="block h-full rounded-full bg-[#2E7D4F]" style={{ width: `${pct}%` }} />
+        </span>
+      </Link>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- clientes (compacto)
+async function ClientesCompacto() {
+  const todos = await carregarProjetos().catch(() => []);
+  const lista = [...todos].sort((a, b) => b.atr - a.atr || b.p7 - a.p7).filter((p) => p.atr > 0 || p.p7 > 0);
+  if (!lista.length) return <Vazio>Nenhum projeto com tarefa pros próximos dias.</Vazio>;
+  return (
+    <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+      {lista.map((p) => {
+        const cor = p.atr >= 3 ? '#D9564F' : p.atr > 0 ? '#D99A2B' : '#2E7D4F';
+        const nome = nomeCurtoDoProjeto(p.nome);
+        return (
+          <Link key={p.id} href={rotas.projeto(p.id)} className="flex flex-col gap-2 rounded-[14px] border border-[#EDEDEF] p-3 hover:border-[#B4B4B9]">
+            <span className="flex min-w-0 items-center gap-2.5">
+              {p.capa ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.capa} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+              ) : (
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F0F0F1] text-[11px] font-extrabold">{(nome ?? '?').replace(/^@/, '').slice(0, 2).toUpperCase()}</span>
+              )}
+              <b className="truncate text-[13.5px] text-[#111113]">{nome}</b>
+            </span>
+            <span className="h-1.5 overflow-hidden rounded-full bg-[#F0F0F1]">
+              <span className="block h-full rounded-full" style={{ width: `${Math.max(8, 100 - p.atr * 18)}%`, background: cor }} />
+            </span>
+            <span className="flex items-center justify-between text-[12px] font-bold">
+              <span style={{ color: p.atr ? '#B42318' : '#2E5520' }}>{p.atr ? `${p.atr} ${p.atr === 1 ? 'atrasada' : 'atrasadas'}` : 'em dia'}</span>
+              <span className="font-semibold text-[#8A8A90]">{p.p7} nos próx. 7 dias</span>
+            </span>
+          </Link>
+        );
+      })}
+    </div>
   );
 }
 
