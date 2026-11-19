@@ -16,7 +16,7 @@ import { BotaoAtualizar } from './_components/BotaoAtualizar';
 import { Barra, Cabecalho, Card, Pagina, Ponto, ST, Tag, TituloCard, Vazio, hojeSP, somaDias, type St } from './_ui/lud';
 import { MesDaLud } from './_ui/MesDaLud';
 import { CardProjeto, carregarProjetos } from './_ui/ProjetosCards';
-import { TarefasDoDia } from './_ui/TarefasDoDia';
+import { FazerAgora } from './_ui/FazerAgora';
 import { CalendarioSemanaHome } from './_ui/CalendarioSemanaHome';
 import { montarSemana } from './_ui/semanaHome';
 import { carregarQuadro, type LinhaCliente, type QuadroEntrega } from './entregas/quadro';
@@ -500,19 +500,12 @@ async function MesComNumeros() {
 async function TarefasDoDiaBloco() {
   const hoje = hojeSP();
   const { tarefas, handle } = await dados();
-  return (
-    <TarefasDoDia
-      hoje={hoje}
-      rotuloHoje={dataPorExtenso(hoje).split(' de ')[0]}
-      // Só o que está com " Pronto" ligado no Notion (já dá pra fazer).
-      tarefas={tarefas.filter((t) => t.pronto).map((t) => ({
-        id: t.id,
-        titulo: t.titulo,
-        post: t.postTitulo,
-        prazo: t.prazo,
-        pessoa: t.pessoa ?? 'Sem responsável',
-        projeto: handle(t),
-      }))}
-    />
-  );
+  // Só o que já dá pra fazer (" Pronto" no Notion), atrasado ou pra hoje; mais antigo primeiro.
+  const itens = tarefas
+    .filter((t) => t.pronto && t.prazo && t.prazo.slice(0, 10) <= hoje)
+    .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
+    .map((t) => ({ id: t.id, titulo: t.titulo, post: t.postTitulo, prazo: t.prazo, pessoa: t.pessoa ?? 'Sem responsável', projeto: handle(t) }));
+  const pessoas = Array.from(new Set(itens.map((t) => t.pessoa)))
+    .sort((a, b) => itens.filter((t) => t.pessoa === b).length - itens.filter((t) => t.pessoa === a).length);
+  return <FazerAgora itens={itens} hoje={hoje} pessoas={pessoas} />;
 }
