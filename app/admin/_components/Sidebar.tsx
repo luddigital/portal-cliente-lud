@@ -191,6 +191,24 @@ function BlocoGrupo({ grupo, pathname, abrirSempre }: { grupo: Grupo; pathname: 
 }
 
 const CHAVE_MENU = 'ludhub-menu-aberto';
+
+/** Marca: o "Lud" com o pontinho lilás (mesmo desenho do ícone do app). */
+function Marca({ so = false }: { so?: boolean }) {
+  if (so)
+    return (
+      <span className="relative flex h-9 w-9 items-center justify-center rounded-[11px] bg-[#151521] text-[15px] font-extrabold tracking-[-0.04em] text-white" aria-label="Lud.">
+        L<span className="absolute bottom-[9px] right-[8px] h-[5px] w-[5px] rounded-full bg-[#BAC4E6]" />
+      </span>
+    );
+  return (
+    <span className="flex items-baseline gap-1.5" aria-label="LudHub">
+      <span className="flex items-baseline text-[22px] font-extrabold leading-none tracking-[-0.05em] text-[#151521]">
+        Lud<span className="ml-[1px] inline-block h-[7px] w-[7px] rounded-full bg-[#8E9BD6]" />
+      </span>
+      <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#A1A1A8]">hub</span>
+    </span>
+  );
+}
 /** Largura do menu (fechado = só ícones). O conteúdo das páginas acompanha pela variável --sb. */
 function aplicarLargura(aberto: boolean) {
   document.documentElement.style.setProperty('--sb', aberto ? '240px' : '68px');
@@ -234,7 +252,9 @@ export function Sidebar() {
     };
     return (
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[68px] flex-col items-center gap-1.5 border-r border-[#E9E9EB] bg-[#FAFAFA] py-4 lg:flex">
-        <span className="mb-1 flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#111113] text-[12px] font-extrabold text-white">L</span>
+        <span className="mb-1">
+          <Marca so />
+        </span>
         <button type="button" onClick={() => trocar(true)} title="Abrir menu" className="mb-1 flex h-7 w-7 items-center justify-center rounded-[8px] border border-[#E2E2E5] bg-white text-[13px] text-[#46464B] hover:bg-[#F4F4F5]">
           »
         </button>
@@ -273,11 +293,8 @@ export function Sidebar() {
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[#E9E9EB] bg-[#FAFAFA] lg:flex">
-      <div className="flex items-center justify-between px-4 pb-3 pt-4">
-        <span className="flex items-center gap-2 text-[16px] font-extrabold tracking-[-0.02em] text-[#111113]">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#111113] text-[12px] text-white">L</span>
-          LudHub
-        </span>
+      <div className="flex items-center justify-between px-4 pb-4 pt-5">
+        <Marca />
         <button type="button" onClick={() => trocar(false)} title="Fechar menu" className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-[#E2E2E5] bg-white text-[13px] text-[#46464B] hover:bg-[#F4F4F5]">
           «
         </button>

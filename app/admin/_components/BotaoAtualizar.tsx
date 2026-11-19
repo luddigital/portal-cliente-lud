@@ -74,11 +74,11 @@ export function BotaoAtualizar({
       title="Relê tudo do Notion e atualiza a tela"
       className={`inline-flex items-center justify-center gap-2 font-semibold transition disabled:cursor-wait ${
         variante === 'menu'
-          ? 'w-full rounded-lg bg-navy px-3 py-2 text-[12.5px] text-white hover:opacity-90'
+          ? 'w-full rounded-[10px] border border-[#E2E2E5] bg-white px-3 py-[7px] text-[12.5px] text-[#46464B] shadow-[0_1px_2px_rgba(17,17,19,0.04)] hover:border-[#B4B4B9] hover:text-[#111113]'
           : variante === 'icone'
-            ? 'h-[38px] w-[38px] rounded-[11px] bg-navy text-white hover:opacity-90'
+            ? 'h-[34px] w-[34px] rounded-[10px] border border-[#E2E2E5] bg-white text-[#46464B] hover:border-[#B4B4B9] hover:text-[#111113]'
             : 'rounded-full bg-navy px-3 py-1.5 text-[11.5px] text-white hover:opacity-90'
-      } ${feito && !ocupado ? '!bg-[var(--prazo-em-dia)]' : ''}`}
+      } ${feito && !ocupado ? (variante === 'compacto' ? '!bg-[var(--prazo-em-dia)]' : '!border-[#9BCB8A] !bg-[#EEF4EA] !text-[#2E5520]') : ''}`}
     >
       {icone}
       {variante !== 'icone' && texto}
