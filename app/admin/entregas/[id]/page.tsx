@@ -2,7 +2,7 @@ import { ehEntregaAprovacoes } from '@/lib/entregasAprovacao';
 import { notFound, redirect } from 'next/navigation';
 import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { env } from '@/lib/env';
-import { carregarEntrega } from '@/lib/entrega-dados';
+import { carregarEntrega, type DadosDaEntrega } from '@/lib/entrega-dados';
 import { rotas } from '@/lib/rotas';
 import { getEntregaCompleta } from '@/lib/notion';
 import { Trilha } from '../../_components/Trilha';
@@ -20,7 +20,6 @@ import { lerConferencias } from '@/lib/conferencia';
 import { getHorarioDoProjeto } from '@/lib/notion';
 import { getFotoDoInstagramDoProjeto } from '@/lib/instagram';
 import { ehCriacaoDePauta } from './pautaDados';
-import { AbasDaEntrega } from './AbasDaEntrega';
 
 /** Materiais para Produção e a aprovação desses materiais ficam na mesma página. */
 const MATERIAIS = '2b5d04d23b4a8027b258c0fe766c0928';
@@ -49,34 +48,17 @@ export default async function EntregaPage({
   // Criação de Pauta tem tela própria com todos os clientes.
   const ent = await getEntregaCompleta(params.id).catch(() => null);
   // "Aprovação | Materiais para Produção" mora dentro de "Materiais para Produção", numa aba.
-  if (semTraco(params.id) === APROVACAO_MATERIAIS) redirect(`${rotas.entrega(MATERIAIS)}?aba=aprovacao`);
+  if (semTraco(params.id) === APROVACAO_MATERIAIS) redirect(rotas.entrega(MATERIAIS));
   if (semTraco(params.id) === MATERIAIS) {
+    // Uma lista só: os posts em "Aprovação | Materiais" aparecem junto, com o status deles.
     return (
       <Pagina>
         <Suspense fallback={<div className="h-[92px] animate-pulse rounded-[14px] bg-[#F0F0F1]" />}>
           <Topo id={params.id} />
         </Suspense>
-        <AbasDaEntrega
-          inicial={searchParams.aba === 'aprovacao' ? 1 : 0}
-          abas={[
-            {
-              rotulo: '📦 Materiais para produção',
-              conteudo: (
-                <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] bg-[#F0F0F1]" />}>
-                  <Semanas id={MATERIAIS} />
-                </Suspense>
-              ),
-            },
-            {
-              rotulo: '✅ Aprovação dos materiais',
-              conteudo: (
-                <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] bg-[#F0F0F1]" />}>
-                  <Semanas id={APROVACAO_MATERIAIS} />
-                </Suspense>
-              ),
-            },
-          ]}
-        />
+        <Suspense fallback={<div className="h-[520px] animate-pulse rounded-[20px] bg-[#F0F0F1]" />}>
+          <Semanas id={MATERIAIS} juntarCom={APROVACAO_MATERIAIS} />
+        </Suspense>
       </Pagina>
     );
   }
@@ -100,9 +82,13 @@ export default async function EntregaPage({
 }
 
 /** Abas por semana (atrasados, esta, próximas), DL em destaque e posts por cliente; a gestão antiga fica recolhida embaixo. */
-async function Semanas({ id }: { id: string }) {
-  const d = await carregarEntrega(id, undefined, { longo: true });
-  if (!d) notFound();
+async function Semanas({ id, juntarCom }: { id: string; juntarCom?: string }) {
+  const [principal, extra] = await Promise.all([
+    carregarEntrega(id, undefined, { longo: true }),
+    juntarCom ? carregarEntrega(juntarCom, undefined, { longo: true }).catch(() => null) : Promise.resolve(null),
+  ]);
+  if (!principal) notFound();
+  const d = extra ? juntarEntregas(principal, extra) : principal;
   const { entrega, grupos, tipo, textos, hojeIso } = d;
   const fotos = Object.fromEntries(
     await Promise.all(
@@ -234,4 +220,34 @@ async function PostsPorCliente({ id }: { id: string }) {
       )}
     </Card>
   );
+}
+
+/**
+ * Junta duas entregas na mesma lista (Materiais + Aprovação dos materiais). Um post
+ * que está nas duas aparece uma vez só: na etapa que ainda está aberta.
+ */
+function juntarEntregas(a: DadosDaEntrega, b: DadosDaEntrega): DadosDaEntrega {
+  const porProjeto = new Map(a.grupos.map((g) => [g.projetoId, { ...g, itens: [...g.itens] }]));
+  for (const g of b.grupos) {
+    const atual = porProjeto.get(g.projetoId);
+    if (atual) atual.itens.push(...g.itens);
+    else porProjeto.set(g.projetoId, { ...g, itens: [...g.itens] });
+  }
+  const grupos = [...porProjeto.values()].map((g) => {
+    const doPost = new Map<string, (typeof g.itens)[number]>();
+    const semPost: typeof g.itens = [];
+    for (const i of g.itens) {
+      if (!i.postId) {
+        semPost.push(i);
+        continue;
+      }
+      const outro = doPost.get(i.postId);
+      // Fica a etapa ainda aberta; se as duas estão feitas, a mais adiante (a aprovação, que vem depois).
+      if (!outro || (outro.enviado && !i.enviado) || (outro.enviado && i.enviado)) doPost.set(i.postId, i);
+    }
+    const itens = [...doPost.values(), ...semPost].sort((x, y) => (x.prazo ?? '9999').localeCompare(y.prazo ?? '9999'));
+    return { ...g, itens };
+  });
+  grupos.sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'));
+  return { ...a, grupos };
 }
