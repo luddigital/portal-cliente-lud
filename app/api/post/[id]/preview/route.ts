@@ -3,7 +3,7 @@ import { unstable_cache } from 'next/cache';
 import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
-import { lerSecoesDoPost, lerCopyDoPost, lerInfoDoPostEsteira, getHorarioDoProjeto, getPostComDetalhes, getProjetoNome, lerComentariosDoPost, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
+import { getProjetoColaborativoMap, lerSecoesDoPost, lerCopyDoPost, lerInfoDoPostEsteira, getHorarioDoProjeto, getPostComDetalhes, getProjetoNome, lerComentariosDoPost, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
 import { lerHistoricoComunicacao } from '@/lib/supabase';
 import { notasDoPost, tarefasClienteDoHistorico } from '@/lib/historico-post';
 import { compararNoFluxo } from '@/lib/etapas-projeto';
@@ -46,7 +46,10 @@ export async function GET(
 }
 
 /** Prévia da equipe guardada por post: abre na hora; depois de 5 min se renova sozinha por trás. */
-function previaGuardada(id: string) {
+async function previaGuardada(id: string) {
+  // Listas comuns a todos os posts lidas aqui fora (onde o cache funciona) e guardadas na memória:
+  // lá dentro o Next ignora os outros caches.
+  await Promise.all([getProjetoColaborativoMap().catch(() => null), listColaboradores().catch(() => null)]);
   return unstable_cache(() => montarPrevia(id, true), ['previa-post-v1', id], {
     revalidate: 300,
     tags: ['previas', `previa:${id.replace(/-/g, '')}`],

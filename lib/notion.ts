@@ -663,10 +663,29 @@ const _getProjetoColaborativoMapCached = unstable_cache(
   { revalidate: 300, tags: [TAG_CLIENTES] },
 );
 
+/**
+ * Guarda na memória por 5 min o resultado de uma lista que todo mundo usa. Precisa porque
+ * dentro de um cache do Next (ex.: a prévia guardada do post) os caches de dentro são ignorados
+ * e a lista seria lida do Notion de novo a cada post.
+ */
+function naMemoria<R>(fn: () => Promise<R>, ms = 300_000): () => Promise<R> {
+  let guardado: { em: number; p: Promise<R> } | null = null;
+  return () => {
+    if (guardado && Date.now() - guardado.em < ms) return guardado.p;
+    const p = fn();
+    guardado = { em: Date.now(), p };
+    p.catch(() => {
+      guardado = null;
+    });
+    return p;
+  };
+}
+
+const _colaborativoNaMemoria = naMemoria(() => _getProjetoColaborativoMapCached());
 export async function getProjetoColaborativoMap(): Promise<
   Record<string, boolean>
 > {
-  return _getProjetoColaborativoMapCached();
+  return _colaborativoNaMemoria();
 }
 
 /**
@@ -5415,8 +5434,9 @@ const _listColaboradoresCached = unstable_cache(
   { revalidate: 300, tags: [TAG_EQUIPE] }, // 5 min
 );
 
+const _colaboradoresNaMemoria = naMemoria(() => _listColaboradoresCached(), 120_000);
 export async function listColaboradores(): Promise<ColaboradorResumo[]> {
-  return _listColaboradoresCached();
+  return _colaboradoresNaMemoria();
 }
 
 export async function getColaboradorById(
