@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { unstable_cache } from 'next/cache';
+import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { lerSecoesDoPost, lerCopyDoPost, lerInfoDoPostEsteira, getHorarioDoProjeto, getPostComDetalhes, getProjetoNome, lerComentariosDoPost, listColaboradores, listarTarefasDoPost } from '@/lib/notion';
@@ -26,6 +28,33 @@ export async function GET(
   if (!session) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
 
   const ehAdmin = env.auth.adminEmails.includes(session.email.trim().toLowerCase());
+  if (ehAdmin) {
+    // Equipe: prévia guardada (o botão Atualizar recarrega todas). Quem acabou de mexer vê a versão nova.
+    const v = Number(cookies().get('lud_post_mudou')?.value ?? 0);
+    const aquecer = new URL(_req.url).searchParams.get('aquecer') === '1';
+    const dados = Date.now() - v < 120_000 && !aquecer ? await montarPrevia(params.id, true) : await previaGuardada(params.id);
+    if (!dados) return NextResponse.json({ error: 'post não encontrado' }, { status: 404 });
+    return NextResponse.json(dados);
+  }
+  const post0 = await getPostComDetalhes(params.id);
+  if (!post0) return NextResponse.json({ error: 'post não encontrado' }, { status: 404 });
+  // Permissão: cliente só vê posts dos próprios projetos.
+  if (!post0.projetoId || !session.projetoIds.includes(post0.projetoId)) {
+    return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
+  }
+  return NextResponse.json(await montarPrevia(params.id, false));
+}
+
+/** Prévia da equipe guardada por post: abre na hora; depois de 5 min se renova sozinha por trás. */
+function previaGuardada(id: string) {
+  return unstable_cache(() => montarPrevia(id, true), ['previa-post-v1', id], {
+    revalidate: 300,
+    tags: ['previas', `previa:${id.replace(/-/g, '')}`],
+  })();
+}
+
+async function montarPrevia(postId: string, ehAdmin: boolean) {
+  const params = { id: postId };
   // Tarefas, equipe e comentários só precisam do id: saem junto com o post
   // (antes era tudo em fila, um depois do outro). Tarefas internas só pra admin.
   type Extras = [
@@ -42,15 +71,7 @@ export async function GET(
     : Promise.resolve([[], [], []] as Extras);
 
   const post = await getPostComDetalhes(params.id);
-  if (!post) return NextResponse.json({ error: 'post não encontrado' }, { status: 404 });
-
-  // Permissão: admin bypassa; cliente só vê posts dos próprios projetos.
-  if (
-    !ehAdmin &&
-    (!post.projetoId || !session.projetoIds.includes(post.projetoId))
-  ) {
-    return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
-  }
+  if (!post) return null;
 
   // Resolve arquivos (igual ao fluxo da página do post), todas as pastas ao mesmo tempo.
   type Arquivo = {
@@ -122,7 +143,7 @@ export async function GET(
   for (const c of colaboradores) if (c.pessoaUserId) colaboradorPorPessoa[c.pessoaUserId] = c.id;
 
   // Nome do projeto e horário de postagem (sempre de Brasília) pra prévia.
-  return NextResponse.json({
+  return {
     titulo: post.titulo,
     projetoNome: projetoNome ?? undefined,
     hora,
@@ -150,5 +171,5 @@ export async function GET(
     roteiro: copy?.voice ?? null,
     cards: copy?.carrossel ?? null,
     secoes,
-  });
+  };
 }

@@ -220,6 +220,45 @@ export default async function PostDetalhePage({
       ? 'cliente'
       : 'interno';
 
+  // Visão Lud.: a página é só o cabeçalho + a prévia (que busca os próprios dados, guardados).
+  // Sai já, sem ler tarefas, Drive e histórico aqui (antes lia tudo isso e não usava).
+  // (String(): o resto da função continua tipado pras duas vistas.)
+  if (String(vista) === 'interno') {
+    const voltarLud =
+      typeof searchParams.voltar === 'string' && /^\/(?![\/\\])/.test(searchParams.voltar) ? searchParams.voltar : null;
+    const voltarParaLud = voltarLud ?? (ehAdmin ? (post.projetoId ? `/admin/projetos/${post.projetoId}` : '/admin') : '/');
+    const p = new URLSearchParams();
+    if (searchParams.tarefa) p.set('tarefa', searchParams.tarefa);
+    if (searchParams.from) p.set('from', searchParams.from);
+    if (voltarLud) p.set('voltar', voltarLud);
+    p.set('vista', 'cliente');
+    return (
+      <div className="min-h-screen pb-32">
+        <header className="sticky top-0 z-10 border-b border-[rgba(21,21,33,0.08)] bg-white">
+          <div className="mx-auto flex max-w-3xl lg:max-w-7xl items-center justify-between gap-3 px-6 py-3">
+            <Link href={voltarParaLud} className="flex items-center gap-2 text-[13px] text-mauve transition hover:text-ink">
+              ← Voltar
+            </Link>
+            <div className="flex items-center gap-3">
+              {ehAdmin && <BotaoAtualizar variante="compacto" />}
+              <div className="flex items-center gap-1 rounded-full bg-bgSoft p-1">
+                <Link
+                  href={`?${p.toString()}`}
+                  className="rounded-full px-3 py-1 text-[11px] font-semibold text-t3 transition hover:text-ink"
+                >
+                  Visão cliente
+                </Link>
+                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm">Visão Lud.</span>
+              </div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-t3">{post.projetoNome}</div>
+            </div>
+          </div>
+        </header>
+        <PreviaPostModal postId={post.id} tarefaId={searchParams.tarefa ?? null} pagina />
+      </div>
+    );
+  }
+
   // O que não depende da tarefa sai já, junto com a detecção da tarefa
   // (antes ia em fila: tarefa → sidebar → Drive). Cada busca tem o próprio
   // catch: a promessa fica esperando enquanto a tarefa é lida.

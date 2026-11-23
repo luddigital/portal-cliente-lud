@@ -56,6 +56,8 @@ export function invalidarCachesAposMudanca() {
   postsDoMesCache.invalidate();
   try {
     cookies().set('lud_mudou', String(Date.now()), { maxAge: 120, path: '/' });
+    // Prévias de post: quem acabou de mexer vê a versão nova (o Atualizar apaga esse, porque já recarrega tudo).
+    cookies().set('lud_post_mudou', String(Date.now()), { maxAge: 120, path: '/' });
   } catch {}
   reaquecerTelasInternas();
 }
