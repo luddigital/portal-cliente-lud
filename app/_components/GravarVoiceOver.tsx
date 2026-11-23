@@ -28,14 +28,22 @@ function fmtTempo(s: number): string {
 }
 
 export function GravarVoiceOver({
-  texto,
+  texto: textoInicial,
   onGravacao,
+  tarefaIdParaEditar,
 }: {
   /** Roteiro (voice over). Quando vazio/ausente vira "mensagem de voz livre"
    *  — só botão de gravar, sem teleprompter. */
   texto?: string;
   onGravacao: (file: File) => void;
+  /** Com a tarefa: a cliente pode editar o texto (salva no Notion e avisa a equipe). */
+  tarefaIdParaEditar?: string;
 }) {
+  const [texto, setTexto] = useState(textoInicial);
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
   const frases = texto ? dividirEmFrases(texto) : [];
   const modoLivre = frases.length === 0;
   const [idx, setIdx] = useState(0);
@@ -172,6 +180,30 @@ export function GravarVoiceOver({
     setIdx(0);
   }
 
+  async function salvarTexto() {
+    const novo = rascunho.trim();
+    if (!novo || !tarefaIdParaEditar) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      const res = await fetch(`/api/tarefas/${tarefaIdParaEditar}/texto-gravacao`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ texto: novo }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? 'Não deu pra salvar. Tenta de novo.');
+      setTexto(novo);
+      setIdx(0);
+      setEditando(false);
+      setSalvo(true);
+    } catch (e: any) {
+      setErro(e?.message ?? 'Não deu pra salvar. Tenta de novo.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   const fraseAtual = modoLivre ? null : frases[idx];
   const fraseAnterior = !modoLivre && idx > 0 ? frases[idx - 1] : null;
   const fraseProxima =
@@ -203,7 +235,20 @@ export function GravarVoiceOver({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {!gravando && !previewUrl && (
+          {!modoLivre && tarefaIdParaEditar && !gravando && !editando && (
+            <button
+              type="button"
+              onClick={() => {
+                setRascunho(texto ?? '');
+                setEditando(true);
+                setSalvo(false);
+              }}
+              className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-3 py-1.5 text-[12px] font-medium text-ink transition hover:bg-bgSoft"
+            >
+              ✏️ Editar texto
+            </button>
+          )}
+          {!gravando && !previewUrl && !editando && (
             <button
               type="button"
               onClick={iniciar}
@@ -243,8 +288,38 @@ export function GravarVoiceOver({
         </div>
       )}
 
+      {/* edição do texto pela cliente */}
+      {editando && (
+        <div className="px-5 py-5 sm:px-8">
+          <textarea
+            value={rascunho}
+            onChange={(e) => setRascunho(e.target.value)}
+            rows={10}
+            className="input resize-y text-[14px] leading-relaxed"
+          />
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditando(false)}
+              disabled={salvando}
+              className="rounded-full border border-[rgba(21,21,33,0.1)] bg-white px-4 py-2 text-[12px] font-medium text-ink transition hover:bg-bgSoft"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={salvarTexto}
+              disabled={salvando || !rascunho.trim()}
+              className="rounded-full bg-ink px-4 py-2 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+            >
+              {salvando ? 'Salvando…' : 'Salvar texto'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* teleprompter — só quando há roteiro */}
-      {!modoLivre && (
+      {!modoLivre && !editando && (
         <div className="px-5 py-6 sm:px-8 sm:py-8">
           {fraseAnterior && (
             <p className="line-clamp-2 text-[14px] leading-relaxed text-t3/70">
@@ -301,7 +376,9 @@ export function GravarVoiceOver({
           </p>
         )}
         <p className="text-[11px] text-t3">
-          {gravando
+          {salvo && !gravando && !previewUrl
+            ? 'Texto salvo. A equipe já recebeu a sua versão.'
+            : gravando
             ? 'Gravando… passa pra próxima frase conforme for lendo.'
             : previewUrl
               ? 'Pronto! A gravação já vai junto no envio. Se quiser refazer, clica em ↻ Regravar.'

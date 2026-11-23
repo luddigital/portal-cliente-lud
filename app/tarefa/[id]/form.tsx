@@ -390,6 +390,7 @@ export function TarefaForm({
   tituloUpload = 'Fotos, vídeos e áudios',
   ajudaUpload = 'Pode mandar quantos arquivos quiser, inclusive áudios.',
   textoVoiceOver,
+  textoEditavel,
   permitirGravarVoz = false,
   naoFinalizarTarefa = false,
 }: {
@@ -403,6 +404,8 @@ export function TarefaForm({
   tituloUpload?: string;
   ajudaUpload?: string;
   textoVoiceOver?: string;
+  /** A cliente pode editar o texto de gravação (Materiais para Produção). */
+  textoEditavel?: boolean;
   /** Quando true, mostra o gravador mesmo sem roteiro — modo "mensagem de voz". */
   permitirGravarVoz?: boolean;
   /** Quando true, envia arquivos + comentários mas NÃO fecha a tarefa
@@ -703,6 +706,7 @@ export function TarefaForm({
         <GravarVoiceOver
           texto={textoVoiceOver?.trim() || undefined}
           onGravacao={adicionarGravacao}
+          tarefaIdParaEditar={textoEditavel ? tarefaId : undefined}
         />
       ) : null}
 

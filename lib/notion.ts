@@ -6764,3 +6764,51 @@ export async function cardDaEsteiraPorTarefa(tarefaId: string): Promise<CardEste
     coluna,
   };
 }
+
+/**
+ * A cliente editou o texto de gravação (voice over) na tela de materiais: troca os
+ * parágrafos da callout "Texto para gravação…" do post pelo texto novo.
+ * Devolve o texto antigo (pro comentário da equipe) ou null se não achou a callout.
+ */
+export async function trocarTextoDeGravacao(postId: string, novo: string): Promise<string | null> {
+  const ehCalloutDoTexto = (b: any) =>
+    (b.type === 'callout' || b.type === 'quote') && /texto (para|pra) grava|voice ?over/i.test(rtTexto(b));
+  async function achar(parentId: string, nivel = 0): Promise<any | null> {
+    if (nivel > 4) return null;
+    const r = await notion.blocks.children.list({ block_id: parentId, page_size: 100 });
+    const blocos = r.results as any[];
+    const alvo = blocos.find(ehCalloutDoTexto);
+    if (alvo) return alvo;
+    for (const b of blocos) {
+      if (b.has_children && b.type !== 'child_page' && b.type !== 'child_database') {
+        const x = await achar(b.id, nivel + 1);
+        if (x) return x;
+      }
+    }
+    return null;
+  }
+  const callout = await achar(postId);
+  if (!callout) return null;
+  const filhos = callout.has_children
+    ? ((await notion.blocks.children.list({ block_id: callout.id, page_size: 100 })).results as any[])
+    : [];
+  const antigo = filhos.map((f) => rtTexto(f)).filter(Boolean).join('\n\n');
+  // Parágrafos novos (linha em branco separa), em pedaços de até 2000 caracteres.
+  const paragrafos = novo
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => ({
+      object: 'block' as const,
+      type: 'paragraph' as const,
+      paragraph: {
+        rich_text: (p.match(/[\s\S]{1,2000}/g) ?? []).map((pedaco) => ({ type: 'text' as const, text: { content: pedaco } })),
+      },
+    }));
+  // Primeiro coloca o novo, depois apaga o antigo: se falhar no meio, nada some.
+  await notion.blocks.children.append({ block_id: callout.id, children: paragrafos as any });
+  for (const f of filhos) {
+    await notion.blocks.delete({ block_id: f.id }).catch(() => null);
+  }
+  return antigo;
+}

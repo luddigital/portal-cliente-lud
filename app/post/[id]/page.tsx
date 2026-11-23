@@ -708,6 +708,7 @@ export default async function PostDetalhePage({
                         : 'Quantos arquivos quiser. Também dá pra gravar uma mensagem de voz aqui.',
                       textoBotao: 'Enviar materiais',
                       textoVoiceOver: roteiroParaGravacao || undefined,
+                      textoEditavel: true,
                     }
                   : sub === 'stories'
                     ? {
