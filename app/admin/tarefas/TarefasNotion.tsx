@@ -276,6 +276,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         </div>
       </details>
 
+      <span className="flex items-center gap-2">
       <button
         type="button"
         onClick={() => setSoProntas((v) => !v)}
@@ -286,6 +287,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       </button>
 
       <MenuPropriedades disponiveis={['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']} {...props_} />
+      </span>
       </div>
 
       {/* Abas */}
