@@ -8,12 +8,26 @@ let carga: { feitos: number; total: number } | null = null;
 const ouvintes = new Set<() => void>();
 const avisar = () => ouvintes.forEach((f) => f());
 
+const CHAVE_ULTIMA = 'lud-ultima-atualizacao';
+
 async function carregarPrevias() {
   if (carga) return;
   carga = { feitos: 0, total: 0 };
   avisar();
   try {
-    const { ids } = (await (await fetch('/api/admin/posts-em-aberto')).json()) as { ids: string[] };
+    // Da 2ª vez em diante, só os posts que mudaram desde o último Atualizar.
+    let desde: string | null = null;
+    try {
+      desde = window.localStorage.getItem(CHAVE_ULTIMA);
+    } catch {}
+    const agora = new Date().toISOString();
+    const url = desde ? `/api/admin/posts-mudados?desde=${encodeURIComponent(desde)}` : '/api/admin/posts-em-aberto';
+    const r = await fetch(url);
+    if (!r.ok) throw new Error();
+    const { ids } = (await r.json()) as { ids: string[] };
+    try {
+      window.localStorage.setItem(CHAVE_ULTIMA, agora);
+    } catch {}
     carga.total = ids.length;
     avisar();
     let i = 0;

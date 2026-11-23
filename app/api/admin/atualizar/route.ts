@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { revalidateTag } from 'next/cache';
 import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth';
 import { invalidarDadosDoDia, invalidarTudo } from '@/lib/notion';
@@ -52,7 +51,7 @@ export async function POST() {
     return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   }
   invalidarDadosDoDia();
-  revalidateTag('previas');
+  // As prévias dos posts não são apagadas aqui: o botão recarrega só as que mudaram (/api/admin/posts-mudados).
   // As prévias vão ser recarregadas pelo botão: não precisa ler cada uma sem guardar.
   cookies().delete('lud_post_mudou');
   return NextResponse.json({ ok: true });

@@ -6812,3 +6812,27 @@ export async function trocarTextoDeGravacao(postId: string, novo: string): Promi
   }
   return antigo;
 }
+
+/**
+ * Posts que mudaram no Notion desde `desdeIso`: o próprio post editado ou alguma
+ * tarefa dele (etapa concluída, prazo, responsável…). Usado pelo botão Atualizar
+ * pra recarregar só o que mudou, e não todos os posts toda vez.
+ */
+export async function postsEditadosDesde(desdeIso: string): Promise<string[]> {
+  const ids = new Set<string>();
+  const filtro = { timestamp: 'last_edited_time', last_edited_time: { on_or_after: desdeIso } } as any;
+  const varrer = async (database_id: string, pegar: (p: any) => string[]) => {
+    let cursor: string | undefined;
+    let voltas = 0;
+    do {
+      const r: any = await notion.databases.query({ database_id, filter: filtro, page_size: 100, start_cursor: cursor });
+      for (const p of r.results) for (const id of pegar(p)) ids.add(id);
+      cursor = r.has_more ? r.next_cursor ?? undefined : undefined;
+    } while (cursor && ++voltas < 10);
+  };
+  await Promise.all([
+    varrer(env.notion.postagensDbId, (p) => [p.id]),
+    varrer(env.notion.tarefasDbId, (t) => (getProp(t, env.notion.taskProps.post)?.relation ?? []).map((r: any) => r.id)),
+  ]);
+  return [...ids];
+}
