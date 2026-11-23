@@ -271,6 +271,8 @@ export type DriveFileResumido = {
   webViewLink: string;
   thumbnailLink: string | null;
   isFolder: boolean;
+  /** Quando o arquivo chegou no Drive (ISO). */
+  criadoEm?: string | null;
 };
 
 export function extractDriveFolderId(url: string): string | null {
@@ -334,7 +336,7 @@ export async function listFolderFiles(folderId: string): Promise<DriveFileResumi
   const drive = driveClient();
   const res = await drive.files.list({
     q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id,name,mimeType,webViewLink,thumbnailLink)',
+    fields: 'files(id,name,mimeType,webViewLink,thumbnailLink,createdTime)',
     pageSize: 200,
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
@@ -347,6 +349,7 @@ export async function listFolderFiles(folderId: string): Promise<DriveFileResumi
     id: f.id!,
     name: f.name ?? 'arquivo',
     mimeType: f.mimeType ?? '',
+    criadoEm: f.createdTime ?? null,
     webViewLink: f.webViewLink ?? `https://drive.google.com/file/d/${f.id}/view`,
     thumbnailLink: f.thumbnailLink ?? null,
     isFolder: f.mimeType === 'application/vnd.google-apps.folder',

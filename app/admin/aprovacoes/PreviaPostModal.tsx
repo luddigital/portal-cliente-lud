@@ -21,6 +21,8 @@ type Arquivo = {
   name: string;
   mimeType: string;
   webViewLink: string;
+  /** Quando chegou no Drive. */
+  criadoEm?: string | null;
 };
 type Tarefa = TarefaDoPost & { pessoa: string | null };
 type Preview = {
@@ -197,6 +199,93 @@ function TituloSecao({ titulo, direita }: { titulo: string; direita?: React.Reac
   );
 }
 /** Materiais: os arquivos que estão no Notion viram galeria; sem arquivo, aparece como não recebido. */
+/** "hoje 17:06", "ontem 09:10", "21/11 14:02" (horário de São Paulo). */
+function quandoCurto(iso: string): string {
+  const fmt = (d: Date, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', ...o }).format(d);
+  const d = new Date(iso);
+  const dia = fmt(d, { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const hora = fmt(d, { hour: '2-digit', minute: '2-digit' });
+  const hoje = fmt(new Date(), { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const ontem = fmt(new Date(Date.now() - 86_400_000), { year: 'numeric', month: '2-digit', day: '2-digit' });
+  return dia === hoje ? `hoje ${hora}` : dia === ontem ? `ontem ${hora}` : `${dia.slice(0, 5)} ${hora}`;
+}
+
+/** Envios de arquivo do cliente: arquivos que chegaram com menos de 2h de diferença viram um envio só. */
+function enviosDeArquivos(arquivos: Arquivo[]): { quando: string; arquivos: Arquivo[] }[] {
+  const comData = arquivos.filter((a) => a.criadoEm).sort((a, b) => Date.parse(b.criadoEm!) - Date.parse(a.criadoEm!));
+  const lotes: { quando: string; arquivos: Arquivo[] }[] = [];
+  for (const a of comData) {
+    const ult = lotes[lotes.length - 1];
+    const ultimoDoLote = ult ? Date.parse(ult.arquivos[ult.arquivos.length - 1].criadoEm!) : 0;
+    if (ult && ultimoDoLote - Date.parse(a.criadoEm!) < 2 * 3_600_000) ult.arquivos.push(a);
+    else lotes.push({ quando: a.criadoEm!, arquivos: [a] });
+  }
+  const semData = arquivos.filter((a) => !a.criadoEm);
+  if (semData.length) lotes.push({ quando: '', arquivos: semData });
+  return lotes;
+}
+
+/** A última coisa que aconteceu no post (o que o Notion mostra lá embaixo nos comentários). */
+function ultimoUpdate(p: Preview): { quando: string; texto: string } | null {
+  const ev: { quando: string; texto: string }[] = [];
+  const lote = enviosDeArquivos(p.materiais ?? []).find((l) => l.quando);
+  if (lote) ev.push({ quando: lote.quando, texto: `Chegaram ${lote.arquivos.length} ${lote.arquivos.length === 1 ? 'arquivo' : 'arquivos'} de material` });
+  for (const n of p.notas ?? []) if (n.quando) ev.push({ quando: n.quando, texto: n.titulo || 'Comentário' });
+  for (const t of p.tarefas ?? []) if (t.finalizadaEm) ev.push({ quando: t.finalizadaEm, texto: `${t.titulo} concluída` });
+  for (const e of p.historico?.envios ?? []) ev.push({ quando: e.enviadoEm, texto: 'Mensagem no grupo do cliente' });
+  for (const v of p.historico?.visualizacoes ?? []) ev.push({ quando: v.vistoEm, texto: 'Cliente abriu o post' });
+  const ok = ev.filter((e) => !Number.isNaN(Date.parse(e.quando)));
+  return ok.sort((a, b) => Date.parse(b.quando) - Date.parse(a.quando))[0] ?? null;
+}
+
+/** Aprovação dos materiais: o que chegou, do envio mais novo pro mais antigo. */
+function MateriaisParaAprovar({ arquivos }: { arquivos: Arquivo[] }) {
+  const lotes = enviosDeArquivos(arquivos);
+  return (
+    <section className="flex flex-col gap-4 border-b border-[#F0F0F2] pb-6">
+      <div className="flex items-baseline justify-between gap-3">
+        <b className="text-[16px] font-bold tracking-[-0.01em] text-[#111113]">Materiais pra aprovar</b>
+        <span className="text-[12.5px] text-[#636369]">{arquivos.length ? `${arquivos.length} ${arquivos.length === 1 ? 'arquivo' : 'arquivos'} · mais novo primeiro` : ''}</span>
+      </div>
+      {lotes.length === 0 && (
+        <div className="rounded-[14px] border border-dashed border-[#D6D6D9] px-4 py-5 text-center text-[13px] text-[#636369]">Nenhum material chegou na pasta do post.</div>
+      )}
+      {lotes.map((l, k) => (
+        <div key={k} className="flex flex-col gap-2.5">
+          <span className="text-[13.5px] font-extrabold text-[#111113]">
+            {l.quando ? `Enviado ${quandoCurto(l.quando)}` : 'Sem data'}
+            <span className="ml-2 text-[12px] font-medium text-[#8A8A90]">{l.arquivos.length} {l.arquivos.length === 1 ? 'arquivo' : 'arquivos'}</span>
+            {k === 0 && l.quando && <span className="ml-2 rounded-full bg-[#D8EDCF] px-2 py-0.5 text-[11px] font-extrabold text-[#2E5520]">mais recente</span>}
+          </span>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {l.arquivos.map((a) => {
+              const t = tipoArquivo(a.mimeType, a.name);
+              return (
+                <a key={a.id} href={a.webViewLink} target="_blank" rel="noreferrer" title={a.name} className="overflow-hidden rounded-[12px] border border-[#EDEDEF] bg-white hover:border-[#B4B4B9]">
+                  <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-[#F4F4F5] text-[24px]">
+                    {t === 'imagem' ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`/api/drive/preview/${a.id}`} alt="" className="h-full w-full object-cover" />
+                    ) : t === 'video' ? (
+                      <video src={`/api/drive/preview/${a.id}`} preload="metadata" muted className="h-full w-full object-cover" />
+                    ) : t === 'audio' ? (
+                      '🎙'
+                    ) : (
+                      '📎'
+                    )}
+                    {t === 'video' && <span className="absolute flex h-8 w-8 items-center justify-center rounded-full bg-[#111113]/70 text-[12px] text-white">▶</span>}
+                  </div>
+                  <div className="truncate px-2.5 py-2 text-[12px] font-semibold text-[#111113]">{a.name}</div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function SecaoMateriais({ s, id, tarefaId, drive }: { s: Secao; id: string; tarefaId: string | null; drive: Arquivo[] }) {
   // Arquivos do Drive (pasta de materiais) + arquivos colados na seção do Notion: tudo vira item da galeria.
   const arquivos = [
@@ -1019,6 +1108,14 @@ export function PreviaPostModal({
                     <span className="text-[13px] font-bold text-[#2E5520]">✓ Todas as etapas concluídas.</span>
                   )}
                   {erroEtapa && <span className="text-[12px] font-bold text-[#7E211C]">{erroEtapa}</span>}
+                  {(() => {
+                    const u = ultimoUpdate(preview);
+                    return u ? (
+                      <span className="text-[12.5px] text-[#46464B]">
+                        <b className="text-[#111113]">Último update:</b> {u.texto} · {quandoCurto(u.quando)}
+                      </span>
+                    ) : null;
+                  })()}
                   <details className="group">
                     <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
                       <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#F0F0F1]">
@@ -1092,6 +1189,7 @@ export function PreviaPostModal({
 
                       {/* Meio: tudo do Notion numa leitura só */}
                       <div className="flex min-w-0 flex-col">
+                        {agora && /aprova.*materia/i.test(agora.titulo) && <MateriaisParaAprovar arquivos={preview.materiais ?? []} />}
                         {secoes.length === 0 && (preview.ideia || preview.briefing || preview.roteiro || preview.cards) && (
                           <section className="flex flex-col gap-3 pb-6">
                             {(

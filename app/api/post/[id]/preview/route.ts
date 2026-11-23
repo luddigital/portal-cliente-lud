@@ -50,7 +50,7 @@ async function previaGuardada(id: string) {
   // Listas comuns a todos os posts lidas aqui fora (onde o cache funciona) e guardadas na memória:
   // lá dentro o Next ignora os outros caches.
   await Promise.all([getProjetoColaborativoMap().catch(() => null), listColaboradores().catch(() => null)]);
-  return unstable_cache(() => montarPrevia(id, true), ['previa-post-v1', id], {
+  return unstable_cache(() => montarPrevia(id, true), ['previa-post-v2', id], {
     revalidate: 300,
     tags: ['previas', `previa:${id.replace(/-/g, '')}`],
   })();
@@ -82,6 +82,7 @@ async function montarPrevia(postId: string, ehAdmin: boolean) {
     name: string;
     mimeType: string;
     webViewLink: string;
+    criadoEm?: string | null;
   };
   const arquivosDoLink = async (link: { name: string; url: string }): Promise<Arquivo[]> => {
     const folderId = extractDriveFolderId(link.url);
@@ -90,7 +91,7 @@ async function montarPrevia(postId: string, ehAdmin: boolean) {
         const files = await listFolderFiles(folderId);
         return files
           .filter((f) => !f.isFolder)
-          .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType ?? '', webViewLink: f.webViewLink }));
+          .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType ?? '', webViewLink: f.webViewLink, criadoEm: f.criadoEm ?? null }));
       } catch {
         return []; // pula pasta com erro
       }
@@ -114,7 +115,7 @@ async function montarPrevia(postId: string, ehAdmin: boolean) {
   const materiaisP: Promise<Arquivo[]> = ehAdmin
     ? Promise.all([
         listarMateriaisDoPost({ cliente: (post as any).projetoNome ?? '', postTitulo: post.titulo, dataPostagem: post.data })
-          .then((fs) => fs.map((f: any) => ({ id: f.id, name: f.name, mimeType: f.mimeType ?? '', webViewLink: f.webViewLink })))
+          .then((fs) => fs.map((f: any) => ({ id: f.id, name: f.name, mimeType: f.mimeType ?? '', webViewLink: f.webViewLink, criadoEm: f.criadoEm ?? null })))
           .catch(() => [] as Arquivo[]),
         Promise.all((post.materiaisLinks ?? []).map(arquivosDoLink)).then((l) => l.flat()).catch(() => [] as Arquivo[]),
       ]).then(([a, b]) => [...a, ...b].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i))
