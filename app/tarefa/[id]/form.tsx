@@ -572,6 +572,10 @@ export function TarefaForm({
         (it) => it.status === 'pendente' || it.status === 'erro',
       );
       let feitos = fila.filter((it) => it.status === 'ok').length;
+      // Situação de cada arquivo NESTE envio. A `fila` do React aqui dentro é a do clique
+      // (não muda durante o envio): antes, um arquivo que deu erro na 1ª tentativa e subiu
+      // na 2ª continuava contado como erro e o envio nunca era finalizado.
+      const falhouAgora = new Set<FilaItem>();
       setProgresso({ feitos, total: fila.length });
       // O 1º arquivo sobe sozinho: ele cria as pastas no Drive. Se 2 subirem
       // juntos numa pasta que ainda não existe, o Drive pode criar pasta duplicada.
@@ -596,6 +600,9 @@ export function TarefaForm({
             return { ...it, status: 'erro' as const, erro: erroAmigavel(r.reason?.message) };
           }),
         );
+        lote.forEach((it, i) => {
+          if (resultados[i].status === 'rejected') falhouAgora.add(it);
+        });
         feitos += resultados.filter((r) => r.status === 'fulfilled').length;
         setProgresso({ feitos, total: fila.length });
 
@@ -609,7 +616,7 @@ export function TarefaForm({
       // Depois de rodar tudo, checa quantos falharam mesmo com retry.
       // Se sobrou algum com erro, avisa o cliente do que precisa fazer
       // (retentar apenas os que faltam, ou mandar por link externo).
-      const falhados = fila.filter((it) => it.status === 'erro');
+      const falhados = [...falhouAgora];
       if (falhados.length > 0) {
         setError(
           `${falhados.length} de ${fila.length} arquivos não subiram (${falhados
