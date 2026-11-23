@@ -6836,3 +6836,14 @@ export async function postsEditadosDesde(desdeIso: string): Promise<string[]> {
   ]);
   return [...ids];
 }
+
+/** Post de uma tarefa (pra abrir a prévia do post no clique numa tarefa). Null se a tarefa não tem post. */
+export async function postDaTarefa(tarefaId: string): Promise<string | null> {
+  if (ehTarefaDoPortal(tarefaId)) return null;
+  try {
+    const t = await cachedPageRetrieve(tarefaId);
+    return (getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}

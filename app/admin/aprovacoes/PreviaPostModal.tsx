@@ -1031,7 +1031,7 @@ export function PreviaPostModal({
             )}
             {!pagina && (
               <>
-                <a href={hrefCompleto} className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-[#D6D6D9] bg-white px-3.5 text-[13px] font-extrabold text-[#111113] hover:bg-[#F4F4F5]">
+                <a href={hrefCompleto} data-completo className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-[#D6D6D9] bg-white px-3.5 text-[13px] font-extrabold text-[#111113] hover:bg-[#F4F4F5]">
                   ↗ <span className="hidden sm:inline">Abrir completo</span>
                 </a>
                 <button type="button" onClick={fechar} aria-label="Fechar" className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F4F4F5] text-[18px] text-[#46464B] hover:bg-[#E9E9EB]">

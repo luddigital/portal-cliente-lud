@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { Sidebar, TopbarMobile } from './_components/Sidebar';
+import { AbrirPostEmPopup } from './_components/AbrirPostEmPopup';
 
 export default async function AdminLayout({
   children,
@@ -19,6 +20,7 @@ export default async function AdminLayout({
       <Sidebar />
       <TopbarMobile />
       <div className="conteudo-admin transition-[padding] lg:pl-[var(--sb,68px)]">{children}</div>
+      <AbrirPostEmPopup />
     </div>
   );
 }
