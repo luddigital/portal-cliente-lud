@@ -80,6 +80,17 @@ function emojiDaSecao(t: string): string {
 
 /** Links do texto viram um link curto (só o site), em vez da URL inteira estourando o card. */
 const RX_URL = /(https?:\/\/[^\s)]+)/g;
+/** Linha que termina num link ("Link enviado pelo cliente: https://…"): rótulo + link. Linha com texto depois do link continua texto. */
+function linkNoFim(texto: string): { rotulo: string; url: string; site: string } | null {
+  const m = texto.trim().match(/^(.*?)(https?:\/\/\S+)$/);
+  if (!m || /https?:\/\//.test(m[1])) return null;
+  let site = m[2];
+  try {
+    site = new URL(m[2]).hostname.replace(/^www\./, '');
+  } catch {}
+  return { rotulo: m[1].replace(/[\s:→-]+$/, '').trim() || 'Link', url: m[2], site };
+}
+
 function comLinks(texto: string): React.ReactNode {
   if (!RX_URL.test(texto)) return texto;
   return texto.split(RX_URL).map((parte, k) => {
@@ -297,7 +308,11 @@ function SecaoMateriais({ s, id, tarefaId, drive }: { s: Secao; id: string; tare
   ];
   const arquivosVazios = !s.linhas.some((l) => l.tipo === 'arq') && drive.length === 0;
   // Com arquivo na galeria, o aviso "já enviado" não precisa aparecer.
-  const textos = linhasVisiveis(s).filter((l) => l.tipo !== 'arq' && (arquivosVazios || !/j[áa] envi|aba post/i.test(l.texto)));
+  const textosTodos = linhasVisiveis(s).filter((l) => l.tipo !== 'arq' && (arquivosVazios || !/j[áa] envi|aba post/i.test(l.texto)));
+  // "Link enviado pelo cliente: https://…" (link no fim da linha) vira um quadradinho de link na galeria.
+  const links = textosTodos.map((l) => linkNoFim(l.texto));
+  const textos = textosTodos.filter((_, k) => !links[k]);
+  const quadrosDeLink = links.filter((x): x is NonNullable<typeof x> => !!x);
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   async function anexar(files: FileList | null) {
@@ -323,8 +338,8 @@ function SecaoMateriais({ s, id, tarefaId, drive }: { s: Secao; id: string; tare
       <TituloSecao
         titulo={s.titulo}
         direita={
-          arquivos.length ? (
-            <span className="rounded-full bg-[#D8EDCF] px-2 py-0.5 text-[#2E5520]">{arquivos.length} {arquivos.length === 1 ? 'recebido' : 'recebidos'}</span>
+          arquivos.length + quadrosDeLink.length ? (
+            <span className="rounded-full bg-[#D8EDCF] px-2 py-0.5 text-[#2E5520]">{arquivos.length + quadrosDeLink.length} {arquivos.length + quadrosDeLink.length === 1 ? 'recebido' : 'recebidos'}</span>
           ) : textos.length ? null : (
             <span className="rounded-full bg-[#FBE3E0] px-2 py-0.5 text-[#B42318]">nada recebido ainda</span>
           )
@@ -336,6 +351,15 @@ function SecaoMateriais({ s, id, tarefaId, drive }: { s: Secao; id: string; tare
         </p>
       ))}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {quadrosDeLink.map((l, k) => (
+          <a key={`link-${k}`} href={l.url} target="_blank" rel="noreferrer" title={l.url} className="group flex flex-col overflow-hidden rounded-[12px] border border-[#D5E3F0] bg-white hover:border-[#24466B]">
+            <div className="flex aspect-[4/3] flex-col items-center justify-center gap-1.5 bg-[#F1F6FB] px-2 text-center">
+              <span className="text-[24px]">🔗</span>
+              <span className="max-w-full truncate text-[12.5px] font-bold text-[#24466B] underline decoration-[#B9D3EC] underline-offset-2 group-hover:decoration-[#24466B]">{l.site} ↗</span>
+            </div>
+            <div className="truncate px-2.5 py-2 text-[12px] font-semibold text-[#111113]">{l.rotulo}</div>
+          </a>
+        ))}
         {arquivos.map((l, k) => (
           <a key={k} href={l.url} target="_blank" rel="noreferrer" title={l.texto} className="group overflow-hidden rounded-[12px] border border-[#EDEDEF] bg-white hover:border-[#B4B4B9]">
             <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-[#F4F4F5] text-[24px]">
