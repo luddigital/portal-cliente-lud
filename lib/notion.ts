@@ -3004,16 +3004,12 @@ async function coletarBlocosRecursivo(
           page_size: 100,
           start_cursor: cursor,
         });
-        for (const b of res.results as any[]) {
-          out.push(b);
-          if (b.has_children) {
-            const filhos = await coletarBlocosRecursivo(
-              b.id,
-              profundidade + 1,
-            );
-            out.push(...filhos);
-          }
-        }
+        // Os filhos de cada bloco saem ao mesmo tempo (antes era um por um); a ordem fica a mesma.
+        const lista = res.results as any[];
+        const filhos = await Promise.all(
+          lista.map((b) => (b.has_children ? coletarBlocosRecursivo(b.id, profundidade + 1) : Promise.resolve([] as any[]))),
+        );
+        lista.forEach((b, i) => out.push(b, ...filhos[i]));
         cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
       } while (cursor);
       return out;

@@ -11,7 +11,7 @@ import { extractDriveFileId, extractDriveFolderId, listFolderFiles, listarMateri
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 /**
  * Preview enxuto de um post pra renderizar num modal/popup rápido na página
