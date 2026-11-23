@@ -395,7 +395,7 @@ function AtividadeDoPost({ preview }: { preview: Preview }) {
   for (const t of preview.tarefas ?? []) if (t.finalizadaEm) ev.push({ quando: t.finalizadaEm, quem: ehTarefaDoCliente(t.titulo) ? 'Cliente' : 'Equipe', texto: `${t.titulo} concluída` });
   for (const n of preview.notas ?? []) {
     if (TIPOS_COMENTARIO.has(n.tipo) || n.tipo === 'interna' || !n.quando) continue;
-    ev.push({ quando: n.quando, quem: n.tipo.startsWith('cliente') ? 'Cliente' : 'Equipe', texto: n.titulo || 'Atualização', detalhe: n.corpo || undefined });
+    ev.push({ quando: n.quando, quem: n.tipo.startsWith('cliente') ? 'Cliente' : 'Equipe', texto: (n.titulo || 'Atualização').replace(/^cliente\s+(\S)/i, (_, c: string) => c.toUpperCase()), detalhe: n.corpo || undefined });
   }
   for (const e of preview.historico?.envios ?? []) ev.push({ quando: e.enviadoEm, quem: 'Equipe', texto: 'Mensagem no grupo do cliente' });
   const vistas = (preview.historico?.visualizacoes ?? []).map((v) => v.vistoEm).filter((q) => !Number.isNaN(Date.parse(q))).sort().reverse();
