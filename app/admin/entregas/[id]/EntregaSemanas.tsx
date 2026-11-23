@@ -311,6 +311,17 @@ export function EntregaSemanas({
   const [fCliente, setFCliente] = useState('');
   const [fResp, setFResp] = useState('');
   const [fSit, setFSit] = useState<'' | 'nao_enviado' | 'nao_visto' | 'travado'>('');
+  // Período (botões à vista): atrasados, esta semana, próxima, depois.
+  const [fPer, setFPer] = useState<'' | 'atr' | 'esta' | 'prox' | 'depois'>('');
+  const periodoDe = (i: ItemEntrega): 'atr' | 'esta' | 'prox' | 'depois' => {
+    const esta = segunda(hojeIso);
+    if (!i.prazo) return 'esta';
+    const k = segunda(i.prazo);
+    if (k < esta) return 'atr';
+    if (k === esta) return 'esta';
+    const dif = Math.round((Date.parse(k + 'T12:00:00Z') - Date.parse(esta + 'T12:00:00Z')) / 86_400_000);
+    return dif <= 7 ? 'prox' : 'depois';
+  };
   // Lembra a última visão escolhida (só depois de montar, pra não brigar com o servidor).
   useEffect(() => {
     if (extra) return;
@@ -344,6 +355,7 @@ export function EntregaSemanas({
     const ok = (i: ItemEntrega) => {
       if (temReaprovacao && (rodadaAba === 'reaprovacao') !== !!i.reaprovacao) return false;
       if (fResp && (i.responsavel ?? i.pessoa ?? '') !== fResp) return false;
+      if (fPer && periodoDe(i) !== fPer) return false;
       if (fSit === 'travado') return i.relacao === 'antes';
       if (fSit === 'nao_enviado') return i.relacao !== 'antes' && comOCliente(i) && !(i.mensagens ?? []).length;
       if (fSit === 'nao_visto') {
@@ -357,7 +369,9 @@ export function EntregaSemanas({
       .filter((g) => !fCliente || g.projetoId === fCliente)
       .map((g) => ({ ...g, itens: g.itens.filter(ok) }))
       .filter((g) => g.itens.length > 0);
-  }, [grupos, temReaprovacao, rodadaAba, fCliente, fResp, fSit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupos, temReaprovacao, rodadaAba, fCliente, fResp, fSit, fPer]);
+  const nPer = (p: 'atr' | 'esta' | 'prox' | 'depois') => grupos.reduce((n, g) => n + g.itens.filter((i) => periodoDe(i) === p && !feito(i)).length, 0);
   const contaAbertos = (reap: boolean) => grupos.reduce((n, g) => n + g.itens.filter((i) => !feito(i) && !!i.reaprovacao === reap).length, 0);
   const clientesDaEntrega = grupos.map((g) => ({ id: g.projetoId, nome: nomeCurtoDoProjeto(g.projetoNome || g.nome) })).sort((a, b) => a.nome.localeCompare(b.nome));
   const pessoasDaEntrega = [...new Set(grupos.flatMap((g) => g.itens.filter((i) => !feito(i)).map((i) => i.responsavel ?? i.pessoa ?? '')).filter(Boolean))].sort();
@@ -553,7 +567,28 @@ export function EntregaSemanas({
         ))}
       </div>
         {(visao === 'data' || visao === 'cliente') && (
-          <span className="flex items-center gap-3.5">
+          <span className="flex flex-wrap items-center gap-3.5">
+            <span className="flex flex-wrap gap-1">
+              {(
+                [
+                  ['', 'Tudo', 0],
+                  ['atr', 'Atrasados', nPer('atr')],
+                  ['esta', 'Esta semana', nPer('esta')],
+                  ['prox', 'Próxima', nPer('prox')],
+                  ['depois', 'Depois', nPer('depois')],
+                ] as [typeof fPer, string, number][]
+              ).map(([id, rot, n]) => (
+                <button
+                  key={id || 'tudo'}
+                  type="button"
+                  onClick={() => setFPer(id)}
+                  className={`rounded-full border px-2.5 py-1 text-[12.5px] font-semibold ${fPer === id ? 'border-[#111113] bg-[#111113] text-white' : 'border-[#E2E2E5] bg-white text-[#46464B] hover:bg-[#F4F4F5]'}`}
+                >
+                  {rot}
+                  {id && n > 0 ? <span className={`ml-1 ${id === 'atr' && fPer !== id ? 'text-[var(--prazo-atrasado)]' : 'opacity-60'}`}>{n}</span> : null}
+                </button>
+              ))}
+            </span>
             <details className="relative">
               <summary className={`inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold [&::-webkit-details-marker]:hidden ${nFiltros ? 'border-[#111113] bg-[#111113] text-white' : 'border-[#E2E2E5] bg-white text-[#46464B] hover:bg-[#F4F4F5]'}`}>
                 Filtrar{nFiltros ? ` · ${nFiltros}` : ''} <span className="text-[10px]">▾</span>
