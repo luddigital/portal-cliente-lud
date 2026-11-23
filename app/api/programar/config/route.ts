@@ -1,4 +1,14 @@
 import { NextResponse } from 'next/server';
+import { contaIgDoProjeto } from '@/lib/instagram';
+import { listAllProjetos } from '@/lib/notion';
+
+/** Nome do projeto ("IG | @nyorquina"), pra achar a conta do Instagram pelo @. */
+async function nomeDoProjeto(id: string | null | undefined, nome: string | null | undefined): Promise<string | null> {
+  if (nome) return nome;
+  if (!id) return null;
+  const ps = await listAllProjetos().catch(() => []);
+  return ps.find((p) => p.id.replace(/-/g, '') === id.replace(/-/g, ''))?.nome ?? null;
+}
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import {
@@ -76,7 +86,7 @@ export async function POST(req: Request) {
       if (config.plataformas.includes('instagram')) {
         try {
           const post = await getPostComDetalhes(postId);
-          const conta = post?.projetoId ? (env.instagram.accounts[post.projetoId] ?? '') : '';
+          const conta = (await contaIgDoProjeto(post?.projetoId, await nomeDoProjeto(post?.projetoId, post?.projetoNome))) ?? '';
           const dataFinal = config.data || post?.data || '';
           const horaFinal = config.horario || '10:00';
           if (dataFinal) {

@@ -685,3 +685,28 @@ export async function getIgAnalytics(
     demografia,
   };
 }
+
+
+/**
+ * Conta do Instagram (ig user id) de um projeto, pra programar/publicar.
+ * 1) IG_ACCOUNTS (aceita o id com ou sem traços);
+ * 2) senão, acha pelo @ do nome do projeto ("IG | @nyorquina") entre as contas
+ *    que o token da Meta enxerga. Assim projeto novo não depende de mexer no IG_ACCOUNTS.
+ */
+export async function contaIgDoProjeto(projetoId: string | null | undefined, nomeProjeto?: string | null): Promise<string | null> {
+  if (projetoId) {
+    const semTraco = projetoId.replace(/-/g, '');
+    const comTraco = semTraco.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+    const map = env.instagram.accounts;
+    const direto = map[projetoId] ?? map[semTraco] ?? map[comTraco];
+    if (direto) return direto;
+  }
+  const handle = (nomeProjeto ?? '').match(/@([\w.]+)/)?.[1]?.toLowerCase();
+  if (!handle || !env.instagram.graphToken) return null;
+  try {
+    const contas = await listIgAccounts();
+    return contas.find((c) => c.username.toLowerCase() === handle)?.igUserId ?? null;
+  } catch {
+    return null;
+  }
+}

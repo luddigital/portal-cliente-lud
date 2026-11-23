@@ -10,6 +10,16 @@ import { extractDriveFolderId, extractDriveFileId, listFolderFiles } from '@/lib
 import { lerConfigProgramacao } from '@/lib/supabase';
 import type { PreviewArquivo } from '@/app/post/[id]/PostPreview';
 import { ConfigProgramacao } from './ConfigProgramacao';
+import { contaIgDoProjeto } from '@/lib/instagram';
+import { listAllProjetos } from '@/lib/notion';
+
+/** Nome do projeto ("IG | @nyorquina"), pra achar a conta do Instagram pelo @. */
+async function nomeDoProjeto(id: string | null | undefined, nome: string | null | undefined): Promise<string | null> {
+  if (nome) return nome;
+  if (!id) return null;
+  const ps = await listAllProjetos().catch(() => []);
+  return ps.find((p) => p.id.replace(/-/g, '') === id.replace(/-/g, ''))?.nome ?? null;
+}
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -91,7 +101,7 @@ export default async function ProgramarPostPage({
     }),
   );
   const arquivos: PreviewArquivo[] = listas.flat();
-  const igLigado = !!(post.projetoId && env.instagram.accounts[post.projetoId]);
+  const igLigado = !!(await contaIgDoProjeto(post.projetoId, await nomeDoProjeto(post?.projetoId, post?.projetoNome)));
 
   return (
     <ConfigProgramacao

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { atualizarStatusPost, invalidarCachesAposMudanca } from '@/lib/notion';
+import { atualizarStatusPost, getPostComDetalhes, invalidarCachesAposMudanca, listAllProjetos } from '@/lib/notion';
+import { contaIgDoProjeto } from '@/lib/instagram';
 import { resolverMidiaDoPost } from '@/lib/postMedia';
 import { publicarNoIG } from '@/lib/instagramPublish';
 import {
@@ -36,6 +37,12 @@ export async function GET(req: Request) {
     const ganhou = await reivindicarIG(item.postId);
     if (!ganhou) continue;
 
+    // Fila antiga sem conta: tenta achar agora pelo @ do projeto.
+    if (!item.conta) {
+      const post = await getPostComDetalhes(item.postId).catch(() => null);
+      const nome = post?.projetoNome ?? (await listAllProjetos().catch(() => [])).find((p) => post?.projetoId && p.id.replace(/-/g, '') === post.projetoId.replace(/-/g, ''))?.nome;
+      item.conta = (await contaIgDoProjeto(post?.projetoId, nome)) ?? '';
+    }
     if (!item.conta) {
       await marcarIGResultado(item.postId, { ok: false, erro: 'projeto sem conta de Instagram mapeada (IG_ACCOUNTS)' });
       relatorio.push({ postId: item.postId, ok: false, erro: 'sem conta IG' });
