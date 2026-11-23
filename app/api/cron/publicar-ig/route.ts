@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { atualizarStatusPost, getPostComDetalhes, invalidarCachesAposMudanca, listAllProjetos } from '@/lib/notion';
 import { contaIgDoProjeto } from '@/lib/instagram';
+import { publicarNoFB } from '@/lib/facebookPublish';
+import { lerConfigProgramacao } from '@/lib/supabase';
 import { resolverMidiaDoPost } from '@/lib/postMedia';
 import { publicarNoIG } from '@/lib/instagramPublish';
 import {
@@ -64,6 +66,13 @@ export async function GET(req: Request) {
         itens: midia.itens,
         caption,
       });
+      // Facebook: se a programação pediu, publica na Página ligada ao mesmo Instagram.
+      let fb: any = null;
+      const cfg = await lerConfigProgramacao(item.postId).catch(() => null);
+      if (cfg?.plataformas?.includes('facebook')) {
+        fb = await publicarNoFB({ igUserId: item.conta, formato: midia.formato, itens: midia.itens, caption });
+        console.log('[publicar-fb]', item.postId, JSON.stringify(fb));
+      }
       if (r.ok) {
         await marcarIGResultado(item.postId, { ok: true, mediaId: r.mediaId, permalink: r.permalink });
         // Fecha o ciclo no Notion.
@@ -72,7 +81,7 @@ export async function GET(req: Request) {
         } catch {
           /* não falha a publicação se o Notion recusar */
         }
-        relatorio.push({ postId: item.postId, ok: true, permalink: r.permalink });
+        relatorio.push({ postId: item.postId, ok: true, permalink: r.permalink, facebook: fb });
       } else {
         await marcarIGResultado(item.postId, { ok: false, erro: `${r.etapa}: ${r.error}` });
         relatorio.push({ postId: item.postId, ok: false, erro: r.error });
