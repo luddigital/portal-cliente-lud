@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { compararNoFluxo } from '@/lib/etapas-projeto';
 import type { TarefaDoPost } from '@/lib/notion';
-import { HistoricoResumo, TodasTarefasCard } from '@/app/post/[id]/PostSidebarLud';
+import { TodasTarefasCard } from '@/app/post/[id]/PostSidebarLud';
 import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import { BotaoLembreteWpp } from './BotaoLembreteWpp';
 import { nomeCurtoDoProjeto } from '@/lib/rotas';
@@ -378,6 +378,56 @@ function pesoDaSecao(t: string): number {
   return 6;
 }
 const ehRoteiro = (t: string) => pesoDaSecao(t) === 3;
+
+/** Etapas de materiais: Materiais (o que chegou) → o que pedimos → texto do voice over → informações → o resto. */
+function pesoNaEtapaDeMateriais(t: string): number {
+  if (/^materiais$/i.test(t.trim())) return 0;
+  if (/materia.*precisa/i.test(t)) return 1;
+  if (/voice|grava/i.test(t)) return 2;
+  if (/informa/i.test(t)) return 3;
+  return 10 + pesoDaSecao(t);
+}
+
+/** Atividade do post, do mais novo pro mais antigo: etapas concluídas, envios do cliente, mensagens no grupo e aberturas. */
+function AtividadeDoPost({ preview }: { preview: Preview }) {
+  type Ev = { quando: string; quem: 'Cliente' | 'Equipe'; texto: string; detalhe?: string };
+  const ev: Ev[] = [];
+  for (const t of preview.tarefas ?? []) if (t.finalizadaEm) ev.push({ quando: t.finalizadaEm, quem: ehTarefaDoCliente(t.titulo) ? 'Cliente' : 'Equipe', texto: `${t.titulo} concluída` });
+  for (const n of preview.notas ?? []) {
+    if (TIPOS_COMENTARIO.has(n.tipo) || n.tipo === 'interna' || !n.quando) continue;
+    ev.push({ quando: n.quando, quem: n.tipo.startsWith('cliente') ? 'Cliente' : 'Equipe', texto: n.titulo || 'Atualização', detalhe: n.corpo || undefined });
+  }
+  for (const e of preview.historico?.envios ?? []) ev.push({ quando: e.enviadoEm, quem: 'Equipe', texto: 'Mensagem no grupo do cliente' });
+  const vistas = (preview.historico?.visualizacoes ?? []).map((v) => v.vistoEm).filter((q) => !Number.isNaN(Date.parse(q))).sort().reverse();
+  if (vistas.length) ev.push({ quando: vistas[0], quem: 'Cliente', texto: vistas.length === 1 ? 'Abriu o post' : `Abriu o post (${vistas.length}x, última aqui)` });
+  const lista = ev.filter((e) => !Number.isNaN(Date.parse(e.quando))).sort((a, b) => Date.parse(b.quando) - Date.parse(a.quando));
+  return (
+    <section className="rounded-[18px] border border-[#E9E9EB] p-4">
+      <div className="mb-2 flex items-baseline justify-between">
+        <b className="text-[14px]">Atividade</b>
+        <span className="text-[12px] text-[#636369]">Mais novo em cima</span>
+      </div>
+      {lista.length === 0 ? (
+        <p className="text-[13px] text-[#636369]">Nada por aqui ainda.</p>
+      ) : (
+        <ul className="flex flex-col">
+          {lista.map((e, k) => (
+            <li key={k} className="grid grid-cols-[96px_10px_minmax(0,1fr)] gap-3 border-t border-[#F4F4F5] py-2.5 first:border-t-0">
+              <span className="text-[12px] font-bold text-[#636369]">{quandoCurto(e.quando)}</span>
+              <span className={`mt-[5px] h-2.5 w-2.5 rounded-full ${e.quem === 'Cliente' ? 'bg-[var(--cal-agendado)]' : 'bg-[#B4B4B9]'}`} />
+              <div className="min-w-0">
+                <div className="text-[13px] text-[#111113]">
+                  <b>{e.quem}</b> · {e.texto}
+                </div>
+                {e.detalhe && <p className="mt-1.5 whitespace-pre-line rounded-[12px] bg-[#F4F4F5] px-3 py-2 text-[12.5px] leading-[1.5] text-[#2C2C30]">{comLinks(e.detalhe)}</p>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 /** Campo pra colar o link do Drive da arte/vídeo (vai pro "Link do Google Drive" do post no Notion). */
 function CampoLinkDrive({ postId, aoSalvar, temArte }: { postId: string; aoSalvar: () => void; temArte: boolean }) {
@@ -835,7 +885,7 @@ export function PreviaPostModal({
   const [concluindo, setConcluindo] = useState(false);
   const [erroEtapa, setErroEtapa] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
-  const [aba, setAba] = useState<'post' | 'tarefas' | 'comentarios' | 'historico'>('post');
+  const [aba, setAba] = useState<'post' | 'tarefas' | 'comentarios'>('post');
   const houveMutacao = useRef(false);
   const hoje = hojeSP();
   const [altAberto, setAltAberto] = useState(false);
@@ -1049,8 +1099,7 @@ export function PreviaPostModal({
               [
                 ['post', 'Post', null],
                 ['tarefas', 'Tarefas', preview.tarefas.filter((t) => t.aberta).length],
-                ['comentarios', 'Comentários', (preview.notas ?? []).filter((n) => TIPOS_COMENTARIO.has(n.tipo) || n.tipo === 'interna').length],
-                ['historico', 'Histórico', null],
+                ['comentarios', 'Comentários e atividade', (preview.notas ?? []).filter((n) => TIPOS_COMENTARIO.has(n.tipo) || n.tipo === 'interna').length],
               ] as const
             ).map(([id, rot, n]) => (
               <button
@@ -1149,18 +1198,20 @@ export function PreviaPostModal({
                   <TodasTarefasCard tarefas={preview.tarefas} colaboradores={preview.colaboradores ?? {}} podeEditarPrazo semMoldura linkAdmin compacto />
                 </div>
               )}
-              {aba === 'comentarios' && <ComentariosLud postId={postId} notas={preview.notas ?? []} cronologico />}
-              {aba === 'historico' &&
-                (preview.historico ? (
-                  <section className="rounded-[18px] border border-[#E9E9EB] p-4">
-                    <HistoricoResumo historico={preview.historico} notas={preview.notas ?? []} tarefasCliente={preview.tarefasCliente ?? []} cronologico />
-                  </section>
-                ) : (
-                  <p className="text-[13px] text-[#636369]">Sem histórico por aqui ainda.</p>
-                ))}
+              {aba === 'comentarios' && (
+                <>
+                  <ComentariosLud postId={postId} notas={preview.notas ?? []} />
+                  <AtividadeDoPost preview={preview} />
+                </>
+              )}
               {aba === 'post' &&
                 (() => {
-                  const secoes = (preview.secoes ?? []).filter((x) => !/link.*insta|insta.*link/i.test(x.titulo)).map((sec, ordem) => ({ sec, ordem })).sort((a, b) => pesoDaSecao(a.sec.titulo) - pesoDaSecao(b.sec.titulo) || a.ordem - b.ordem).map((x) => x.sec);
+                  // Nas etapas de materiais, o que importa vem primeiro: o que chegou, o que pedimos, o texto pra gravar.
+                  const emMateriais = !!agora && /materia/i.test(agora.titulo);
+                  const aprovandoMateriais = !!agora && /aprova.*materia/i.test(agora.titulo);
+                  const peso = (t: string) => (emMateriais ? pesoNaEtapaDeMateriais(t) : pesoDaSecao(t));
+                  const secoes = (preview.secoes ?? []).filter((x) => !/link.*insta|insta.*link/i.test(x.titulo)).map((sec, ordem) => ({ sec, ordem })).sort((a, b) => peso(a.sec.titulo) - peso(b.sec.titulo) || a.ordem - b.ordem).map((x) => x.sec);
+                  const temArquivoDeMaterial = (preview.materiais ?? []).length > 0;
                   const idSec = (k: number) => `secao-${k}`;
                   const materiaisTarefa = fluxo.find((t) => /materia/i.test(t.titulo) && !/aprova/i.test(t.titulo)) ?? null;
                   // Seção "Link Instagram" do Notion: vira o cartão do Instagram na direita (não repete no meio).
@@ -1189,7 +1240,7 @@ export function PreviaPostModal({
 
                       {/* Meio: tudo do Notion numa leitura só */}
                       <div className="flex min-w-0 flex-col">
-                        {agora && /aprova.*materia/i.test(agora.titulo) && <MateriaisParaAprovar arquivos={preview.materiais ?? []} />}
+                        {aprovandoMateriais && temArquivoDeMaterial && <MateriaisParaAprovar arquivos={preview.materiais ?? []} />}
                         {secoes.length === 0 && (preview.ideia || preview.briefing || preview.roteiro || preview.cards) && (
                           <section className="flex flex-col gap-3 pb-6">
                             {(
@@ -1217,7 +1268,8 @@ export function PreviaPostModal({
                               id={idSec(k)}
                               tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null}
                               // "já enviado (aba Post)": o material é o arquivo do próprio post.
-                              drive={(preview.materiais ?? []).length ? preview.materiais! : sec.linhas.some((l) => /aba post|j[áa] envi/i.test(l.texto)) ? preview.arquivos : []}
+                              // Aprovando materiais com arquivo: a galeria já está no topo, aqui fica só o texto (links do cliente).
+                              drive={aprovandoMateriais && temArquivoDeMaterial ? [] : temArquivoDeMaterial ? preview.materiais! : sec.linhas.some((l) => /aba post|j[áa] envi/i.test(l.texto)) ? preview.arquivos : []}
                             />
                           ) : (
                             <SecaoPlana key={k} s={sec} id={idSec(k)} />
