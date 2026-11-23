@@ -21,6 +21,7 @@ import { CalendarioSemanaHome } from './_ui/CalendarioSemanaHome';
 import { montarSemana } from './_ui/semanaHome';
 import { carregarQuadro, type LinhaCliente, type QuadroEntrega } from './entregas/quadro';
 import { entregasDeHoje } from './entregas/HojePrimeiro';
+import { ListaEntregas } from './entregas/EntregasVisao';
 import { tipoDaEntrega } from '@/lib/entrega-dados';
 
 /** Linhas que já venceram: rodadas anteriores + rodada atual com prazo antes de hoje. */
@@ -59,22 +60,19 @@ export default async function AdminPage({ searchParams }: { searchParams: { sema
           <TarefasDoDiaBloco />
         </Suspense>
       </Bloco>
+      <Bloco titulo="🗓 Semana" sub="posts de cada dia" aberto>
+        <Suspense fallback={esqueleto(380)}>
+          <SemanaDosPosts deslocamento={Number(searchParams.semana) || 0} />
+        </Suspense>
+      </Bloco>
       <Bloco titulo="📁 Clientes" sub="ordenado por atraso" aberto>
         <Suspense fallback={esqueleto(220)}>
           <ClientesCompacto />
         </Suspense>
       </Bloco>
-      <Bloco titulo="📦 Entregas" sub="hoje, atrasos e as pendentes da semana" aberto={searchParams.dia === 'atrasos'}>
-        <Suspense fallback={esqueleto(190)}>
-          <EntregasDoDia aba={searchParams.dia === 'atrasos' ? 'atrasos' : 'hoje'} />
-        </Suspense>
+      <Bloco titulo="📦 Entregas" sub="atrasos, hoje e próximos 7 dias" aberto>
         <Suspense fallback={esqueleto(420)}>
-          <EntregasPendentes />
-        </Suspense>
-      </Bloco>
-      <Bloco titulo="🗓 Semana" sub="posts de cada dia" aberto={!!searchParams.semana}>
-        <Suspense fallback={esqueleto(380)}>
-          <SemanaDosPosts deslocamento={Number(searchParams.semana) || 0} />
+          <EntregasLista />
         </Suspense>
       </Bloco>
       <Bloco titulo="🔄 Mês da Lud." sub="ciclo do mês e números">
@@ -84,6 +82,13 @@ export default async function AdminPage({ searchParams }: { searchParams: { sema
       </Bloco>
     </Pagina>
   );
+}
+
+/** Entregas da home: a mesma lista da página Entregas, na versão limpa (sem faixas coloridas). */
+async function EntregasLista() {
+  const { hoje, quadros } = await carregarQuadro().catch(() => ({ hoje: hojeSP(), quadros: [] as QuadroEntrega[] }));
+  if (quadros.length === 0) return <Vazio>Nenhuma entrega no Notion.</Vazio>;
+  return <ListaEntregas quadros={quadros} hoje={hoje} deHoje={entregasDeHoje(quadros, hoje)} limpa />;
 }
 
 /** Bloco da home que abre e fecha (toggle). */

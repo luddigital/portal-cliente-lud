@@ -412,14 +412,14 @@ function PrazoCel({ data, sub, cor }: { data: string; sub: string; cor: string }
   );
 }
 
-function Andamento({ feitas, abertas }: { feitas: number; abertas: number }) {
+function Andamento({ feitas, abertas, limpa }: { feitas: number; abertas: number; limpa?: boolean }) {
   if (abertas === 0) return <span className="text-[12px] font-bold text-[#2E5520]">✓ nada em aberto</span>;
   const total = feitas + abertas;
   const pct = total ? Math.round((100 * feitas) / total) : 0;
   return (
     <span className="flex flex-col gap-1">
-      <span className="flex h-1.5 overflow-hidden rounded-full bg-[#F0F0F1]">
-        <span style={{ width: `${pct}%`, background: '#2E8B57' }} />
+      <span className={`flex overflow-hidden rounded-full bg-[#F0F0F1] ${limpa ? 'h-1' : 'h-1.5'}`}>
+        <span style={{ width: `${pct}%`, background: limpa ? '#46464B' : '#2E8B57' }} />
       </span>
       <span className="text-[11.5px] text-[#636369]">
         {feitas} de {total} concluídas
@@ -428,14 +428,14 @@ function Andamento({ feitas, abertas }: { feitas: number; abertas: number }) {
   );
 }
 
-function LinhaEntrega({ q, prazo, feitas, abertas }: { q: QuadroEntrega; prazo: React.ReactNode; feitas: number; abertas: number }) {
+function LinhaEntrega({ q, prazo, feitas, abertas, limpa }: { q: QuadroEntrega; prazo: React.ReactNode; feitas: number; abertas: number; limpa?: boolean }) {
   return (
     <div className={`${GRADE} min-h-[56px] border-b border-[#F4F4F5] py-2 last:border-b-0`}>
       {prazo}
       <Link href={rotas.entrega(q.id)} className="truncate text-[14px] font-extrabold hover:underline">
         {q.nome}
       </Link>
-      <Andamento feitas={feitas} abertas={abertas} />
+      <Andamento feitas={feitas} abertas={abertas} limpa={limpa} />
       <EtiquetaTipo q={q} />
       <span className="text-right">
         <Link href={rotas.entrega(q.id)} className={`${BTN} !h-[30px]`}>
@@ -446,7 +446,18 @@ function LinhaEntrega({ q, prazo, feitas, abertas }: { q: QuadroEntrega; prazo: 
   );
 }
 
-function FaixaGrupo({ titulo, sub, bg, tx }: { titulo: string; sub: string; bg: string; tx: string }) {
+function FaixaGrupo({ titulo, sub, bg, tx, ponto }: { titulo: string; sub: string; bg: string; tx: string; ponto?: string }) {
+  // Versão limpa (home): faixa cinza clara, só uma bolinha com a cor do grupo.
+  if (ponto)
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F4F4F5] bg-[#FAFAFA] px-5 pb-2 pt-3">
+        <span className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ background: ponto }} />
+          <b className="text-[13.5px] text-[#111113]">{titulo}</b>
+        </span>
+        <span className="text-[12.5px] text-[#636369]">{sub}</span>
+      </div>
+    );
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5" style={{ background: bg, color: tx }}>
       <b className="text-[14px]">{titulo}</b>
@@ -456,7 +467,18 @@ function FaixaGrupo({ titulo, sub, bg, tx }: { titulo: string; sub: string; bg: 
 }
 
 /** Uma tabela só: vence hoje, em atraso (do mais antigo pro mais novo) e próximos 7 dias. */
-export async function ListaEntregas({ quadros, hoje, deHoje }: { quadros: QuadroEntrega[]; hoje: string; deHoje: QuadroEntrega[] }) {
+export async function ListaEntregas({
+  quadros,
+  hoje,
+  deHoje,
+  limpa,
+}: {
+  quadros: QuadroEntrega[];
+  hoje: string;
+  deHoje: QuadroEntrega[];
+  /** Home: sem faixas coloridas, atrasados primeiro. */
+  limpa?: boolean;
+}) {
   const atrasos = atrasosPorEntrega(quadros, hoje);
   const prox = entregasProximas(quadros, hoje);
   const [progHoje, progAtr, progProx] = await Promise.all([
@@ -481,32 +503,58 @@ export async function ListaEntregas({ quadros, hoje, deHoje }: { quadros: Quadro
           <span>Com quem está</span>
           <span />
         </div>
-        <FaixaGrupo titulo={`Vence hoje · ${dataHoje}`} sub={`${plural(deHoje.length, 'entrega', 'entregas')} · ${plural(postsHoje, 'post', 'posts')}`} bg={ST.hoje.bg} tx={ST.hoje.tx} />
+        {limpa ? (
+          <>
+        <FaixaGrupo
+          titulo="Em atraso"
+          sub={atrasos.length ? `${plural(atrasos.length, 'entrega', 'entregas')} · ${plural(postsAtr, 'post', 'posts')} · do mais antigo pro mais novo` : 'nada atrasado'}
+          bg={ST.atr.bg}
+          tx={ST.atr.tx}
+          ponto={limpa ? '#B42318' : undefined}
+        />
+        {atrasos.length === 0 && <div className="px-5 py-3 text-[13px] font-bold text-[#2E5520]">✓ Nada atrasado.</div>}
+        {atrasos.map((g, i) => {
+          const n = dias(g.maisAntigo, hoje);
+          return <LinhaEntrega key={g.q.id} q={g.q} prazo={<PrazoCel data={g.maisAntigo} sub={`há ${plural(n, 'dia', 'dias')}`} cor="#B42318" />} feitas={progAtr[i].feitas} abertas={g.total} limpa={limpa} />;
+        })}
+        <FaixaGrupo titulo={`Vence hoje · ${dataHoje}`} sub={`${plural(deHoje.length, 'entrega', 'entregas')} · ${plural(postsHoje, 'post', 'posts')}`} bg={ST.hoje.bg} tx={ST.hoje.tx} ponto={limpa ? '#C2417E' : undefined} />
         {deHoje.length === 0 && <div className="px-5 py-3 text-[13px] text-[#636369]">Nenhuma entrega vence hoje.</div>}
         {deHoje.map((q, i) => (
-          <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={hoje} sub="vence hoje" cor="#C2417E" />} feitas={progHoje[i].feitas} abertas={abertasHoje[i]} />
+          <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={hoje} sub="vence hoje" cor="#C2417E" />} feitas={progHoje[i].feitas} abertas={abertasHoje[i]} limpa={limpa} />
+        ))}
+          </>
+        ) : (
+          <>
+        <FaixaGrupo titulo={`Vence hoje · ${dataHoje}`} sub={`${plural(deHoje.length, 'entrega', 'entregas')} · ${plural(postsHoje, 'post', 'posts')}`} bg={ST.hoje.bg} tx={ST.hoje.tx} ponto={limpa ? '#C2417E' : undefined} />
+        {deHoje.length === 0 && <div className="px-5 py-3 text-[13px] text-[#636369]">Nenhuma entrega vence hoje.</div>}
+        {deHoje.map((q, i) => (
+          <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={hoje} sub="vence hoje" cor="#C2417E" />} feitas={progHoje[i].feitas} abertas={abertasHoje[i]} limpa={limpa} />
         ))}
         <FaixaGrupo
           titulo="Em atraso"
           sub={atrasos.length ? `${plural(atrasos.length, 'entrega', 'entregas')} · ${plural(postsAtr, 'post', 'posts')} · do mais antigo pro mais novo` : 'nada atrasado'}
           bg={ST.atr.bg}
           tx={ST.atr.tx}
+          ponto={limpa ? '#B42318' : undefined}
         />
         {atrasos.length === 0 && <div className="px-5 py-3 text-[13px] font-bold text-[#2E5520]">✓ Nada atrasado.</div>}
         {atrasos.map((g, i) => {
           const n = dias(g.maisAntigo, hoje);
-          return <LinhaEntrega key={g.q.id} q={g.q} prazo={<PrazoCel data={g.maisAntigo} sub={`há ${plural(n, 'dia', 'dias')}`} cor="#B42318" />} feitas={progAtr[i].feitas} abertas={g.total} />;
+          return <LinhaEntrega key={g.q.id} q={g.q} prazo={<PrazoCel data={g.maisAntigo} sub={`há ${plural(n, 'dia', 'dias')}`} cor="#B42318" />} feitas={progAtr[i].feitas} abertas={g.total} limpa={limpa} />;
         })}
+          </>
+        )}
         <FaixaGrupo
           titulo="Próximos 7 dias"
           sub={`${plural(prox.length, 'entrega', 'entregas')} · ${plural(postsProx, 'post', 'posts')}${diasVazios.length ? ` · nada vence ${diasVazios.map(diaSemana).join(', ')}` : ''}`}
           bg={ST.cheg.bg}
           tx={ST.cheg.tx}
+          ponto={limpa ? '#7462D6' : undefined}
         />
         {prox.length === 0 && <div className="px-5 py-3 text-[13px] text-[#636369]">Nada vence nos próximos 7 dias.</div>}
         {prox.map((q, i) => {
           const n = dias(hoje, q.dataAtual!);
-          return <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={q.dataAtual!} sub={`em ${plural(n, 'dia', 'dias')}`} cor="#5B4BB7" />} feitas={progProx[i].feitas} abertas={abertasProx[i]} />;
+          return <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={q.dataAtual!} sub={`em ${plural(n, 'dia', 'dias')}`} cor="#5B4BB7" />} feitas={progProx[i].feitas} abertas={abertasProx[i]} limpa={limpa} />;
         })}
       </div>
     </div>
