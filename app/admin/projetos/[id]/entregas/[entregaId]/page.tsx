@@ -26,7 +26,7 @@ export default function EntregaDoProjetoPage({ params }: { params: { id: string;
 }
 
 async function Conteudo({ projetoId, entregaId }: { projetoId: string; entregaId: string }) {
-  const d = await carregarEntrega(entregaId, projetoId);
+  const d = await carregarEntrega(entregaId, projetoId, { longo: true });
   if (!d) notFound();
   const grupo = d.grupos.find((g) => g.projetoId && semTraco(g.projetoId) === semTraco(projetoId)) ?? null;
 

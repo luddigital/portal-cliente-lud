@@ -101,7 +101,7 @@ export default async function EntregaPage({
 
 /** Abas por semana (atrasados, esta, próximas), DL em destaque e posts por cliente; a gestão antiga fica recolhida embaixo. */
 async function Semanas({ id }: { id: string }) {
-  const d = await carregarEntrega(id);
+  const d = await carregarEntrega(id, undefined, { longo: true });
   if (!d) notFound();
   const { entrega, grupos, tipo, textos, hojeIso } = d;
   const fotos = Object.fromEntries(

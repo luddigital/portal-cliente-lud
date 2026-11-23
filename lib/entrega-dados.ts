@@ -1,5 +1,6 @@
 import {
   getEntregaCompleta,
+  getEntregaLonga,
   getEntregaDoProjeto,
   listarTarefasAbertasDosPosts,
   proximaDataDaEntrega,
@@ -65,9 +66,11 @@ function mensagensDaRodada(msgs: EnvioDoPost[], reaprovacao: boolean): EnvioDoPo
   return corte >= 0 ? msgs.slice(0, corte + 1) : [];
 }
 
-export async function carregarEntrega(id: string, projetoId?: string): Promise<DadosDaEntrega | null> {
+export async function carregarEntrega(id: string, projetoId?: string, opts?: { longo?: boolean }): Promise<DadosDaEntrega | null> {
   // Na página do projeto, lê do Notion só as tarefas dele (não as de todos os clientes).
-  const ler = (eid: string) => (projetoId ? getEntregaDoProjeto(eid, projetoId) : getEntregaCompleta(eid));
+  // `longo`: página da entrega, com tudo em aberto até 90 dias (o resto usa a janela curta, mais leve).
+  const ler = (eid: string) =>
+    opts?.longo ? getEntregaLonga(eid, projetoId) : projetoId ? getEntregaDoProjeto(eid, projetoId) : getEntregaCompleta(eid);
   const [entrega, aprovacoes] = await Promise.all([
     ler(id),
     // As reaprovações estão ligadas a "Aprovações" no Notion: entram aqui as dessa etapa.

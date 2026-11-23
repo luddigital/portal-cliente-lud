@@ -1670,6 +1670,8 @@ async function _getEntregaDetalheUncached(
   todas = false,
   /** Só as tarefas desse projeto (página da entrega do projeto: bem menos leituras). */
   projetoId?: string,
+  /** Até quantos dias pra frente. Padrão 10 (listas, home, aquecimento); a página da entrega usa 90. */
+  diasAFrente = 10,
 ): Promise<EntregaDetalhe | null> {
   try {
     const entrega = (await cachedPageRetrieve(entregaId)) as any;
@@ -1713,8 +1715,7 @@ async function _getEntregaDetalheUncached(
                   {
                     property: 'Data Entrega',
                     date: {
-                      // Tudo que está em aberto pra frente (até 90 dias), não só a semana.
-                      on_or_before: new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10),
+                      on_or_before: new Date(Date.now() + diasAFrente * 86_400_000).toISOString().slice(0, 10),
                     },
                   },
                 ]
@@ -1849,7 +1850,7 @@ const _getEntregaDetalheCached = unstable_cache(
 
 const _getEntregaCompletaCached = cacheComReserva(
   medido('entrega (todos)', (entregaId: string) => _getEntregaDetalheUncached(entregaId, true)),
-  ['get-entrega-completa-v5-90dias'],
+  ['get-entrega-completa-v4-postdata'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
 );
 
@@ -1862,9 +1863,19 @@ export async function getEntregaCompleta(entregaId: string): Promise<EntregaDeta
 
 const _getEntregaDoProjetoCached = cacheComReserva(
   medido('entrega (projeto)', (entregaId: string, projetoId: string) => _getEntregaDetalheUncached(entregaId, true, projetoId)),
-  ['get-entrega-do-projeto-v2-90dias'],
+  ['get-entrega-do-projeto-v1'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
 );
+
+/** Página da entrega: tudo que está em aberto até 90 dias pra frente (não só a semana). */
+const _getEntregaLongaCached = cacheComReserva(
+  medido('entrega (90 dias)', (entregaId: string, projetoId: string) => _getEntregaDetalheUncached(entregaId, true, projetoId || undefined, 90)),
+  ['get-entrega-longa-v1'],
+  { revalidate: 120, tags: [TAG_TAREFAS] },
+);
+export async function getEntregaLonga(entregaId: string, projetoId?: string): Promise<EntregaDetalhe | null> {
+  return (await _getEntregaLongaCached(entregaId, projetoId ?? '')) ?? _getEntregaDetalheUncached(entregaId, true, projetoId, 90);
+}
 
 /** Mesmo recorte de getEntregaCompleta, só com as tarefas de um projeto. */
 export async function getEntregaDoProjeto(entregaId: string, projetoId: string): Promise<EntregaDetalhe | null> {
