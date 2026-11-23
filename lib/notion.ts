@@ -1713,7 +1713,8 @@ async function _getEntregaDetalheUncached(
                   {
                     property: 'Data Entrega',
                     date: {
-                      on_or_before: new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10),
+                      // Tudo que está em aberto pra frente (até 90 dias), não só a semana.
+                      on_or_before: new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10),
                     },
                   },
                 ]
@@ -1848,7 +1849,7 @@ const _getEntregaDetalheCached = unstable_cache(
 
 const _getEntregaCompletaCached = cacheComReserva(
   medido('entrega (todos)', (entregaId: string) => _getEntregaDetalheUncached(entregaId, true)),
-  ['get-entrega-completa-v4-postdata'],
+  ['get-entrega-completa-v5-90dias'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
 );
 
@@ -1861,7 +1862,7 @@ export async function getEntregaCompleta(entregaId: string): Promise<EntregaDeta
 
 const _getEntregaDoProjetoCached = cacheComReserva(
   medido('entrega (projeto)', (entregaId: string, projetoId: string) => _getEntregaDetalheUncached(entregaId, true, projetoId)),
-  ['get-entrega-do-projeto-v1'],
+  ['get-entrega-do-projeto-v2-90dias'],
   { revalidate: 60, tags: [TAG_TAREFAS] },
 );
 
