@@ -67,6 +67,8 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
   const [tempoAberto, setTempoAberto] = useState<Record<string, boolean>>({});
   const [paraHoje, setParaHoje] = useState<Record<string, true>>({});
   const [pessoa, setPessoa] = useState<string>(pessoaInicial || 'todas');
+  // Só o que dá pra fazer agora: esconde as tarefas com cadeado (falta a etapa anterior).
+  const [soProntas, setSoProntas] = useState(false);
   const [previa, setPrevia] = useState<{ postId: string; tarefaId: string } | null>(null);
   const props_ = usePropriedades('tarefas-v2', ['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']);
 
@@ -80,7 +82,9 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
     return null;
   };
 
-  const visiveis = tarefas.filter((t) => !feitas[t.id] && (pessoa === 'todas' || (t.pessoa ?? 'Sem responsável') === pessoa));
+  const visiveis = tarefas.filter(
+    (t) => !feitas[t.id] && (pessoa === 'todas' || (t.pessoa ?? 'Sem responsável') === pessoa) && !(soProntas && t.antes),
+  );
   const porAba = useMemo(() => {
     const m: Record<Aba, LinhaTarefa[]> = { atr: [], hoje: [], amanha: [], proximos: [], inbox: [] };
     for (const t of visiveis) {
@@ -271,6 +275,15 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
           ))}
         </div>
       </details>
+
+      <button
+        type="button"
+        onClick={() => setSoProntas((v) => !v)}
+        title="Esconde as tarefas com cadeado (que ainda dependem de outra etapa)"
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold ${soProntas ? 'border-[#111113] bg-[#111113] text-white' : 'border-[#E2E2E5] bg-white text-[#46464B] hover:bg-[#F4F4F5]'}`}
+      >
+        {soProntas ? '✓ ' : ''}Só prontas
+      </button>
 
       <MenuPropriedades disponiveis={['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']} {...props_} />
       </div>
