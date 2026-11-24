@@ -353,7 +353,8 @@ export function EntregaSemanas({
 
   const gruposTabela = useMemo(() => {
     const ok = (i: ItemEntrega) => {
-      if (temReaprovacao && (rodadaAba === 'reaprovacao') !== !!i.reaprovacao) return false;
+      // Aba principal mostra tudo (reaprovação junto, com o nome dela no status); a aba Reaprovação filtra só elas.
+      if (rodadaAba === 'reaprovacao' && !i.reaprovacao) return false;
       if (fResp && (i.responsavel ?? i.pessoa ?? '') !== fResp) return false;
       if (fPer && periodoDe(i) !== fPer) return false;
       if (fSit === 'travado') return i.relacao === 'antes';
@@ -372,7 +373,7 @@ export function EntregaSemanas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grupos, temReaprovacao, rodadaAba, fCliente, fResp, fSit, fPer]);
   const nPer = (p: 'atr' | 'esta' | 'prox' | 'depois') => grupos.reduce((n, g) => n + g.itens.filter((i) => periodoDe(i) === p && !feito(i)).length, 0);
-  const contaAbertos = (reap: boolean) => grupos.reduce((n, g) => n + g.itens.filter((i) => !feito(i) && !!i.reaprovacao === reap).length, 0);
+  const contaAbertos = (soReap: boolean) => grupos.reduce((n, g) => n + g.itens.filter((i) => !feito(i) && (!soReap || !!i.reaprovacao)).length, 0);
   const clientesDaEntrega = grupos.map((g) => ({ id: g.projetoId, nome: nomeCurtoDoProjeto(g.projetoNome || g.nome) })).sort((a, b) => a.nome.localeCompare(b.nome));
   const pessoasDaEntrega = [...new Set(grupos.flatMap((g) => g.itens.filter((i) => !feito(i)).map((i) => i.responsavel ?? i.pessoa ?? '')).filter(Boolean))].sort();
   const nFiltros = Number(!!fCliente) + Number(!!fResp) + Number(!!fSit);
