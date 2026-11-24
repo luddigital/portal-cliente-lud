@@ -6847,3 +6847,50 @@ export async function postDaTarefa(tarefaId: string): Promise<string | null> {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Última etapa concluída de cada post (o post mudou desde o último envio?)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pra cada post, quando foi a última tarefa concluída nos últimos `dias` dias.
+ * Serve pro sinal de "enviado / visto" das tarefas do cliente: envio ou visualização
+ * de antes dessa data é da rodada anterior (o post mudou depois), então não conta.
+ */
+async function _ultimaConclusaoPorPostUncached(dias: number): Promise<Record<string, string>> {
+  const desde = new Date(Date.now() - dias * 86_400_000).toISOString().slice(0, 10);
+  const out: Record<string, string> = {};
+  let cursor: string | undefined;
+  let paginas = 0;
+  do {
+    const r: any = await notion.databases.query({
+      database_id: env.notion.tarefasDbId,
+      page_size: 100,
+      start_cursor: cursor,
+      filter: {
+        and: [
+          { property: env.notion.taskProps.status, status: { equals: 'Concluído' } },
+          { property: 'Finalizada em ', date: { on_or_after: desde } },
+        ],
+      },
+    });
+    for (const t of r.results as any[]) {
+      const postId = (getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id?.replace(/-/g, '');
+      const quando = getProp(t, 'Finalizada em ')?.date?.start ?? null;
+      if (!postId || !quando) continue;
+      if (!out[postId] || Date.parse(quando) > Date.parse(out[postId])) out[postId] = quando;
+    }
+    cursor = r.has_more ? r.next_cursor : undefined;
+  } while (cursor && ++paginas < 15);
+  return out;
+}
+
+const _ultimaConclusaoPorPostCached = unstable_cache(
+  (dias: number) => _ultimaConclusaoPorPostUncached(dias),
+  ['ultima-conclusao-por-post-v1'],
+  { revalidate: 120, tags: [TAG_TAREFAS] },
+);
+
+export async function ultimaConclusaoPorPost(dias = 30): Promise<Record<string, string>> {
+  return _ultimaConclusaoPorPostCached(dias);
+}
