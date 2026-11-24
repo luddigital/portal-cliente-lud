@@ -13,6 +13,7 @@ import { getGruposWhatsappDoProjeto, registrarEnvioAvulso } from '@/lib/supabase
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
 import { montarLembrete } from '@/lib/lembrete-aprovacao';
 import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
+import { garantirUmDiaDePrazo } from '@/lib/prazo-envio';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -212,6 +213,9 @@ export async function POST(
   } catch (err: any) {
     console.warn('[wpp-lembrete] não consegui concluir "Enviar Post":', err?.message);
   }
+
+  // Primeiro envio da rodada (envio pra aprovação ou reaprovação): o cliente tem pelo menos até amanhã.
+  if (tarefaEnvioConcluida || reaprovacao) await garantirUmDiaDePrazo(postsDoLembrete.map((p) => p.postId)).catch(() => []);
 
   // Entregas/régua/página do post leem com cache: invalidar faz o enviado
   // sumir da lista "falta enviar" sem precisar F5 manual.

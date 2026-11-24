@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { env } from '@/lib/env';
 import { concluirTarefa, invalidarCachesAposMudanca } from '@/lib/notion';
+import { garantirUmDiaDePrazo } from '@/lib/prazo-envio';
 import { getGrupoWhatsappDoProjeto, supabaseAdmin } from '@/lib/supabase';
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
 
@@ -76,6 +77,8 @@ export async function POST(req: Request): Promise<Response> {
       );
       if (falhas.some(Boolean)) erroNotion = 'enviado, mas não consegui concluir todas as tarefas no Notion';
     }
+    // Quem recebe hoje tem pelo menos até amanhã pra aprovar.
+    if (['quinta', 'separado', 'reaprovacao'].includes(item.momento)) await garantirUmDiaDePrazo(item.postIds ?? []);
     resultados.push({ projetoId: item.projetoId, ok: true, erro: erroNotion });
   }
 
