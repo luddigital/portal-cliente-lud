@@ -6899,3 +6899,8 @@ const _ultimaConclusaoPorPostCached = cacheComReserva(
 export async function ultimaConclusaoPorPost(dias = 10): Promise<Record<string, string>> {
   return _ultimaConclusaoPorPostCached(dias);
 }
+
+/** Cliente do Notion (com as mesmas proteções de limite) pra rotinas que montam a consulta na mão. */
+export function notionCru() {
+  return notion;
+}
