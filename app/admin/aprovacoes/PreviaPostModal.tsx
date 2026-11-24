@@ -1502,7 +1502,7 @@ export function PreviaPostModal({
                       <div className={`flex min-w-0 flex-col gap-3 lg:sticky lg:self-start ${pagina ? 'lg:top-[72px]' : 'lg:top-0'}`}>
                         {aprovandoArte ? (
                           <>
-                            <ComentariosLud postId={postId} notas={preview.notas ?? []} />
+                            <ComentariosLud postId={postId} notas={preview.notas ?? []} abaInicial="interna" />
                             <div className="rounded-[18px] border border-[#E9E9EB] p-4">
                               <b className="mb-2 flex items-center gap-2 text-[14px]">
                                 <span>✏️</span>Pedir alteração

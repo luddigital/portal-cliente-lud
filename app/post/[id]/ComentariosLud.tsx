@@ -8,8 +8,8 @@ import type { NotaHistorico } from '@/lib/historico-post';
  *   - Com o cliente → "💬 email" (aparece no histórico com o cliente)
  *   - Nota interna  → "🔒 Nota interna · email" (só a equipe; o portal nunca mostra pro cliente)
  */
-export function ComentariosLud({ postId, notas = [], cronologico = false }: { postId: string; tarefaId?: string | null; notas?: NotaHistorico[]; cronologico?: boolean }) {
-  const [aba, setAba] = useState<'cliente' | 'interna'>('cliente');
+export function ComentariosLud({ postId, notas = [], cronologico = false, abaInicial = 'cliente' }: { postId: string; tarefaId?: string | null; notas?: NotaHistorico[]; cronologico?: boolean; abaInicial?: 'cliente' | 'interna' }) {
+  const [aba, setAba] = useState<'cliente' | 'interna'>(abaInicial);
   const doCliente = notas.filter((n) => TIPOS_CLIENTE.has(n.tipo));
   const internas = notas.filter((n) => n.tipo === 'interna');
   const abas = [
