@@ -1172,29 +1172,6 @@ export function PreviaPostModal({
           </div>
         </div>
 
-        {/* Abas */}
-        {preview && (
-          <nav aria-label="Abas da prévia" className="mx-6 mt-3 flex w-fit max-w-[calc(100%-48px)] gap-0.5 overflow-x-auto min-h-fit rounded-[12px] bg-[#F4F4F5] p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {(
-              [
-                ['post', 'Post', null],
-                ['tarefas', 'Tarefas', preview.tarefas.filter((t) => t.aberta).length],
-                ['comentarios', 'Comentários e atividade', (preview.notas ?? []).filter((n) => TIPOS_COMENTARIO.has(n.tipo) || n.tipo === 'interna').length],
-              ] as const
-            ).map(([id, rot, n]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setAba(id)}
-                className={`whitespace-nowrap rounded-[10px] px-3.5 py-1.5 text-[13px] ${aba === id ? 'bg-white font-extrabold text-[#111113] shadow-[0_1px_2px_rgba(17,17,19,0.08)]' : 'font-bold text-[#636369] hover:text-[#111113]'}`}
-              >
-                {rot}
-                {n !== null && n > 0 && <b className={id === 'tarefas' ? 'text-[#7E211C]' : ''}> · {n}</b>}
-              </button>
-            ))}
-          </nav>
-        )}
-
         {/* Corpo */}
         <div className={pagina ? '' : 'flex-1 overflow-y-auto'}>
           {erro && <div className="m-6 rounded-[12px] bg-[#F6CFCB] p-4 text-[13px] text-[#7E211C]">{erro}</div>}
@@ -1211,14 +1188,14 @@ export function PreviaPostModal({
             <div className="flex flex-col gap-5 p-6">
               {/* Onde o post está: uma linha só, etapas recolhidas */}
               {fluxo.length > 0 && (
-                <section className="flex flex-col gap-3 rounded-[16px] border border-[#EDEDEF] px-4 py-3.5">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <section className="flex flex-wrap items-center gap-3 rounded-[16px] border border-[#EDEDEF] px-4 py-3.5">
+                  <div className="contents">
+                    <span className="order-1 flex min-w-[160px] flex-1 flex-col gap-0.5">
                       <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Etapa</span>
                       {agora ? <b className="text-[16px] leading-[1.3] text-[#111113]">{agora.titulo}</b> : <b className="text-[16px] text-[#2E5520]">✓ Todas as etapas concluídas</b>}
                     </span>
                     {agora && (
-                      <span className="flex items-center gap-2">
+                      <span className="order-3 flex items-center gap-2">
                         {ehTarefaDoCliente(agora.titulo) && <BotaoLembreteWpp tarefaId={agora.tarefaId} clienteNome={preview.projetoNome ?? 'cliente'} rotulo="Lembrar no grupo" compacto />}
                         <button
                           type="button"
@@ -1231,7 +1208,7 @@ export function PreviaPostModal({
                       </span>
                     )}
                   </div>
-                  {erroEtapa && <span className="text-[12px] font-bold text-[#7E211C]">{erroEtapa}</span>}
+                  {erroEtapa && <span className="order-5 basis-full text-[12px] font-bold text-[#7E211C]">{erroEtapa}</span>}
                   {(() => {
                     const feitas = fluxo.filter((t) => !t.aberta);
                     // Última etapa concluída: a de "Finalizada em" mais recente (sem data, a última feita na ordem).
@@ -1240,8 +1217,8 @@ export function PreviaPostModal({
                     const pct = Math.round((feitas.length / fluxo.length) * 100);
                     const quadro = 'flex h-[54px] items-center gap-2.5 rounded-[12px] border border-[#EDEDEF] bg-[#FAFAFA] pl-2.5 pr-3.5';
                     return (
-                      <div className="flex flex-col">
-                        <div className="flex flex-wrap gap-2.5">
+                      <div className="contents">
+                        <div className="order-2 flex flex-wrap gap-2.5">
                           {ultima && (
                             <span className={`${quadro} opacity-50`} title="Última etapa concluída">
                               <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[#2E5520] text-[14px] font-extrabold text-white">✓</span>
@@ -1280,7 +1257,7 @@ export function PreviaPostModal({
                           </button>
                         </div>
                         {verEtapas && (
-                          <div className="mt-3">
+                          <div className="order-4 basis-full">
                             <ReguaCompacta
                               etapas={fluxo.map((t) => ({ id: t.tarefaId, titulo: rotuloRegua(t.titulo), feito: !t.aberta, prazo: t.prazo }))}
                               agoraId={agora?.tarefaId ?? null}
@@ -1292,6 +1269,27 @@ export function PreviaPostModal({
                   })()}
                 </section>
               )}
+
+              {/* Abas: abaixo do box da etapa */}
+              <nav aria-label="Abas da prévia" className="flex w-fit max-w-full gap-0.5 overflow-x-auto min-h-fit rounded-[12px] bg-[#F4F4F5] p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {(
+                  [
+                    ['post', 'Post', null],
+                    ['tarefas', 'Tarefas', preview.tarefas.filter((t) => t.aberta).length],
+                    ['comentarios', 'Comentários e atividade', (preview.notas ?? []).filter((n) => TIPOS_COMENTARIO.has(n.tipo) || n.tipo === 'interna').length],
+                  ] as const
+                ).map(([id, rot, n]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setAba(id)}
+                    className={`whitespace-nowrap rounded-[10px] px-3.5 py-1.5 text-[13px] ${aba === id ? 'bg-white font-extrabold text-[#111113] shadow-[0_1px_2px_rgba(17,17,19,0.08)]' : 'font-bold text-[#636369] hover:text-[#111113]'}`}
+                  >
+                    {rot}
+                    {n !== null && n > 0 && <b className={id === 'tarefas' ? 'text-[#7E211C]' : ''}> · {n}</b>}
+                  </button>
+                ))}
+              </nav>
 
               {aba === 'tarefas' && (
                 <div id="pedir-alteracao" className="order-last rounded-[18px] border border-[#E9E9EB] p-4">
