@@ -31,7 +31,7 @@ export async function criarTarefasDeCalendario(opts: { hoje: string; previa?: bo
       filter: {
         and: [
           { property: 'Serviço', relation: { contains: SERVICO_SOCIAL } },
-          { property: 'Status Manual', select: { equals: 'Ativo' } },
+          { property: 'Status Manual', status: { equals: 'Ativo' } },
         ],
       },
     });
