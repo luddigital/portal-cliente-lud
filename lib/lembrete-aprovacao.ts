@@ -291,17 +291,30 @@ export function montarLembrete(input: {
       ? avisoReadequacao(situacao.codigo, input.textos)
       : null;
   const varios = (input.posts?.length ?? 0) > 1;
+  // Mais de um post: o texto vai pro plural ("nesse post" → "nesses posts").
+  const plural = (t: string) =>
+    !varios
+      ? t
+      : t
+          .replace(/\b([Nn])esse post\b/g, '$1esses posts')
+          .replace(/\b([Ee])sse post\b/g, '$1sses posts')
+          .replace(/\b([Nn])o post\b/g, '$1os posts')
+          .replace(/\b([Dd])o post\b/g, '$1os posts')
+          .replace(/\b([Oo]) post atualizado\b/g, '$1s posts atualizados')
+          .replace(/\b([Oo]) post\b/g, '$1s posts')
+          .replace(/\bnova versão\b/g, 'novas versões');
   const blocos = [
     p(textos['lembrete.saudacao']),
     varios
-      ? [p(e('abertura')), ...input.posts!.map((x) => `*${x.titulo}*\n${x.link}`)].filter(Boolean).join('\n\n')
+      ? [plural(p(e('abertura'))), ...input.posts!.map((x) => `*${x.titulo}*\n${x.link}`)].filter(Boolean).join('\n\n')
       : [p(e('abertura')), `*${input.postTitulo}*`].filter(Boolean).join('\n'),
     readequacao ??
       (input.primeiroEnvio && (situacao.codigo === 'vencido' || situacao.codigo === 'data_passou')
         ? ''
         : p(textos[`lembrete.prazo.${situacao.codigo}`] ?? '')),
-    varios ? p(e('acao')) : [p(e('acao')), input.link].filter(Boolean).join('\n'),
-    p(e('regra')),
+    // Vários posts: os links já foram com cada post, então a linha "confere aqui:" sai.
+    varios ? '' : [p(e('acao')), input.link].filter(Boolean).join('\n'),
+    plural(p(e('regra'))),
     p(textos['lembrete.fechamento']),
   ].filter(Boolean);
 
