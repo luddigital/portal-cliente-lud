@@ -297,7 +297,7 @@ function MateriaisParaAprovar({ arquivos }: { arquivos: Arquivo[] }) {
   );
 }
 
-function SecaoMateriais({ s, id, tarefaId, drive }: { s: Secao; id: string; tarefaId: string | null; drive: Arquivo[] }) {
+function SecaoMateriais({ s, id, tarefaId, drive, idsDoPost = [] }: { s: Secao; id: string; tarefaId: string | null; drive: Arquivo[]; idsDoPost?: string[] }) {
   // Arquivos do Drive (pasta de materiais) + arquivos colados na seção do Notion: tudo vira item da galeria.
   const arquivos = [
     ...drive.map((a) => {
@@ -312,7 +312,8 @@ function SecaoMateriais({ s, id, tarefaId, drive }: { s: Secao; id: string; tare
   // "Link enviado pelo cliente: https://…" (link no fim da linha) vira um quadradinho de link na galeria.
   const links = textosTodos.map((l) => linkNoFim(l.texto));
   const textos = textosTodos.filter((_, k) => !links[k]);
-  const quadrosDeLink = links.filter((x): x is NonNullable<typeof x> => !!x);
+  // Link pro mesmo arquivo que já é a arte/vídeo do post não vira material.
+  const quadrosDeLink = links.filter((x): x is NonNullable<typeof x> => !!x && !idsDoPost.includes(x.url.match(/\/d\/([\w-]+)/)?.[1] ?? ''));
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   async function anexar(files: FileList | null) {
@@ -1291,6 +1292,7 @@ export function PreviaPostModal({
                               s={sec}
                               id={idSec(k)}
                               tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null}
+                              idsDoPost={(preview.arquivos ?? []).map((a) => a.id)}
                               // "já enviado (aba Post)": o material é o arquivo do próprio post.
                               // Aprovando materiais com arquivo: a galeria já está no topo, aqui fica só o texto (links do cliente).
                               drive={aprovandoMateriais && temArquivoDeMaterial ? [] : temArquivoDeMaterial ? preview.materiais! : sec.linhas.some((l) => /aba post|j[áa] envi/i.test(l.texto)) ? preview.arquivos : []}
