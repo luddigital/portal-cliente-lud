@@ -1201,7 +1201,7 @@ export function PreviaPostModal({
                           type="button"
                           onClick={concluirEtapa}
                           disabled={concluindo}
-                          className="inline-flex h-9 items-center rounded-full bg-[#111113] px-4 text-[13px] font-extrabold text-white hover:bg-[#2C2C30] disabled:opacity-50"
+                          className="inline-flex h-9 items-center rounded-full border border-[#2E7D4F] bg-[#2E7D4F] px-4 text-[13px] font-extrabold text-white hover:bg-[#256A42] disabled:opacity-50"
                         >
                           {concluindo ? 'Concluindo…' : '✓ Concluir'}
                         </button>

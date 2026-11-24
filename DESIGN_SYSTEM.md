@@ -205,6 +205,10 @@ Toda data com prazo (entrega, aprovação, tarefa) usa o mesmo chip, **discreto*
 - Em React, use `<ChipData prazo hoje />` (`app/_components/ChipData.tsx`): calcula a urgência, mostra `dd/mm` e põe "vence em N dias" no tooltip. `texto` troca o rótulo ("hoje", "atrasado 3 dias"…) sem mudar o visual.
 - Classes em `app/globals.css` (`.chip-data`).
 
+### Botão Concluir
+
+Concluir uma etapa/tarefa é sempre verde, em qualquer tela (Hoje, Tarefas, popup do post): fundo `#2E7D4F`, texto branco, `rounded-full`, hover `#256A42`, texto "✓ Concluir". Em lista densa pode ser a versão contorno (fundo branco, borda `#2E7D4F`, texto `#2E5520`). Nunca preto.
+
 ### Botão de envio ao cliente
 
 Ação positiva de mandar algo pro cliente (enviar pra aprovação, mensagem da entrega): verde `var(--prazo-em-dia)`, texto branco, `rounded-full` — classe `.btn-enviar`. Só aparece quando a ação está liberada (ex.: todos os posts do cliente prontos); **não mostrar botão desabilitado** no lugar, mostrar o que falta no texto do card.
