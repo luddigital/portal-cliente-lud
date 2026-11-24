@@ -68,6 +68,7 @@ const ehRotuloDoTopo = (t: string) => {
   return !!r && (/^formato$/i.test(r.rotulo) || ROTULOS_TOPO.some(([rx]) => rx.test(r.rotulo)));
 };
 function emojiDaSecao(t: string): string {
+  if (/^arte$/i.test(t.trim())) return '🖼';
   if (/ideia/i.test(t)) return '💡';
   if (/briefing/i.test(t)) return '📋';
   if (/refer/i.test(t)) return '🔗';
@@ -1312,6 +1313,8 @@ export function PreviaPostModal({
                   const indice = secoes
                     .map((sec, k) => ({ id: idSec(k), titulo: sec.titulo, o: secoesBase.indexOf(sec) }))
                     .sort((a, b) => pesoDaSecao(a.titulo) - pesoDaSecao(b.titulo) || a.o - b.o);
+                  // A arte tem o seu lugar no menu, sempre em primeiro.
+                  indice.unshift({ id: 'secao-arte', titulo: 'Arte', o: -1 });
                   const ir = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   const colunaArte = (
                     <>
@@ -1449,7 +1452,7 @@ export function PreviaPostModal({
                             key={it.id}
                             type="button"
                             onClick={() => ir(it.id)}
-                            className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13.5px] hover:bg-[#F4F4F5] hover:text-[#111113] ${emMateriais && /^materiais$/i.test(it.titulo.trim()) ? 'bg-[#F4F4F5] font-bold text-[#111113]' : 'font-medium text-[#46464B]'}`}
+                            className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13.5px] hover:bg-[#F4F4F5] hover:text-[#111113] ${(emMateriais && /^materiais$/i.test(it.titulo.trim())) || (aprovandoArte && it.id === 'secao-arte') ? 'bg-[#F4F4F5] font-bold text-[#111113]' : 'font-medium text-[#46464B]'}`}
                           >
                             <span className="w-[18px] text-center">{emojiDaSecao(it.titulo)}</span>
                             <span className="truncate">{it.titulo}</span>
@@ -1459,7 +1462,11 @@ export function PreviaPostModal({
 
                       {/* Meio: tudo do Notion numa leitura só */}
                       <div className="flex min-w-0 flex-col">
-                        {aprovandoArte && <div className="mx-auto mb-6 flex w-full max-w-[560px] flex-col gap-3 border-b border-[#F0F0F2] pb-6">{colunaArte}</div>}
+                        {aprovandoArte && (
+                          <div id="secao-arte" className="mx-auto mb-6 flex w-full max-w-[560px] scroll-mt-4 flex-col gap-3 border-b border-[#F0F0F2] pb-6">
+                            {colunaArte}
+                          </div>
+                        )}
                         {aprovandoMateriais && temArquivoDeMaterial && <MateriaisParaAprovar arquivos={preview.materiais ?? []} />}
                         {secoes.length === 0 && (preview.ideia || preview.briefing || preview.roteiro || preview.cards) && (
                           <section className="flex flex-col gap-3 pb-6">
@@ -1511,7 +1518,9 @@ export function PreviaPostModal({
                             </div>
                           </>
                         ) : (
-                          colunaArte
+                          <div id="secao-arte" className="flex scroll-mt-4 flex-col gap-3">
+                            {colunaArte}
+                          </div>
                         )}
                       </div>
                     </div>
