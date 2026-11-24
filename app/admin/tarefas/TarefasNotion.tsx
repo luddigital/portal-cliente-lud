@@ -10,6 +10,7 @@ import { BotaoLembreteWpp } from '../aprovacoes/BotaoLembreteWpp';
 import { MenuPropriedades, NOME_COLUNA, usePropriedades, type Coluna } from '../_ui/Propriedades';
 import { AvatarPessoa as AvatarPadrao, AvatarProjeto, Sinal } from '../_ui/Avatares';
 import { PreviaPostModal, prefetchPrevia } from '../aprovacoes/PreviaPostModal';
+import { useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
 
 /**
  * Tarefas no jeito da "Gestão de Projetos" do Notion: abas Atrasadas, Hoje,
@@ -82,8 +83,9 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
     return null;
   };
 
+  const concluidaAgora = useConcluidaAgora();
   const visiveis = tarefas.filter(
-    (t) => !feitas[t.id] && (pessoa === 'todas' || (t.pessoa ?? 'Sem responsável') === pessoa) && !(soProntas && t.antes),
+    (t) => !feitas[t.id] && !concluidaAgora(t.id) && (pessoa === 'todas' || (t.pessoa ?? 'Sem responsável') === pessoa) && !(soProntas && t.antes),
   );
   const porAba = useMemo(() => {
     const m: Record<Aba, LinhaTarefa[]> = { atr: [], hoje: [], amanha: [], proximos: [], inbox: [] };

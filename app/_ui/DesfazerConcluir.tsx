@@ -17,6 +17,41 @@ export function avisarConcluida(tarefaId: string, rotulo?: string | null) {
 
 type Aviso = { tarefaId: string; rotulo: string | null };
 
+/**
+ * Tarefas concluídas nesta aba nos últimos 3 min. Fica guardado fora dos componentes, então
+ * vale pra qualquer tela (Hoje, Tarefas…) mesmo se a lista vier do cache antes do Notion atualizar.
+ */
+const concluidasAgora = new Map<string, number>();
+const semTraco = (id: string) => id.replace(/-/g, '');
+const ouvintes = new Set<() => void>();
+if (typeof window !== 'undefined') {
+  window.addEventListener(EVENTO, (e) => {
+    const id = (e as CustomEvent<Aviso>).detail?.tarefaId;
+    if (!id) return;
+    concluidasAgora.set(semTraco(id), Date.now());
+    ouvintes.forEach((f) => f());
+  });
+}
+function esquecer(tarefaId: string) {
+  concluidasAgora.delete(semTraco(tarefaId));
+  ouvintes.forEach((f) => f());
+}
+/** Diz se a tarefa acabou de ser concluída aqui (some da lista na hora, em qualquer tela). */
+export function useConcluidaAgora(): (tarefaId: string) => boolean {
+  const [, setV] = useState(0);
+  useEffect(() => {
+    const f = () => setV((v) => v + 1);
+    ouvintes.add(f);
+    return () => {
+      ouvintes.delete(f);
+    };
+  }, []);
+  return (tarefaId: string) => {
+    const t = concluidasAgora.get(semTraco(tarefaId));
+    return !!t && Date.now() - t < 180_000;
+  };
+}
+
 export function DesfazerConcluir() {
   const router = useRouter();
   const [aviso, setAviso] = useState<Aviso | null>(null);
@@ -54,6 +89,7 @@ export function DesfazerConcluir() {
         body: JSON.stringify({ status: 'Iniciar' }),
       });
       if (!r.ok) throw new Error();
+      esquecer(aviso.tarefaId);
       setEstado('desfeito');
       // Atualiza os dados sem recarregar a página (sem tela branca).
       setTimeout(() => startTransition(() => router.refresh()), 300);

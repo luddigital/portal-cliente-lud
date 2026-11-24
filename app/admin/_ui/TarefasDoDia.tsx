@@ -7,7 +7,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { MudarPrazo } from './MudarPrazo';
-import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
+import { avisarConcluida, useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
 
 export type TarefaDia = {
   id: string;
@@ -31,7 +31,8 @@ function somaDias(iso: string, n: number) {
 
 export function TarefasDoDia({ tarefas, hoje, rotuloHoje }: { tarefas: TarefaDia[]; hoje: string; rotuloHoje: string }) {
   const amanha = somaDias(hoje, 1);
-  const relevantes = tarefas.filter((t) => t.prazo && t.prazo <= amanha);
+  const concluidaAgora = useConcluidaAgora();
+  const relevantes = tarefas.filter((t) => t.prazo && t.prazo <= amanha && !concluidaAgora(t.id));
   const pessoas = Array.from(new Set(relevantes.map((t) => t.pessoa)))
     .map((p) => ({ p, n: relevantes.filter((t) => t.pessoa === p).length }))
     .sort((a, b) => b.n - a.n);

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
 import { corDaEtapa } from '@/lib/corEtapa';
 import { AvatarProjeto } from './Avatares';
 
@@ -21,7 +22,8 @@ export function FazerAgora({ itens, hoje, pessoas }: { itens: ItemFazerAgora[]; 
   const [feitas, setFeitas] = useState<Record<string, true>>({});
   const [pessoa, setPessoa] = useState<string>('');
   const [mais, setMais] = useState(false);
-  const lista = itens.filter((t) => !feitas[t.id] && (!pessoa || t.pessoa === pessoa));
+  const concluidaAgora = useConcluidaAgora();
+  const lista = itens.filter((t) => !feitas[t.id] && !concluidaAgora(t.id) && (!pessoa || t.pessoa === pessoa));
   const visiveis = mais ? lista : lista.slice(0, 10);
   async function concluir(id: string) {
     setFeitas((f) => ({ ...f, [id]: true }));
