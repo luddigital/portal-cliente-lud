@@ -794,17 +794,42 @@ function PrazoDaEtapa({ tarefaId, prazo, hoje, onMudou }: { tarefaId: string; pr
       setSalvando(false);
     }
   }
-  const atrasada = !!prazo && prazo.slice(0, 10) < hoje;
-  const cor = !prazo ? '#636369' : atrasada ? '#7E211C' : prazo.slice(0, 10) === hoje ? '#7A1F4C' : '#111113';
+  const dia = prazo?.slice(0, 10) ?? null;
+  const dif = dia ? Math.round((Date.parse(dia + 'T12:00:00Z') - Date.parse(hoje + 'T12:00:00Z')) / 86_400_000) : null;
+  const sem = (d: string) => new Intl.DateTimeFormat('pt-BR', { weekday: 'short', timeZone: 'UTC' }).format(new Date(d + 'T12:00:00Z')).replace('.', '');
+  const diaMes = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+  // Cores do design system: atrasada vermelho, hoje rosa, em dia roxo, sem prazo neutro.
+  const tom =
+    dif === null
+      ? null
+      : dif < 0
+        ? { top: '#B42318', bg: '#F6CFCB', fg: '#7E211C', bd: '#EFB9B3', fundo: '#FDF1EF' }
+        : dif === 0
+          ? { top: '#C2417E', bg: '#F8D5E5', fg: '#7A1F4C', bd: '#F2C6DA', fundo: '#FDF2F7' }
+          : { top: '#7462D6', bg: '#E2DDFA', fg: '#3D3478', bd: '#EDEDEF', fundo: '#FAFAFA' };
+  const titulo = salvando ? 'Salvando…' : dif === null ? 'Sem prazo' : dif < 0 ? `Atrasada ${-dif} ${dif === -1 ? 'dia' : 'dias'}` : dif === 0 ? 'Vence hoje' : dif === 1 ? 'Amanhã' : `Em ${dif} dias`;
+  const sub = !dia ? 'definir' : dif! < 0 ? `prazo era ${sem(dia)} ${diaMes(dia)}` : `prazo · ${sem(dia)} ${diaMes(dia)}`;
   return (
-    <span className="relative flex flex-wrap items-center gap-1.5 text-[12.5px] text-[#46464B]">
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
-      Prazo desta etapa:
-      <b style={{ color: cor }}>{salvando ? 'salvando…' : prazo ? prazoLongo(prazo, hoje) : 'sem prazo'}</b>
-      {atrasada && <span className="text-[#7E211C]">· atrasada</span>}
-      <span className="text-[#8A8A90]">·</span>
-      <button type="button" onClick={() => setAberto(!aberto)} className="font-bold text-[#46464B] underline underline-offset-2 hover:text-[#111113]">
-        mudar
+    <span className="relative">
+      <button
+        type="button"
+        onClick={() => setAberto(!aberto)}
+        title="Mudar o prazo desta etapa"
+        className="flex h-[54px] items-center gap-2.5 rounded-[12px] border pl-2.5 pr-3.5 text-left hover:border-[#B4B4B9]"
+        style={{ background: tom?.fundo ?? '#FAFAFA', borderColor: tom?.bd ?? '#EDEDEF' }}
+      >
+        {tom && dia ? (
+          <span className="flex w-[30px] flex-col overflow-hidden rounded-[8px] border text-center" style={{ borderColor: tom.bd }}>
+            <span className="py-px text-[8px] font-extrabold uppercase tracking-[0.06em] text-white" style={{ background: tom.top }}>{sem(dia)}</span>
+            <span className="text-[13px] font-extrabold leading-[1.3]" style={{ background: tom.bg, color: tom.fg }}>{dia.slice(8, 10)}</span>
+          </span>
+        ) : (
+          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[8px] border-[1.5px] border-dashed border-[#D6D6D9] font-extrabold text-[#B4B4B9]">?</span>
+        )}
+        <span className="flex flex-col">
+          <b className="text-[13px]" style={{ color: tom && dif! <= 0 ? tom.fg : '#111113' }}>{titulo}</b>
+          <span className="text-[11px] text-[#8A8A90]">{sub}</span>
+        </span>
       </button>
       {aberto && (
         <span className="absolute left-0 top-[calc(100%+6px)] z-20 flex w-[230px] flex-col gap-1.5 rounded-[14px] border border-[#E9E9EB] bg-white p-2.5 shadow-[0_8px_24px_rgba(17,17,19,0.12)]">
@@ -929,6 +954,7 @@ export function PreviaPostModal({
   const [erroEtapa, setErroEtapa] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [aba, setAba] = useState<'post' | 'tarefas' | 'comentarios'>('post');
+  const [verEtapas, setVerEtapas] = useState(false);
   const houveMutacao = useRef(false);
   const hoje = hojeSP();
   const [altAberto, setAltAberto] = useState(false);
@@ -1185,56 +1211,85 @@ export function PreviaPostModal({
             <div className="flex flex-col gap-5 p-6">
               {/* Onde o post está: uma linha só, etapas recolhidas */}
               {fluxo.length > 0 && (
-                <section
-                  className={`flex flex-col gap-2.5 rounded-[16px] border px-4 py-3 ${agora?.prazo && agora.prazo.slice(0, 10) < hoje ? 'border-[#F2B8B0] bg-[#FBE3E0]' : 'border-[#EDEDEF]'}`}
-                >
-                  {agora ? (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <b className="text-[14px] text-[#111113]">{agora.titulo}</b>
-                      {agora.pessoa && <span className="text-[12.5px] text-[#636369]" title={`Com ${agora.pessoa}`}>{agora.pessoa.split(' ')[0]}</span>}
-                      <PrazoDaEtapa key={agora.tarefaId} tarefaId={agora.tarefaId} prazo={agora.prazo} hoje={hoje} onMudou={mudarPrazoLocal} />
-                      <span className="ml-auto flex items-center gap-2">
-                        {ehTarefaDoCliente(agora.titulo) && (
-                          <BotaoLembreteWpp tarefaId={agora.tarefaId} clienteNome={preview.projetoNome ?? 'cliente'} rotulo="Lembrar no grupo" compacto />
-                        )}
+                <section className="flex flex-col gap-3 rounded-[16px] border border-[#EDEDEF] px-4 py-3.5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Etapa</span>
+                      {agora ? <b className="text-[16px] leading-[1.3] text-[#111113]">{agora.titulo}</b> : <b className="text-[16px] text-[#2E5520]">✓ Todas as etapas concluídas</b>}
+                    </span>
+                    {agora && (
+                      <span className="flex items-center gap-2">
+                        {ehTarefaDoCliente(agora.titulo) && <BotaoLembreteWpp tarefaId={agora.tarefaId} clienteNome={preview.projetoNome ?? 'cliente'} rotulo="Lembrar no grupo" compacto />}
                         <button
                           type="button"
                           onClick={concluirEtapa}
                           disabled={concluindo}
-                          className="inline-flex h-8 items-center rounded-full bg-[#111113] px-3.5 text-[12.5px] font-extrabold text-white hover:bg-[#2C2C30] disabled:opacity-50"
+                          className="inline-flex h-9 items-center rounded-full bg-[#111113] px-4 text-[13px] font-extrabold text-white hover:bg-[#2C2C30] disabled:opacity-50"
                         >
                           {concluindo ? 'Concluindo…' : '✓ Concluir'}
                         </button>
                       </span>
-                    </div>
-                  ) : (
-                    <span className="text-[13px] font-bold text-[#2E5520]">✓ Todas as etapas concluídas.</span>
-                  )}
+                    )}
+                  </div>
                   {erroEtapa && <span className="text-[12px] font-bold text-[#7E211C]">{erroEtapa}</span>}
                   {(() => {
-                    const u = ultimoUpdate(preview);
-                    return u ? (
-                      <span className="text-[12.5px] text-[#46464B]">
-                        <b className="text-[#111113]">Último update:</b> {u.texto} · {quandoCurto(u.quando)}
-                      </span>
-                    ) : null;
+                    const feitas = fluxo.filter((t) => !t.aberta);
+                    // Última etapa concluída: a de "Finalizada em" mais recente (sem data, a última feita na ordem).
+                    const ultima =
+                      [...feitas].filter((t) => t.finalizadaEm).sort((x, y) => Date.parse(y.finalizadaEm!) - Date.parse(x.finalizadaEm!))[0] ?? feitas[feitas.length - 1] ?? null;
+                    const pct = Math.round((feitas.length / fluxo.length) * 100);
+                    const quadro = 'flex h-[54px] items-center gap-2.5 rounded-[12px] border border-[#EDEDEF] bg-[#FAFAFA] pl-2.5 pr-3.5';
+                    return (
+                      <div className="flex flex-col">
+                        <div className="flex flex-wrap gap-2.5">
+                          {ultima && (
+                            <span className={`${quadro} opacity-50`} title="Última etapa concluída">
+                              <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[#2E5520] text-[14px] font-extrabold text-white">✓</span>
+                              <span className="flex flex-col">
+                                <b className="text-[13px] text-[#111113]">{ultima.titulo}</b>
+                                <span className="text-[11px] text-[#8A8A90]">última etapa{ultima.finalizadaEm ? ` · ${quandoCurto(ultima.finalizadaEm)}` : ''}</span>
+                              </span>
+                            </span>
+                          )}
+                          {agora && (
+                            <span className={quadro} title={agora.pessoa ? `Com ${agora.pessoa}` : 'Sem responsável'}>
+                              <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[#E2DDFA] text-[13px] font-extrabold text-[#3D3478]">{(agora.pessoa ?? '?').trim().charAt(0).toUpperCase()}</span>
+                              <span className="flex flex-col">
+                                <b className="text-[13px] text-[#111113]">{agora.pessoa ? agora.pessoa.split(' ')[0] : 'Ninguém'}</b>
+                                <span className="text-[11px] text-[#8A8A90]">com quem</span>
+                              </span>
+                            </span>
+                          )}
+                          {agora && (
+                            <PrazoDaEtapa key={agora.tarefaId} tarefaId={agora.tarefaId} prazo={agora.prazo} hoje={hoje} onMudou={mudarPrazoLocal} />
+                          )}
+                          <button type="button" onClick={() => setVerEtapas((v) => !v)} className={`${quadro} text-left hover:border-[#B4B4B9]`} title="Ver todas as etapas">
+                            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-full" style={{ background: `conic-gradient(#2E5520 0 ${pct}%, #E4E4E7 ${pct}% 100%)` }}>
+                              <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-white text-[8px] font-extrabold">
+                                {feitas.length}/{fluxo.length}
+                              </span>
+                            </span>
+                            <span className="flex flex-col">
+                              <b className="text-[13px] text-[#111113]">
+                                {feitas.length} de {fluxo.length}
+                              </b>
+                              <span className="text-[11px] text-[#8A8A90]">
+                                etapas <span className={`inline-block transition-transform ${verEtapas ? 'rotate-90' : ''}`}>›</span>
+                              </span>
+                            </span>
+                          </button>
+                        </div>
+                        {verEtapas && (
+                          <div className="mt-3">
+                            <ReguaCompacta
+                              etapas={fluxo.map((t) => ({ id: t.tarefaId, titulo: rotuloRegua(t.titulo), feito: !t.aberta, prazo: t.prazo }))}
+                              agoraId={agora?.tarefaId ?? null}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
                   })()}
-                  <details className="group">
-                    <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
-                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#F0F0F1]">
-                        <span className="block h-full rounded-full bg-[#2E5520]" style={{ width: `${Math.round((fluxo.filter((t) => !t.aberta).length / fluxo.length) * 100)}%` }} />
-                      </span>
-                      <span className="whitespace-nowrap text-[12px] font-bold text-[#636369]">
-                        {fluxo.filter((t) => !t.aberta).length} de {fluxo.length} etapas <span className="inline-block transition-transform group-open:rotate-90">›</span>
-                      </span>
-                    </summary>
-                    <div className="mt-3">
-                      <ReguaCompacta
-                        etapas={fluxo.map((t) => ({ id: t.tarefaId, titulo: rotuloRegua(t.titulo), feito: !t.aberta, prazo: t.prazo }))}
-                        agoraId={agora?.tarefaId ?? null}
-                      />
-                    </div>
-                  </details>
                 </section>
               )}
 
