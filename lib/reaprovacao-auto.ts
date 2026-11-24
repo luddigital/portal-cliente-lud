@@ -29,6 +29,7 @@ import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
 import { hojeEmSaoPaulo, montarLembrete, somarDias } from '@/lib/lembrete-aprovacao';
 import { lerMensagensEditadas } from '@/lib/mensagens-padrao';
 import { nomeCurtoDoProjeto } from '@/lib/rotas';
+import { inicioDaLeitura, mensagensDoGrupoDesde } from '@/lib/zapi-mensagens';
 
 export const ESPERA_MIN = 30;
 
@@ -125,6 +126,25 @@ export async function rodarReaprovacaoAutomatica(opts: { enviar: boolean; agora?
       res.erros.push(`${nome(projetoId)}: sem grupo do WhatsApp`);
       continue;
     }
+    // Confere no próprio grupo (mensagens gravadas pelo webhook do Z-API): se a Lud já mandou
+    // algo sobre o post depois da última mudança (pelo celular, pelo WhatsApp Web…), não manda.
+    const normal = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    try {
+      const inicio = await inicioDaLeitura();
+      const desde = new Date(Math.min(...lista.map((c) => Date.parse(c.mudouEm)))).toISOString();
+      const msgs = inicio ? await mensagensDoGrupoDesde(grupo.id, desde) : [];
+      for (const c of [...lista]) {
+        if (!inicio || Date.parse(inicio) > Date.parse(c.mudouEm)) continue; // ainda não tinha leitura nesse período
+        const tit = normal(c.titulo).slice(0, 30);
+        const ja = msgs.some(
+          (m) => m.fromMe && Date.parse(m.momento) >= Date.parse(c.mudouEm) && (normal(m.texto).includes(tit) || m.texto.includes(c.postId)),
+        );
+        if (ja) lista.splice(lista.indexOf(c), 1);
+      }
+    } catch (e: any) {
+      res.erros.push(`${nome(projetoId)}: não consegui ler o grupo (${e?.message}), segui só com o registro do portal`);
+    }
+    if (!lista.length) continue;
     const link = (c: Candidato) => `${env.app.url}/post/${c.postId}?tarefa=${c.aprovacao.tarefaId}`;
     const primeiro = lista[0];
     const { mensagem } = montarLembrete({
