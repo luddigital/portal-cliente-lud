@@ -1292,6 +1292,7 @@ export function PreviaPostModal({
                   // Nas etapas de materiais, o que importa vem primeiro: o que chegou, o que pedimos, o texto pra gravar.
                   const emMateriais = !!agora && /materia/i.test(agora.titulo);
                   const aprovandoMateriais = !!agora && /aprova.*materia/i.test(agora.titulo);
+                  const aprovandoArte = !!agora && /aprova[çc][ãa]o\s*\|\s*arte/i.test(agora.titulo);
                   const peso = (t: string) => (emMateriais ? pesoNaEtapaDeMateriais(t) : pesoDaSecao(t));
                   // Post sem a aba Lud no Notion: mostra as seções de sempre, vazias, pra o menu e os espaços aparecerem.
                   const semNada = !(preview.secoes ?? []).length && !(preview.ideia || preview.briefing || preview.roteiro || preview.cards);
@@ -1307,65 +1308,13 @@ export function PreviaPostModal({
                       .flatMap((x) => x.linhas.map((l) => l.url ?? l.texto.replace(/^https?:\s+\/\//i, (m) => m.replace(/\s+/g, ''))))
                       .map((t) => t.match(/https?:\/\/\S*instagram\.com\/\S+/i)?.[0])
                       .find(Boolean) ?? null;
-                  const indice = [
-                    ...secoes.map((sec, k) => ({ id: idSec(k), titulo: sec.titulo })),
-                  ];
+                  // Menu sempre na mesma ordem, em qualquer etapa (o meio pode trazer algo pra cima, o menu não muda).
+                  const indice = secoes
+                    .map((sec, k) => ({ id: idSec(k), titulo: sec.titulo, o: secoesBase.indexOf(sec) }))
+                    .sort((a, b) => pesoDaSecao(a.titulo) - pesoDaSecao(b.titulo) || a.o - b.o);
                   const ir = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  return (
-                    <div className={`grid gap-6 ${pagina ? 'lg:grid-cols-[200px_minmax(0,1fr)_460px] gap-8' : 'lg:grid-cols-[170px_minmax(0,1fr)_380px]'}`}>
-                      {/* Índice: clicar rola até a seção */}
-                      <nav className={`hidden flex-col gap-0.5 lg:sticky lg:flex lg:self-start ${pagina ? 'lg:top-[72px]' : 'lg:top-0'}`}>
-                        <span className="px-3 pb-2 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Neste post</span>
-                        {indice.map((it) => (
-                          <button key={it.id} type="button" onClick={() => ir(it.id)} className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13.5px] font-medium text-[#46464B] hover:bg-[#F4F4F5] hover:text-[#111113]">
-                            <span className="w-[18px] text-center">{emojiDaSecao(it.titulo)}</span>
-                            <span className="truncate">{it.titulo}</span>
-                          </button>
-                        ))}
-                      </nav>
-
-                      {/* Meio: tudo do Notion numa leitura só */}
-                      <div className="flex min-w-0 flex-col">
-                        {aprovandoMateriais && temArquivoDeMaterial && <MateriaisParaAprovar arquivos={preview.materiais ?? []} />}
-                        {secoes.length === 0 && (preview.ideia || preview.briefing || preview.roteiro || preview.cards) && (
-                          <section className="flex flex-col gap-3 pb-6">
-                            {(
-                              [
-                                ['💡 Ideia do post', preview.ideia],
-                                ['📋 Briefing', preview.briefing],
-                                ['🎙️ Roteiro', preview.roteiro],
-                                ['🗂️ Cards', preview.cards],
-                              ] as const
-                            )
-                              .filter(([, t]) => !!t)
-                              .map(([rot, t]) => (
-                                <div key={rot} className="flex flex-col gap-1">
-                                  <b className="text-[15px]">{rot}</b>
-                                  <p className="whitespace-pre-line text-[13.5px] leading-[1.55] text-[#2C2C30]">{t}</p>
-                                </div>
-                              ))}
-                          </section>
-                        )}
-                        {secoes.map((sec, k) =>
-                          /^materiais$/i.test(sec.titulo.trim()) ? (
-                            <SecaoMateriais
-                              key={k}
-                              s={sec}
-                              id={idSec(k)}
-                              tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null}
-                              idsDoPost={(preview.arquivos ?? []).map((a) => a.id)}
-                              // "já enviado (aba Post)": o material é o arquivo do próprio post.
-                              // Aprovando materiais com arquivo: a galeria já está no topo, aqui fica só o texto (links do cliente).
-                              drive={aprovandoMateriais && temArquivoDeMaterial ? [] : temArquivoDeMaterial ? preview.materiais! : sec.linhas.some((l) => /aba post|j[áa] envi/i.test(l.texto)) ? preview.arquivos : []}
-                            />
-                          ) : (
-                            <SecaoPlana key={k} s={sec} id={idSec(k)} />
-                          ),
-                        )}
-                      </div>
-
-                      {/* Direita: arte e programação, fixas */}
-                      <div className={`flex min-w-0 flex-col gap-3 lg:sticky lg:self-start ${pagina ? 'lg:top-[72px]' : 'lg:top-0'}`}>
+                  const colunaArte = (
+                    <>
                   {semArte ? (
                     <div className="flex aspect-[9/12] max-h-[420px] w-full flex-col items-center justify-center gap-1 rounded-[18px] bg-[#F7F7F8] text-center">
                       <span className="text-[28px]">{emojiDoFormato(preview.formato) ?? '📝'}</span>
@@ -1488,6 +1437,82 @@ export function PreviaPostModal({
                     situacao={/postad|publicad/i.test(preview.status ?? '') ? 'postado' : /agendad|programad/i.test(preview.status ?? '') ? 'programado' : 'nao'}
                     feed={[]}
                   />
+                    </>
+                  );
+                  return (
+                    <div className={`grid gap-6 ${pagina ? 'lg:grid-cols-[200px_minmax(0,1fr)_460px] gap-8' : 'lg:grid-cols-[170px_minmax(0,1fr)_380px]'}`}>
+                      {/* Índice: clicar rola até a seção */}
+                      <nav className={`hidden flex-col gap-0.5 lg:sticky lg:flex lg:self-start ${pagina ? 'lg:top-[72px]' : 'lg:top-0'}`}>
+                        <span className="px-3 pb-2 text-[10.5px] font-extrabold uppercase tracking-[0.08em] text-[#8A8A90]">Neste post</span>
+                        {indice.map((it) => (
+                          <button
+                            key={it.id}
+                            type="button"
+                            onClick={() => ir(it.id)}
+                            className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13.5px] hover:bg-[#F4F4F5] hover:text-[#111113] ${emMateriais && /^materiais$/i.test(it.titulo.trim()) ? 'bg-[#F4F4F5] font-bold text-[#111113]' : 'font-medium text-[#46464B]'}`}
+                          >
+                            <span className="w-[18px] text-center">{emojiDaSecao(it.titulo)}</span>
+                            <span className="truncate">{it.titulo}</span>
+                          </button>
+                        ))}
+                      </nav>
+
+                      {/* Meio: tudo do Notion numa leitura só */}
+                      <div className="flex min-w-0 flex-col">
+                        {aprovandoArte && <div className="mx-auto mb-6 flex w-full max-w-[560px] flex-col gap-3 border-b border-[#F0F0F2] pb-6">{colunaArte}</div>}
+                        {aprovandoMateriais && temArquivoDeMaterial && <MateriaisParaAprovar arquivos={preview.materiais ?? []} />}
+                        {secoes.length === 0 && (preview.ideia || preview.briefing || preview.roteiro || preview.cards) && (
+                          <section className="flex flex-col gap-3 pb-6">
+                            {(
+                              [
+                                ['💡 Ideia do post', preview.ideia],
+                                ['📋 Briefing', preview.briefing],
+                                ['🎙️ Roteiro', preview.roteiro],
+                                ['🗂️ Cards', preview.cards],
+                              ] as const
+                            )
+                              .filter(([, t]) => !!t)
+                              .map(([rot, t]) => (
+                                <div key={rot} className="flex flex-col gap-1">
+                                  <b className="text-[15px]">{rot}</b>
+                                  <p className="whitespace-pre-line text-[13.5px] leading-[1.55] text-[#2C2C30]">{t}</p>
+                                </div>
+                              ))}
+                          </section>
+                        )}
+                        {secoes.map((sec, k) =>
+                          /^materiais$/i.test(sec.titulo.trim()) ? (
+                            <SecaoMateriais
+                              key={k}
+                              s={sec}
+                              id={idSec(k)}
+                              tarefaId={materiaisTarefa?.tarefaId ?? agora?.tarefaId ?? null}
+                              idsDoPost={(preview.arquivos ?? []).map((a) => a.id)}
+                              // "já enviado (aba Post)": o material é o arquivo do próprio post.
+                              // Aprovando materiais com arquivo: a galeria já está no topo, aqui fica só o texto (links do cliente).
+                              drive={aprovandoMateriais && temArquivoDeMaterial ? [] : temArquivoDeMaterial ? preview.materiais! : sec.linhas.some((l) => /aba post|j[áa] envi/i.test(l.texto)) ? preview.arquivos : []}
+                            />
+                          ) : (
+                            <SecaoPlana key={k} s={sec} id={idSec(k)} />
+                          ),
+                        )}
+                      </div>
+
+                      {/* Direita: arte e programação; na Aprovação | Arte, os comentários (a arte vai pro meio) */}
+                      <div className={`flex min-w-0 flex-col gap-3 lg:sticky lg:self-start ${pagina ? 'lg:top-[72px]' : 'lg:top-0'}`}>
+                        {aprovandoArte ? (
+                          <>
+                            <ComentariosLud postId={postId} notas={preview.notas ?? []} />
+                            <div className="rounded-[18px] border border-[#E9E9EB] p-4">
+                              <b className="mb-2 flex items-center gap-2 text-[14px]">
+                                <span>✏️</span>Pedir alteração
+                              </b>
+                              {blocoAlteracao()}
+                            </div>
+                          </>
+                        ) : (
+                          colunaArte
+                        )}
                       </div>
                     </div>
                   );
