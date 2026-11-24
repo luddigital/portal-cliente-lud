@@ -1319,7 +1319,10 @@ export function PreviaPostModal({
                   const emMateriais = !!agora && /materia/i.test(agora.titulo);
                   const aprovandoMateriais = !!agora && /aprova.*materia/i.test(agora.titulo);
                   const peso = (t: string) => (emMateriais ? pesoNaEtapaDeMateriais(t) : pesoDaSecao(t));
-                  const secoes = (preview.secoes ?? []).filter((x) => !/link.*insta|insta.*link/i.test(x.titulo)).map((sec, ordem) => ({ sec, ordem })).sort((a, b) => peso(a.sec.titulo) - peso(b.sec.titulo) || a.ordem - b.ordem).map((x) => x.sec);
+                  // Post sem a aba Lud no Notion: mostra as seções de sempre, vazias, pra o menu e os espaços aparecerem.
+                  const semNada = !(preview.secoes ?? []).length && !(preview.ideia || preview.briefing || preview.roteiro || preview.cards);
+                  const secoesBase: Secao[] = semNada ? ['Ideia do Post', 'Briefing do Post', 'Referências para o post', 'Materiais'].map((titulo) => ({ titulo, linhas: [] })) : (preview.secoes ?? []);
+                  const secoes = secoesBase.filter((x) => !/link.*insta|insta.*link/i.test(x.titulo)).map((sec, ordem) => ({ sec, ordem })).sort((a, b) => peso(a.sec.titulo) - peso(b.sec.titulo) || a.ordem - b.ordem).map((x) => x.sec);
                   const temArquivoDeMaterial = (preview.materiais ?? []).length > 0;
                   const idSec = (k: number) => `secao-${k}`;
                   const materiaisTarefa = fluxo.find((t) => /materia/i.test(t.titulo) && !/aprova/i.test(t.titulo)) ?? null;
