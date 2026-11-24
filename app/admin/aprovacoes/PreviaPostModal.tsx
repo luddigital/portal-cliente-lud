@@ -9,6 +9,7 @@ import { TodasTarefasCard } from '@/app/post/[id]/PostSidebarLud';
 import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import { BotaoLembreteWpp } from './BotaoLembreteWpp';
 import { nomeCurtoDoProjeto } from '@/lib/rotas';
+import { AvatarProjeto } from '@/app/admin/_ui/Avatares';
 import type { EnvioHistorico, NotaHistorico, TarefaClienteHistorico } from '@/lib/historico-post';
 import { CaixaProgramacao, ReguaCompacta } from '@/app/post/[id]/NovoLud';
 import { horaCurta } from '@/app/post/[id]/horaCurta';
@@ -1083,61 +1084,36 @@ export function PreviaPostModal({
               {preview ? emojiDoFormato(preview.formato) ?? '📝' : ''}
             </span>
             <div className="min-w-0">
-              {preview?.projetoNome && <div className="truncate text-[12px] font-bold text-[#636369]">{handle !== 'Projeto' ? handle : preview.projetoNome}</div>}
-              <div className={`truncate font-extrabold tracking-[-0.01em] text-[#111113] ${pagina ? 'text-[24px]' : 'text-[18px]'}`}>{preview?.titulo ?? 'Carregando…'}</div>
-              {preview &&
-                (() => {
-                  const c = categoriasDoBriefing(preview.secoes ?? []);
-                  const nivel = c.funil ? (/topo/i.test(c.funil) ? 0 : /meio/i.test(c.funil) ? 1 : /fundo/i.test(c.funil) ? 2 : -1) : -1;
-                  const sep = <span className="h-[18px] w-px bg-[#E2E2E5]" aria-hidden />;
-                  return (
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                      {/* Dados do post: texto cinza, sem caixa */}
-                      {preview.dataPostagem && <span className="whitespace-nowrap text-[12.5px] font-semibold text-[#636369]">📅 {dataPostagemTexto(preview.dataPostagem)}</span>}
-                      {preview.formato && <span className="whitespace-nowrap text-[12.5px] font-semibold text-[#636369]">{emojiDoFormato(preview.formato) ?? '📝'} {preview.formato}</span>}
-                      {(() => {
-                        // Status do post (o mesmo do calendário): a etapa aberta agora; sem etapa aberta, o status do Notion.
-                        const titulos = new Set(preview.tarefas.map((t) => t.titulo));
-                        const texto = agora?.titulo ?? (preview.status && !titulos.has(preview.status) ? preview.status : 'Etapas concluídas');
-                        const [fundo, cor] = corDoStatus(texto);
-                        return (
-                          <span className="whitespace-nowrap rounded-[8px] px-2 py-[3px] text-[12px] font-extrabold" style={{ background: fundo, color: cor }} title="Status do post">
-                            {texto}
-                          </span>
-                        );
-                      })()}
-                      {(c.objetivo || nivel >= 0) && sep}
-                      {/* Categorias: etiqueta com o nome do campo */}
-                      {c.objetivo && (
-                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-[#E8E4FA] px-2 py-[3px] text-[12px] font-extrabold text-[#3E2F8F]" title={`Objetivo: ${c.objetivo}`}>
-                          <small className="text-[9.5px] uppercase tracking-[0.08em] opacity-65">Objetivo</small>
-                          <span className="max-w-[160px] truncate">{c.objetivo}</span>
-                        </span>
-                      )}
-                      {c.funil && (
-                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-[#F4F4F5] px-2 py-[3px] text-[12px] font-extrabold text-[#111113]" title="Funil: topo · meio · fundo">
-                          <small className="text-[9.5px] uppercase tracking-[0.08em] opacity-65">Funil</small>
-                          {nivel >= 0 && (
-                            <span className="inline-flex items-center gap-[3px]">
-                              {['#2E7D4F', '#D99A2B', '#D9564F'].map((cor, k) => (
-                                <i key={k} className="inline-block h-[9px] w-[9px] rounded-full" style={{ background: k === nivel ? cor : '#D6D6D9' }} />
-                              ))}
-                            </span>
-                          )}
-                          {c.funil}
-                        </span>
-                      )}
-                      {c.precisamos && (
-                        <>
-                          {sep}
-                          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border-[1.5px] border-dashed border-[#E7B96A] bg-[#FFF8EC] px-2.5 py-[2px] text-[12px] font-extrabold text-[#7A4A0B]" title={`O que precisamos: ${c.precisamos}`}>
-                            🙋 {precisamosCurto(c.precisamos)}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
+              {/* @ do projeto com avatar */}
+              {preview?.projetoNome && (
+                <div className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-[#46464B]">
+                  {handle && handle !== 'Projeto' && <AvatarProjeto handle={handle} nome={preview.projetoNome} tamanho={20} />}
+                  <span className="truncate">{handle !== 'Projeto' ? handle : preview.projetoNome}</span>
+                </div>
+              )}
+              {/* Título com a etapa do lado */}
+              <div className="mt-0.5 flex min-w-0 items-center gap-3">
+                <div className={`truncate font-extrabold tracking-[-0.01em] text-[#111113] ${pagina ? 'text-[24px]' : 'text-[19px]'}`}>{preview?.titulo ?? 'Carregando…'}</div>
+                {preview &&
+                  (() => {
+                    // Status do post (o mesmo do calendário): a etapa aberta agora; sem etapa aberta, o status do Notion.
+                    const titulos = new Set(preview.tarefas.map((t) => t.titulo));
+                    const texto = agora?.titulo ?? (preview.status && !titulos.has(preview.status) ? preview.status : 'Etapas concluídas');
+                    const [fundo, cor] = corDoStatus(texto);
+                    return (
+                      <span className="shrink-0 whitespace-nowrap rounded-[8px] px-2.5 py-1 text-[13px] font-extrabold" style={{ background: fundo, color: cor }} title="Status do post">
+                        {texto}
+                      </span>
+                    );
+                  })()}
+              </div>
+              {/* Data e formato */}
+              {preview && (
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {preview.dataPostagem && <span className="whitespace-nowrap text-[12.5px] font-semibold text-[#636369]">📅 {dataPostagemTexto(preview.dataPostagem)}</span>}
+                  {preview.formato && <span className="whitespace-nowrap text-[12.5px] font-semibold text-[#636369]">{emojiDoFormato(preview.formato) ?? '📝'} {preview.formato}</span>}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
