@@ -76,13 +76,19 @@ export async function rodarReaprovacaoAutomatica(opts: { enviar: boolean; agora?
     const aprovacao = abertasDoPost.find((x) => x.ordemUm === '03' && ehAprovacaoPost(x.titulo));
     if (!aprovacao) continue;
     if (atual.tarefaId !== aprovacao.tarefaId && !ehEnviarPost(atual.titulo)) continue; // ainda em alteração
+    const ok = (x: string | null): x is string => !!x && !Number.isNaN(Date.parse(x));
+    // Última mudança no post (sem contar o "Enviar Post", que é o próprio envio).
     const mudouEm = tarefas
+      .filter((x) => !ehEnviarPost(x.titulo))
       .map((x) => x.finalizadaEm)
-      .filter((x): x is string => !!x && !Number.isNaN(Date.parse(x)))
+      .filter(ok)
       .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
     if (!mudouEm) continue;
-    // Já mandamos algo depois da última mudança? Então essa rodada já foi.
+    // Só manda o que ainda não foi enviado nessa rodada:
+    //  - nenhuma mensagem no grupo registrada depois da última mudança;
+    //  - nenhum "Enviar Post Aprovação" concluído depois dela (alguém já mandou na mão).
     if ((envios[postId] ?? []).some((m) => Date.parse(m.enviadoEm) >= Date.parse(mudouEm))) continue;
+    if (tarefas.some((x) => ehEnviarPost(x.titulo) && !x.aberta && ok(x.finalizadaEm) && Date.parse(x.finalizadaEm) >= Date.parse(mudouEm))) continue;
     candidatos.push({
       postId,
       projetoId: p.projetoId,

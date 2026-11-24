@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 /**
- * Reaprovação automática (a cada 10 min, das 8h às 20h de São Paulo, seg a sáb).
+ * Reaprovação automática (a cada 10 min, das 9h às 18h de São Paulo, seg a sex).
  * `?previa=1` só mostra o que mandaria, sem enviar.
  */
 export async function GET(req: Request) {
@@ -19,8 +19,10 @@ export async function GET(req: Request) {
   const session = !doCron && previa ? await getSession().catch(() => null) : null;
   const admin = !!session && env.auth.adminEmails.includes(session.email.trim().toLowerCase());
   if (!doCron && !admin) return NextResponse.json({ error: 'não autorizado' }, { status: 401 });
-  const hora = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }).format(new Date()));
-  if (!previa && (hora < 8 || hora >= 20)) return NextResponse.json({ ok: true, fora_do_horario: true });
+  const agoraSp = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const hora = agoraSp.getHours();
+  const diaUtil = agoraSp.getDay() >= 1 && agoraSp.getDay() <= 5;
+  if (!previa && (!diaUtil || hora < 9 || hora >= 18)) return NextResponse.json({ ok: true, fora_do_horario: true });
   try {
     const r = await rodarReaprovacaoAutomatica({ enviar: !previa });
     if (r.erros.length) console.warn('[reaprovacao-auto]', r.erros);
