@@ -53,6 +53,7 @@ const GRUPOS: Grupo[] = [
     itens: [
       { label: 'WhatsApp', href: '/admin/whatsapp', icon: 'chat' },
       { label: 'Régua da semana', href: '/admin/regua', icon: 'regua' },
+      { label: 'Resumo das 16h', href: '/admin/aprovacoes/resumo', icon: 'sino' },
       { label: 'Avisos de aprovação', href: '/admin/aprovacoes/avisos', icon: 'sino' },
       { label: 'Mensagens padrão', href: '/admin/configuracoes/mensagens', icon: 'chat' },
       { label: 'Notificações', href: '/admin/notificacoes', icon: 'sino' },

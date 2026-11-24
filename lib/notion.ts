@@ -6878,6 +6878,9 @@ async function _ultimaConclusaoPorPostUncached(dias: number): Promise<Record<str
       const postId = (getProp(t, env.notion.taskProps.post)?.relation ?? [])[0]?.id?.replace(/-/g, '');
       const quando = getProp(t, 'Finalizada em ')?.date?.start ?? null;
       if (!postId || !quando) continue;
+      // "Enviar Post Aprovação" é o próprio envio, não uma mudança no post.
+      const tituloT = txt((Object.values(t.properties).find((p: any) => p.type === 'title') as any)?.title) || '';
+      if (/enviar\s*post|enviar.*aprova/i.test(tituloT)) continue;
       if (!out[postId] || Date.parse(quando) > Date.parse(out[postId])) out[postId] = quando;
     }
     cursor = r.has_more ? r.next_cursor : undefined;
@@ -6887,7 +6890,7 @@ async function _ultimaConclusaoPorPostUncached(dias: number): Promise<Record<str
 
 const _ultimaConclusaoPorPostCached = unstable_cache(
   (dias: number) => _ultimaConclusaoPorPostUncached(dias),
-  ['ultima-conclusao-por-post-v1'],
+  ['ultima-conclusao-por-post-v2'],
   { revalidate: 120, tags: [TAG_TAREFAS] },
 );
 
