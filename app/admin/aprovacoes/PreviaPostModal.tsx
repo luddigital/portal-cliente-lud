@@ -121,7 +121,13 @@ function linhasVisiveis(s: Secao): Secao['linhas'] {
 /** Seção do Notion sem moldura (a prévia é uma leitura só, separada por linhas finas). */
 function SecaoPlana({ s, id }: { s: Secao; id: string }) {
   const linhas = linhasVisiveis(s);
-  if (!linhas.length) return null;
+  if (!linhas.length)
+    return (
+      <section id={id} className="flex scroll-mt-4 flex-col gap-3 border-t border-[#F0F0F2] py-6 first:border-0 first:pt-0">
+        <TituloSecao titulo={s.titulo} />
+        <div className="rounded-[12px] border border-dashed border-[#E2E2E5] px-4 py-4 text-[13px] text-[#8A8A90]">Ainda não preenchido no Notion.</div>
+      </section>
+    );
   // Informações: cada pergunta num cartão numerado.
   if (/informa/i.test(s.titulo) && linhas.every((l) => l.tipo === 'li' || l.tipo === 'ol' || /\?$/.test(l.texto.trim()))) {
     return (
@@ -530,6 +536,18 @@ const precisamosCurto = (t: string) =>
     .slice(0, 28);
 
 const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+/** Cores do status iguais às do calendário da Hoje. */
+function corDoStatus(texto: string): [string, string] {
+  const t = texto.toLowerCase();
+  if (/postad|publicad|conclu/.test(t)) return ['#D8EDCF', '#2E5520'];
+  if (/altera/.test(t)) return ['#F6CFCB', '#7E211C'];
+  if (/aprova/.test(t)) return ['#F2D0EA', '#6A2B5F'];
+  if (/programar/.test(t)) return ['#F5CBA7', '#6E2E0A'];
+  if (/programa|agenda|conferir/.test(t)) return ['#D3E2F3', '#24466B'];
+  if (/material|envio|informa|direcionamento/.test(t)) return ['#F8D5E5', '#7A1F4C'];
+  return ['#E2DDFA', '#3D3478'];
+}
 
 function dataPostagemTexto(iso: string): string {
   const [, m, d] = iso.slice(0, 10).split('-').map(Number);
@@ -1051,6 +1069,17 @@ export function PreviaPostModal({
                       {/* Dados do post: texto cinza, sem caixa */}
                       {preview.dataPostagem && <span className="whitespace-nowrap text-[12.5px] font-semibold text-[#636369]">📅 {dataPostagemTexto(preview.dataPostagem)}</span>}
                       {preview.formato && <span className="whitespace-nowrap text-[12.5px] font-semibold text-[#636369]">{emojiDoFormato(preview.formato) ?? '📝'} {preview.formato}</span>}
+                      {(() => {
+                        // Status do post (o mesmo do calendário): a etapa aberta agora; sem etapa aberta, o status do Notion.
+                        const titulos = new Set(preview.tarefas.map((t) => t.titulo));
+                        const texto = agora?.titulo ?? (preview.status && !titulos.has(preview.status) ? preview.status : 'Etapas concluídas');
+                        const [fundo, cor] = corDoStatus(texto);
+                        return (
+                          <span className="whitespace-nowrap rounded-[8px] px-2 py-[3px] text-[12px] font-extrabold" style={{ background: fundo, color: cor }} title="Status do post">
+                            {texto}
+                          </span>
+                        );
+                      })()}
                       {(c.objetivo || nivel >= 0) && sep}
                       {/* Categorias: etiqueta com o nome do campo */}
                       {c.objetivo && (

@@ -35,6 +35,32 @@ export function CalendarioSemanaHome({ inicial }: { inicial: SemanaHome }) {
     return p;
   }
 
+  // router.refresh() (ex.: fechou o popup depois de concluir) traz dados novos: usa eles.
+  const semanaRef = useRef(semana.deslocamento);
+  semanaRef.current = semana.deslocamento;
+  useEffect(() => {
+    cache.current = new Map([[inicial.deslocamento, Promise.resolve(inicial)]]);
+    if (semanaRef.current === inicial.deslocamento) setSemana(inicial);
+  }, [inicial]);
+
+  // Concluiu uma etapa em qualquer lugar da tela: relê a semana (o Notion leva uns segundos pra virar a etapa).
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    function aoConcluir() {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const n = semanaRef.current;
+        cache.current.delete(n);
+        buscar(n).then((s) => semanaRef.current === n && setSemana(s)).catch(() => {});
+      }, 4000);
+    }
+    window.addEventListener('lud:tarefa-concluida', aoConcluir);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('lud:tarefa-concluida', aoConcluir);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Já deixa a semana anterior e a próxima prontas.
   useEffect(() => {
     buscar(semana.deslocamento + 1).catch(() => {});

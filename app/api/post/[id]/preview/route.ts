@@ -50,7 +50,7 @@ async function previaGuardada(id: string) {
   // Listas comuns a todos os posts lidas aqui fora (onde o cache funciona) e guardadas na memória:
   // lá dentro o Next ignora os outros caches.
   await Promise.all([getProjetoColaborativoMap().catch(() => null), listColaboradores().catch(() => null)]);
-  return unstable_cache(() => montarPrevia(id, true), ['previa-post-v2', id], {
+  return unstable_cache(() => montarPrevia(id, true), ['previa-post-v3', id], {
     revalidate: 300,
     tags: ['previas', `previa:${id.replace(/-/g, '')}`],
   })();

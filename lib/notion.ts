@@ -3162,11 +3162,11 @@ async function _lerSecoesDoPost(postId: string): Promise<SecaoDoPost[]> {
       atual.linhas.push({ tipo, texto: parte, ...(destaque ? { destaque } : {}), ...(negrito ? { negrito } : {}) });
     }
   }
-  // "Materiais" vazio continua (mostra "nada recebido ainda" na prévia).
-  return out.filter((s) => s.linhas.length > 0 || /^materiais$/i.test(s.titulo.trim()));
+  // Seção vazia também continua: a prévia mostra o título e o espaço ("Ainda não preenchido").
+  return out;
 }
 
-const _lerSecoesDoPostCached = unstable_cache(_lerSecoesDoPost, ['secoes-do-post-v3'], { revalidate: 60, tags: [TAG_POSTS] });
+const _lerSecoesDoPostCached = unstable_cache(_lerSecoesDoPost, ['secoes-do-post-v4'], { revalidate: 60, tags: [TAG_POSTS] });
 export async function lerSecoesDoPost(postId: string): Promise<SecaoDoPost[]> {
   return _lerSecoesDoPostCached(postId);
 }
