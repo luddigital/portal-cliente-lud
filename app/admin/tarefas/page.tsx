@@ -64,7 +64,7 @@ async function Lista({ pessoa, projeto }: { pessoa?: string; projeto?: string })
   ]);
   const [vistasDetalhe, mudouEm] = await Promise.all([
     lerVisualizacoesDetalhe(idsCliente).catch(() => ({}) as Record<string, string[]>),
-    ultimaConclusaoPorPost(30).catch(() => ({}) as Record<string, string>),
+    ultimaConclusaoPorPost(10).catch(() => ({}) as Record<string, string>),
   ]);
   // Rodada atual: envio ou visualização de antes da última etapa concluída no post é da versão anterior.
   const daRodada = (postId: string, quando: string) => {

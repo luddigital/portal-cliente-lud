@@ -77,7 +77,7 @@ export async function planejarResumo(): Promise<ResumoDoCliente[]> {
   const [envios, vistas, mudouEm, fora, projetos, textos] = await Promise.all([
     lerEnviosRecentesDosPosts(ids, 30),
     lerVisualizacoesDetalhe(ids).catch(() => ({}) as Record<string, string[]>),
-    ultimaConclusaoPorPost(30).catch(() => ({}) as Record<string, string>),
+    ultimaConclusaoPorPost(10).catch(() => ({}) as Record<string, string>),
     lerForaDoResumo(hoje).catch(() => new Set<string>()),
     listAllProjetos().catch(() => []),
     lerMensagensEditadas().catch(() => ({}) as Record<string, string>),

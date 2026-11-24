@@ -6884,16 +6884,18 @@ async function _ultimaConclusaoPorPostUncached(dias: number): Promise<Record<str
       if (!out[postId] || Date.parse(quando) > Date.parse(out[postId])) out[postId] = quando;
     }
     cursor = r.has_more ? r.next_cursor : undefined;
-  } while (cursor && ++paginas < 15);
+  } while (cursor && ++paginas < 8);
   return out;
 }
 
-const _ultimaConclusaoPorPostCached = unstable_cache(
-  (dias: number) => _ultimaConclusaoPorPostUncached(dias),
-  ['ultima-conclusao-por-post-v2'],
-  { revalidate: 120, tags: [TAG_TAREFAS] },
+// Com reserva: devolve o último resultado na hora e atualiza por trás (a consulta é pesada).
+const _ultimaConclusaoPorPostCached = cacheComReserva(
+  medido('última conclusão por post', (dias: number) => _ultimaConclusaoPorPostUncached(dias)),
+  ['ultima-conclusao-por-post-v3'],
+  { revalidate: 300, tags: [TAG_TAREFAS] },
 );
 
-export async function ultimaConclusaoPorPost(dias = 30): Promise<Record<string, string>> {
+/** Janela curta (10 dias): rodada mais antiga que isso conta tudo, como antes. */
+export async function ultimaConclusaoPorPost(dias = 10): Promise<Record<string, string>> {
   return _ultimaConclusaoPorPostCached(dias);
 }
