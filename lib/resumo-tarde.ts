@@ -62,10 +62,7 @@ export function grupoDaEtapa(etapa: string): string {
 }
 const ORDEM_GRUPOS = ['Pra aprovar', 'Materiais pra enviar', 'Informações pra mandar', 'Outras coisas com você'];
 
-function montarMensagem(apelido: string, posts: PostDoResumo[], textos: Record<string, string>, hoje: string): string {
-  const saud = (textos['lembrete.saudacao'] ?? 'Oie, {apelido}! Tudo bem? 😊').replace(/\{apelido\}/g, apelido);
-  const fech = textos['lembrete.fechamento'] ?? 'Qualquer dúvida, pode me chamar! 💜';
-  const abertura = 'Passando pra lembrar do que ainda está com você:';
+function montarMensagem(apelido: string, posts: PostDoResumo[], _textos: Record<string, string>, hoje: string): string {
   const linha = (p: PostDoResumo) => {
     const prazo = !p.prazo ? '' : p.prazo.slice(0, 10) < hoje ? `prazo era ${diaCurto(p.prazo.slice(0, 10))}` : p.prazo.slice(0, 10) === hoje ? 'prazo termina hoje' : `prazo até ${diaCurto(p.prazo.slice(0, 10))}`;
     const info = [prazo, p.abriu ? '' : 'você ainda não abriu'].filter(Boolean).join(' · ');
@@ -75,7 +72,12 @@ function montarMensagem(apelido: string, posts: PostDoResumo[], textos: Record<s
     const doGrupo = posts.filter((p) => grupoDaEtapa(p.etapa) === g);
     return doGrupo.length ? [`*${g}*`, ...doGrupo.map(linha)].join('\n\n') : '';
   }).filter(Boolean);
-  return [saud, abertura, ...blocos, fech].join('\n\n');
+  // Copy da Luiza: resumo + empurrãozinho pro portal (educar o cliente a usar o portal).
+  return [
+    `Oi, ${apelido}! Esse é um resumo do que está em aberto.`,
+    ...blocos,
+    `Os links de cada post estão aqui, mas você pode conferir tudo o que está aberto no portal:\n${env.app.url}`,
+  ].join('\n\n');
 }
 
 export async function planejarResumo(): Promise<ResumoDoCliente[]> {
