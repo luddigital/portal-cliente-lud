@@ -51,12 +51,8 @@ const GRUPOS: Grupo[] = [
     titulo: 'Comunicação',
     icon: 'chat',
     itens: [
-      { label: 'WhatsApp', href: '/admin/whatsapp', icon: 'chat' },
-      { label: 'Régua da semana', href: '/admin/regua', icon: 'regua' },
-      { label: 'Resumo das 16h', href: '/admin/aprovacoes/resumo', icon: 'sino' },
-      { label: 'Avisos de aprovação', href: '/admin/aprovacoes/avisos', icon: 'sino' },
-      { label: 'Mensagens padrão', href: '/admin/configuracoes/mensagens', icon: 'chat' },
-      { label: 'Notificações', href: '/admin/notificacoes', icon: 'sino' },
+      // Por enquanto só o resumo (Régua, Avisos e Notificações saíram do menu; as páginas continuam no endereço).
+      { label: 'Resumo do dia', href: '/admin/aprovacoes/resumo', icon: 'sino' },
     ],
   },
   {
@@ -83,6 +79,8 @@ const GRUPOS: Grupo[] = [
     itens: [
       { label: 'Equipe', href: '/admin/equipe', icon: 'equipe' },
       { label: 'Sync Notion', href: '/admin/sync', icon: 'sync' },
+      { label: 'WhatsApp', href: '/admin/whatsapp', icon: 'chat' },
+      { label: 'Mensagens padrão', href: '/admin/configuracoes/mensagens', icon: 'chat' },
       { label: 'Configurações', href: '/admin/configuracoes', icon: 'ajustes' },
     ],
   },

@@ -16,8 +16,8 @@ export default async function ResumoPage() {
   if (!env.auth.adminEmails.includes(session.email.trim().toLowerCase())) redirect('/');
   return (
     <Pagina>
-      <Trilha itens={[{ rotulo: 'Aprovações', href: '/admin/aprovacoes' }, { rotulo: 'Resumo das 16h' }]} />
-      <Cabecalho titulo="Resumo das 16h" sub="Tudo que ainda está com cada cliente: aprovações, materiais, informações. Revise de manhã: às 16h sai uma mensagem por cliente, no grupo." />
+      <Trilha itens={[{ rotulo: 'Aprovações', href: '/admin/aprovacoes' }, { rotulo: 'Resumo do dia' }]} />
+      <Cabecalho titulo="Resumo do dia" sub="Tudo que ainda está com cada cliente: aprovações, materiais, informações. Revise de manhã: às 16h sai uma mensagem por cliente, no grupo." />
       <Suspense fallback={<div className="h-[420px] animate-pulse rounded-[20px] bg-[#F0F0F1]" />}>
         <Conteudo />
       </Suspense>
