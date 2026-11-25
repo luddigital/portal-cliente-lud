@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ResumoDoCliente } from '@/lib/resumo-tarde';
 import { LinkPrevia } from '../../_components/LinkPrevia';
@@ -27,7 +27,7 @@ export function ResumoLista({ clientes }: { clientes: ResumoDoCliente[] }) {
     setSalvando(postId);
     await fetch('/api/admin/resumo-tarde', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ postId, fora }) }).catch(() => null);
     setSalvando(null);
-    router.refresh();
+    startTransition(() => router.refresh());
   }
   if (!clientes.length) return <div className="rounded-[16px] border border-[#E9E9EB] bg-white px-5 py-8 text-center text-[13.5px] text-[#636369]">Nenhum post esperando aprovação de cliente.</div>;
   const total = clientes.reduce((n, c) => n + c.posts.filter((p) => !p.fora).length, 0);

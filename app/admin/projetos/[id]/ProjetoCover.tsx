@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 export function ProjetoCover({
@@ -38,7 +38,7 @@ export function ProjetoCover({
       }
       setCoverUrl(data.coverUrl);
       setModalAberto(false);
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch {
       setErro('Erro de rede');
     } finally {

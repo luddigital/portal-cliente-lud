@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TarefaDoPost } from '@/lib/notion';
 import { MiniCalendario } from '@/app/_components/MiniCalendario';
@@ -98,7 +98,7 @@ export function StatusDoPostChips({
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       setErro(e?.message ?? 'erro');
     } finally {

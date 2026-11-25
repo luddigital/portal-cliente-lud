@@ -1,7 +1,7 @@
 'use client';
 
 import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, startTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { rotas, nomeCurtoDoProjeto } from '@/lib/rotas';
@@ -489,7 +489,7 @@ export function EntregaSemanas({
     setFeitosAgora((e) => ({ ...e, ...Object.fromEntries(tarefaIds.map((id) => [id, agora])) }));
     setEnvio(null);
     setAviso(msg);
-    router.refresh();
+    startTransition(() => router.refresh());
   }
 
   const acao = (i: ItemEntrega, g: GrupoEntrega) => (
@@ -509,7 +509,7 @@ export function EntregaSemanas({
                             tarefaId={i.atualTarefaId ?? i.tarefaId}
                             nome={i.atualTitulo ?? i.titulo}
                             classe={BTN}
-                            onFeito={() => (aqui(i) ? enviarFeito('Tarefa concluída.', [i.tarefaId]) : (setAviso('Tarefa concluída.'), router.refresh()))}
+                            onFeito={() => (aqui(i) ? enviarFeito('Tarefa concluída.', [i.tarefaId]) : (setAviso('Tarefa concluída.'), startTransition(() => router.refresh())))}
                           />
                         )}</>
   );
@@ -964,7 +964,7 @@ export function EntregaSemanas({
           aoEnviar={(nomeGrupo) => {
             setMensagem(null);
             setAviso(`Mensagem enviada no grupo ${nomeGrupo ?? mensagem.gruposWpp[0]?.nome ?? 'do cliente'}.`);
-            router.refresh();
+            startTransition(() => router.refresh());
           }}
         />
       )}

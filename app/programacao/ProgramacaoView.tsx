@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, startTransition } from 'react';
 import type { PostCalendario, ProjetoListItem } from '@/lib/notion';
 
 const MESES = [
@@ -585,7 +585,7 @@ export function ProgramacaoView({
           post={postAberto}
           thumbnailFileId={thumbnails[postAberto.id] ?? null}
           onClose={() => setPostAberto(null)}
-          onProgramado={() => { setPostAberto(null); router.refresh(); }}
+          onProgramado={() => { setPostAberto(null); startTransition(() => router.refresh()); }}
         />
       )}
 

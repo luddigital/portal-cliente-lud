@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import type { ProjetoConfig } from '@/lib/notion';
 
 const FOCO_OPCOES = [
@@ -87,7 +87,7 @@ export function EditarProjeto({
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? `Erro ${res.status}`);
       setAberto(false);
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       setError(e.message);
       setLoading(false);

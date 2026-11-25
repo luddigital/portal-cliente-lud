@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { PainelTeste } from './PainelTeste';
 
@@ -43,7 +43,7 @@ export function ConstrucaoModal(props: Props) {
     params.delete('postId');
     const qs = params.toString();
     router.push(`/admin/teste-edicao${qs ? '?' + qs : ''}`, { scroll: false });
-    router.refresh();
+    startTransition(() => router.refresh());
   }
 
   useEffect(() => {

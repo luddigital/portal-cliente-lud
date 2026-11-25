@@ -6,7 +6,7 @@
  * (opção 6: grade do feed + Dia / Hora / Formato). Só equipe vê.
  */
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { MudarPrazo } from '@/app/admin/_ui/MudarPrazo';
 import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
@@ -66,7 +66,7 @@ export function AgoraEtapa({
               onMudou={(novo) => {
                 setAtual(novo);
                 if (onMudouPrazo) onMudouPrazo(novo);
-                else router.refresh();
+                else startTransition(() => router.refresh());
               }}
             />
           ) : (
@@ -98,7 +98,7 @@ export function BotaoConcluirEtapa({ tarefaId, onConcluiu }: { tarefaId: string;
       if (!r.ok) throw new Error();
       avisarConcluida(tarefaId);
       if (onConcluiu) onConcluiu();
-      else router.refresh();
+      else startTransition(() => router.refresh());
     } catch {
       setErro(true);
     } finally {

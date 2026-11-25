@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { rotas } from '@/lib/rotas';
 
@@ -144,7 +144,7 @@ export function NovaPautaForm({
       if (!r.ok) throw new Error(j.error ?? `Erro ${r.status}`);
       if (modo === 'proxima' && proximaLivre) {
         router.push(rotas.novaPauta(projetoId, proximaLivre.data));
-        router.refresh();
+        startTransition(() => router.refresh());
         // limpa o formulário pro próximo dia
         setTitulo('');
         setIdeia('');

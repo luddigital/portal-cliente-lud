@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
 
 type Modo = 'idle' | 'aprovando' | 'alterando' | 'concluindo';
@@ -41,7 +41,7 @@ export function AcoesTarefa({
       if (!res.ok) throw new Error('Não consegui concluir a tarefa.');
       avisarConcluida(tarefaId);
       onConcluido();
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       falhou(e.message);
     }
@@ -60,7 +60,7 @@ export function AcoesTarefa({
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? `Erro ${res.status}`);
       onConcluido();
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       falhou(e.message);
     }
@@ -83,7 +83,7 @@ export function AcoesTarefa({
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? `Erro ${res.status}`);
       onConcluido();
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       falhou(e.message);
     }

@@ -44,7 +44,7 @@ export function ProjetoSwitcher({
       if (!res.ok) return;
       setAberto(false);
       startTransition(() => {
-        router.refresh();
+        startTransition(() => router.refresh());
       });
     } catch {
       /* ignora */

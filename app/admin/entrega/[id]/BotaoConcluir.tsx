@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
 
 /**
@@ -24,7 +24,7 @@ export function BotaoConcluir({ tarefaId }: { tarefaId: string }) {
       });
       if (!res.ok) throw new Error();
       avisarConcluida(tarefaId);
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch {
       setError(true);
       setLoading(false);

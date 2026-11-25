@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { avisarConcluida, useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
 import { corDaEtapa } from '@/lib/corEtapa';
 import { AvatarProjeto } from './Avatares';
@@ -37,7 +37,7 @@ export function FazerAgora({ itens, hoje, pessoas }: { itens: ItemFazerAgora[]; 
       });
       return;
     }
-    router.refresh();
+    startTransition(() => router.refresh());
   }
   const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
   return (

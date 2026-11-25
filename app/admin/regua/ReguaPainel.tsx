@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, startTransition } from 'react';
 import { PreviaPostModal, prefetchPrevia } from '../aprovacoes/PreviaPostModal';
 import { useRouter } from 'next/navigation';
 import type { Regua } from '@/lib/regua';
@@ -208,7 +208,7 @@ export function ReguaPainel({
         ok: rs.filter((r) => r.ok).length,
         erros: rs.filter((r) => r.erro).map((r) => `${nome(r.projetoId)}: ${r.erro}`),
       });
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       setResultado({ ok: 0, erros: [e?.message ?? 'erro ao enviar'] });
     } finally {

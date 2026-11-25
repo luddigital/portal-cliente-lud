@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, startTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { rotas } from '@/lib/rotas';
@@ -172,7 +172,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         }),
       );
     }
-    router.refresh();
+    startTransition(() => router.refresh());
   }
 
   const pessoas = useMemo(() => {
@@ -197,7 +197,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       });
       return;
     }
-    router.refresh();
+    startTransition(() => router.refresh());
   }
   async function fazerHoje(t: LinhaTarefa) {
     setParaHoje((f) => ({ ...f, [t.id]: true }));

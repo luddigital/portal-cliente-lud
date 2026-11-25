@@ -7,7 +7,7 @@
  * mensagem (revisado antes de enviar) e a caixa usa a mesma rota
  * /api/admin/projetos/[id]/mensagem-cliente, que sempre manda pro grupo.
  */
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ModalMensagem, type GrupoWpp, type ItemPendenciaUi } from './PendenciasCliente';
@@ -57,7 +57,7 @@ export function LateralWhatsapp({
       if (!r.ok) throw new Error(j.error ?? 'Não consegui enviar.');
       setTexto('');
       setEstado('ok');
-      router.refresh();
+      startTransition(() => router.refresh());
       setTimeout(() => setEstado('idle'), 4000);
     } catch (e: any) {
       setErro(e?.message ?? 'Não consegui enviar.');
@@ -147,7 +147,7 @@ export function LateralWhatsapp({
           fechar={() => setModal(null)}
           aoEnviar={() => {
             setModal(null);
-            router.refresh();
+            startTransition(() => router.refresh());
           }}
         />
       )}

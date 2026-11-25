@@ -12,7 +12,7 @@
  */
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, startTransition } from 'react';
 import type { ProgramacaoConfig } from '@/lib/supabase';
 import type { PreviewArquivo } from '@/app/post/[id]/PostPreview';
 import { nomeCurtoDoProjeto } from '@/lib/rotas';
@@ -354,7 +354,7 @@ export function ConfigProgramacao({
       setFeito(acao);
       setTimeout(() => {
         router.push('/programacao');
-        router.refresh();
+        startTransition(() => router.refresh());
       }, 1000);
     } catch (e: any) {
       setErro(e?.message ?? 'erro');

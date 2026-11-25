@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TarefaDoPost } from '@/lib/notion';
 
@@ -78,7 +78,7 @@ export function TarefasDoPostPanel({
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -103,7 +103,7 @@ export function TarefasDoPostPanel({
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setComentario('');
       setAbertoId(null);
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       setError(e.message);
     } finally {

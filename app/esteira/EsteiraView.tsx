@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 // ============================================================
@@ -1140,7 +1140,7 @@ function PainelRevisao({
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setAcaoSucesso('✅ Aprovado! Card indo pra coluna Pronto.');
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       setAcaoErro(e.message);
     } finally {

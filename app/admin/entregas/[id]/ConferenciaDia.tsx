@@ -1,7 +1,7 @@
 'use client';
 
 import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { nomeCurtoDoProjeto } from '@/lib/rotas';
 import { minutosDoHorario, type Conferencia } from '@/lib/conferenciaTipos';
@@ -192,7 +192,7 @@ export function ConferenciaDia({
                   key={c.item.tarefaId}
                   c={c}
                   abrir={() => c.item.postId && setPrevia({ postId: c.item.postId, tarefaId: c.item.tarefaId })}
-                  onConcluido={() => (setConcluidos((x) => ({ ...x, [c.item.tarefaId]: true })), router.refresh())}
+                  onConcluido={() => (setConcluidos((x) => ({ ...x, [c.item.tarefaId]: true })), startTransition(() => router.refresh()))}
                 />
               ))}
             </div>

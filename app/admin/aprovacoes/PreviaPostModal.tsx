@@ -579,7 +579,7 @@ function TarefasResumo({ tarefas: iniciais }: { tarefas: Tarefa[] }) {
   const [salvando, setSalvando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // Marca que houve alteração — o refresh da página de trás acontece no
-  // CLEANUP (quando o modal fecha). Se fizesse router.refresh() no concluir,
+  // CLEANUP (quando o modal fecha). Se fizesse startTransition(() => router.refresh()) no concluir,
   // o Suspense pai poderia remontar e fechar o modal no meio do fluxo.
   const houveMutacao = useRef(false);
 

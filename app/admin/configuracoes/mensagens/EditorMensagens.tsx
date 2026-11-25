@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ETAPAS,
@@ -145,7 +145,7 @@ export function EditorMensagens({ editadas }: { editadas: Record<string, string>
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setSalvos(textos);
       setAviso({ tipo: 'ok', texto: 'Salvo. Os próximos lembretes já usam esse texto.' });
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       setAviso({ tipo: 'erro', texto: e?.message ?? 'erro ao salvar' });
     } finally {

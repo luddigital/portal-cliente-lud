@@ -8,7 +8,7 @@ type Estado = 'idle' | 'sincronizando' | 'ok' | 'erro';
 /**
  * Botão "Sincronizar com o Notion" — só a equipe vê (renderizado condicional
  * na home). Limpa os caches do portal via /api/sincronizar e recarrega os
- * dados na hora com router.refresh(), sem sair da página.
+ * dados na hora com startTransition(() => router.refresh()), sem sair da página.
  */
 export function SincronizarNotion() {
   const router = useRouter();

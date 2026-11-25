@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { GrupoDeAviso, MotivoParado, PlanoDeAvisos, TipoAviso } from '@/lib/aviso-aprovacao';
@@ -138,11 +138,11 @@ export function AvisosLista({ plano, linkMensagens }: { plano: PlanoDeAvisos; li
     const falhas = (j.resultados ?? []).filter((x: any) => !x.ok);
     if (r?.ok && falhas.length === 0) {
       setTodos('feito');
-      router.refresh();
+      startTransition(() => router.refresh());
     } else {
       setTodos('erro');
       setErroTodos(j.error || falhas.map((f: any) => `${f.projeto}: ${f.erro}`).join(' · ') || 'Alguns não foram enviados.');
-      router.refresh();
+      startTransition(() => router.refresh());
     }
   }
 

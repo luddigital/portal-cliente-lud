@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AcessoCliente } from '@/lib/notion';
 
@@ -41,7 +41,7 @@ export function AcessosManager({
       setEmail('');
       setNome('');
       setFuncao('');
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -60,7 +60,7 @@ export function AcessosManager({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
       setLista((s) => s.filter((a) => a.id !== acessoId));
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (err: any) {
       setError(err.message);
     } finally {

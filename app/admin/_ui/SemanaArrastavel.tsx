@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { LinkPrevia } from '../_components/LinkPrevia';
 
@@ -53,7 +53,7 @@ export function SemanaArrastavel({
         body: JSON.stringify({ data: p.hora ? `${novoDia}${p.hora}` : novoDia }),
       });
       if (!r.ok) throw new Error();
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch {
       setPosts((ps) => ps.map((x) => (x.id === id ? { ...x, dia: antes } : x)));
       setErro(`Não deu pra mudar a data de "${p.titulo}". Tenta de novo.`);

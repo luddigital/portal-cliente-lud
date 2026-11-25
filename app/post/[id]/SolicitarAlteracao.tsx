@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ComentarioCliente } from './PostSidebarLud';
 
@@ -84,7 +84,7 @@ export function SolicitarAlteracao({
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Erro ${res.status}`);
       setFeito(j.criadas ?? []);
-      router.refresh();
+      startTransition(() => router.refresh());
     } catch (e: any) {
       setErro(e?.message ?? 'Não consegui pedir a alteração.');
     } finally {

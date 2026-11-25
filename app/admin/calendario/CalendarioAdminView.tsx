@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { LinkPrevia } from '../_components/LinkPrevia';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PostCalendario, ProjetoListItem } from '@/lib/notion';
 import { DIAS_ABREV, ymd } from '@/lib/semana';
@@ -84,7 +84,7 @@ function BotaoSincronizar() {
       if (!res.ok) throw new Error(`Erro ${res.status}`);
       setEstado('ok');
       // Recarrega a página com dados novos.
-      router.refresh();
+      startTransition(() => router.refresh());
       setTimeout(() => setEstado('idle'), 1600);
     } catch {
       setEstado('erro');

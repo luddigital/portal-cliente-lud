@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
@@ -62,7 +62,7 @@ export function AnexarMateriais({
       setLinkUrl('');
       setLinkNome('');
       if (fileInputRef.current) fileInputRef.current.value = '';
-      router.refresh();
+      startTransition(() => router.refresh());
       onAnexado?.();
       setTimeout(() => setAviso(null), 5000);
     } catch (err: any) {
