@@ -5,6 +5,10 @@ import Link from 'next/link';
 import type { PostCalendario } from '@/lib/notion';
 import { PostInfoModal } from './PostInfoModal';
 import { NovoPostModal, type NovoPost } from './NovoPostModal';
+import { BarraFiltros, MenuFiltro, MenuOrdenar, ordenarPor, useGuardado, type Ordem } from '../_ui/BarraFiltros';
+
+const ORDEM_COR: PostCalendario['cor'][] = ['rascunho', 'aprovacao', 'alteracao', 'aguardando', 'agendado', 'publicado'];
+const NOME_FORMATO: Record<Tipo, string> = { post: 'Carrossel / foto', reels: 'Reels', story: 'Stories' };
 
 const DIAS = ['seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.', 'dom.'];
 
@@ -110,6 +114,9 @@ export function PostagensView({
 }) {
   const [aba, setAba] = useState<'postagens' | 'stories'>('postagens');
   const [filtro, setFiltro] = useState<string | null>(null);
+  const [etapa, setEtapa] = useState<string | null>(null);
+  const [formato, setFormato] = useState<string | null>(null);
+  const [ordem, setOrdem] = useGuardado<Ordem>('postagens-ordem', 'status');
   const [aberto, setAberto] = useState<{ id: string; projetoNome: string } | null>(
     null,
   );
@@ -157,18 +164,29 @@ export function PostagensView({
   const daAba = todos.filter((p) =>
     aba === 'stories' ? p.tipo === 'story' : p.tipo !== 'story',
   );
-  const visiveis = filtro
-    ? daAba.filter((p) => p.projetoNome === filtro)
-    : daAba;
+  const visiveis = daAba.filter(
+    (p) => (!filtro || p.projetoNome === filtro) && (!etapa || p.tag === etapa) && (!formato || p.tipo === formato),
+  );
+  const contar = (f: (p: CalPost) => string, rot?: (v: string) => string) => {
+    const m = new Map<string, number>();
+    for (const p of daAba) m.set(f(p), (m.get(f(p)) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([v, n]) => ({ v, rot: rot ? rot(v) : v, n }));
+  };
 
   const porDia = useMemo(() => {
     const m = new Map<string, CalPost[]>();
-    for (const p of visiveis) {
+    const ordenados = ordenarPor(visiveis, ordem, (p) => ({
+      data: p.data,
+      status: ORDEM_COR.indexOf(p.cor),
+      cliente: p.projetoNome,
+      formato: p.tipo,
+    }));
+    for (const p of ordenados) {
       if (!m.has(p.data)) m.set(p.data, []);
       m.get(p.data)!.push(p);
     }
     return m;
-  }, [visiveis]);
+  }, [visiveis, ordem]);
 
   function criarLocal(np: NovoPost) {
     setLocais((l) => [
@@ -243,16 +261,20 @@ export function PostagensView({
             Hoje
           </Link>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          <FiltroChip ativo={filtro === null} onClick={() => setFiltro(null)}>
-            Todos
-          </FiltroChip>
-          {clientes.map((c) => (
-            <FiltroChip key={c} ativo={filtro === c} onClick={() => setFiltro(c)}>
-              {c}
-            </FiltroChip>
-          ))}
-        </div>
+      </div>
+      <div className="mt-3">
+        <BarraFiltros
+          esquerda={
+            <>
+              <MenuFiltro rot="Cliente" valor={filtro} set={setFiltro} opcoes={contar((p) => p.projetoNome)} />
+              <MenuFiltro rot="Etapa" valor={etapa} set={setEtapa} opcoes={contar((p) => p.tag)} todos="Todas" />
+              {aba === 'postagens' && (
+                <MenuFiltro rot="Formato" valor={formato} set={setFormato} opcoes={contar((p) => p.tipo, (v) => NOME_FORMATO[v as Tipo] ?? v)} />
+              )}
+            </>
+          }
+          direita={<MenuOrdenar opcoes={['status', 'cliente', 'formato']} valor={ordem} set={setOrdem} />}
+        />
       </div>
 
       {/* semana em colunas */}
@@ -346,28 +368,6 @@ function TabBtn({
       type="button"
       onClick={onClick}
       className={`rounded-lg px-3.5 py-2 text-[13px] font-medium transition ${
-        ativo ? 'bg-ink text-white' : 'bg-bgSoft text-t2 hover:text-ink'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function FiltroChip({
-  ativo,
-  onClick,
-  children,
-}: {
-  ativo: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-3 py-1 text-[12px] font-medium transition ${
         ativo ? 'bg-ink text-white' : 'bg-bgSoft text-t2 hover:text-ink'
       }`}
     >

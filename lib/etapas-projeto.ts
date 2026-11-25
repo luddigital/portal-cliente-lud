@@ -82,7 +82,7 @@ export type ResumoEtapa = {
   diasProxima: number | null;
 };
 
-const ORDEM: EtapaProjeto[] = [
+export const ORDEM_ETAPAS: EtapaProjeto[] = [
   'pauta',
   'previos',
   'briefing',
@@ -133,8 +133,8 @@ export function compararNoFluxo(a: TarefaDoProjeto, b: TarefaDoProjeto): number 
   }
   const ea = etapaDaTarefa(a.titulo);
   const eb = etapaDaTarefa(b.titulo);
-  const oa = ea ? ORDEM.indexOf(ea) : 99;
-  const ob = eb ? ORDEM.indexOf(eb) : 99;
+  const oa = ea ? ORDEM_ETAPAS.indexOf(ea) : 99;
+  const ob = eb ? ORDEM_ETAPAS.indexOf(eb) : 99;
   return (
     oa - ob ||
     subOrdem(a.titulo) - subOrdem(b.titulo) ||

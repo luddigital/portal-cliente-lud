@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import type { MetaEntrega } from './FiltrosEntregas';
+import { etapaDaTarefa, ORDEM_ETAPAS } from '@/lib/etapas-projeto';
 import { entregaEfetiva } from './quadro';
 import { getEntregaCompleta } from '@/lib/notion';
 import { semTraco, tipoDaEntrega } from '@/lib/entrega-dados';
@@ -428,9 +430,9 @@ function Andamento({ feitas, abertas, limpa }: { feitas: number; abertas: number
   );
 }
 
-function LinhaEntrega({ q, prazo, feitas, abertas, limpa }: { q: QuadroEntrega; prazo: React.ReactNode; feitas: number; abertas: number; limpa?: boolean }) {
+function LinhaEntrega({ q, prazo, feitas, abertas, limpa, grupo }: { q: QuadroEntrega; prazo: React.ReactNode; feitas: number; abertas: number; limpa?: boolean; grupo?: string }) {
   return (
-    <div className={`${GRADE} min-h-[56px] border-b border-[#F4F4F5] py-2 last:border-b-0`}>
+    <div data-linha-entrega={grupo ? `${grupo}-${q.id}` : undefined} className={`${GRADE} min-h-[56px] border-b border-[#F4F4F5] py-2 last:border-b-0`}>
       {prazo}
       <Link href={rotas.entrega(q.id)} className="truncate text-[14px] font-extrabold hover:underline">
         {q.nome}
@@ -515,21 +517,24 @@ export async function ListaEntregas({
         {atrasos.length === 0 && <div className="px-5 py-3 text-[13px] font-bold text-[#2E5520]">✓ Nada atrasado.</div>}
         {atrasos.map((g, i) => {
           const n = dias(g.maisAntigo, hoje);
-          return <LinhaEntrega key={g.q.id} q={g.q} prazo={<PrazoCel data={g.maisAntigo} sub={`há ${plural(n, 'dia', 'dias')}`} cor="#B42318" />} feitas={progAtr[i].feitas} abertas={g.total} limpa={limpa} />;
+          return <LinhaEntrega key={g.q.id} q={g.q} prazo={<PrazoCel data={g.maisAntigo} sub={`há ${plural(n, 'dia', 'dias')}`} cor="#B42318" />} feitas={progAtr[i].feitas} abertas={g.total} limpa={limpa} grupo="atr" />;
         })}
         <FaixaGrupo titulo={`Vence hoje · ${dataHoje}`} sub={`${plural(deHoje.length, 'entrega', 'entregas')} · ${plural(postsHoje, 'post', 'posts')}`} bg={ST.hoje.bg} tx={ST.hoje.tx} ponto={limpa ? '#C2417E' : undefined} />
         {deHoje.length === 0 && <div className="px-5 py-3 text-[13px] text-[#636369]">Nenhuma entrega vence hoje.</div>}
         {deHoje.map((q, i) => (
-          <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={hoje} sub="vence hoje" cor="#C2417E" />} feitas={progHoje[i].feitas} abertas={abertasHoje[i]} limpa={limpa} />
+          <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={hoje} sub="vence hoje" cor="#C2417E" />} feitas={progHoje[i].feitas} abertas={abertasHoje[i]} limpa={limpa} grupo="hoje" />
         ))}
           </>
         ) : (
           <>
+        <div data-grupo-entregas="hoje" className="flex flex-col">
         <FaixaGrupo titulo={`Vence hoje · ${dataHoje}`} sub={`${plural(deHoje.length, 'entrega', 'entregas')} · ${plural(postsHoje, 'post', 'posts')}`} bg={ST.hoje.bg} tx={ST.hoje.tx} ponto={limpa ? '#C2417E' : undefined} />
         {deHoje.length === 0 && <div className="px-5 py-3 text-[13px] text-[#636369]">Nenhuma entrega vence hoje.</div>}
         {deHoje.map((q, i) => (
-          <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={hoje} sub="vence hoje" cor="#C2417E" />} feitas={progHoje[i].feitas} abertas={abertasHoje[i]} limpa={limpa} />
+          <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={hoje} sub="vence hoje" cor="#C2417E" />} feitas={progHoje[i].feitas} abertas={abertasHoje[i]} limpa={limpa} grupo="hoje" />
         ))}
+        </div>
+        <div data-grupo-entregas="atr" className="flex flex-col">
         <FaixaGrupo
           titulo="Em atraso"
           sub={atrasos.length ? `${plural(atrasos.length, 'entrega', 'entregas')} · ${plural(postsAtr, 'post', 'posts')} · do mais antigo pro mais novo` : 'nada atrasado'}
@@ -540,10 +545,12 @@ export async function ListaEntregas({
         {atrasos.length === 0 && <div className="px-5 py-3 text-[13px] font-bold text-[#2E5520]">✓ Nada atrasado.</div>}
         {atrasos.map((g, i) => {
           const n = dias(g.maisAntigo, hoje);
-          return <LinhaEntrega key={g.q.id} q={g.q} prazo={<PrazoCel data={g.maisAntigo} sub={`há ${plural(n, 'dia', 'dias')}`} cor="#B42318" />} feitas={progAtr[i].feitas} abertas={g.total} limpa={limpa} />;
+          return <LinhaEntrega key={g.q.id} q={g.q} prazo={<PrazoCel data={g.maisAntigo} sub={`há ${plural(n, 'dia', 'dias')}`} cor="#B42318" />} feitas={progAtr[i].feitas} abertas={g.total} limpa={limpa} grupo="atr" />;
         })}
+        </div>
           </>
         )}
+        <div data-grupo-entregas="prox" className="flex flex-col">
         <FaixaGrupo
           titulo="Próximos 7 dias"
           sub={`${plural(prox.length, 'entrega', 'entregas')} · ${plural(postsProx, 'post', 'posts')}${diasVazios.length ? ` · nada vence ${diasVazios.map(diaSemana).join(', ')}` : ''}`}
@@ -554,8 +561,9 @@ export async function ListaEntregas({
         {prox.length === 0 && <div className="px-5 py-3 text-[13px] text-[#636369]">Nada vence nos próximos 7 dias.</div>}
         {prox.map((q, i) => {
           const n = dias(hoje, q.dataAtual!);
-          return <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={q.dataAtual!} sub={`em ${plural(n, 'dia', 'dias')}`} cor="#5B4BB7" />} feitas={progProx[i].feitas} abertas={abertasProx[i]} limpa={limpa} />;
+          return <LinhaEntrega key={q.id} q={q} prazo={<PrazoCel data={q.dataAtual!} sub={`em ${plural(n, 'dia', 'dias')}`} cor="#5B4BB7" />} feitas={progProx[i].feitas} abertas={abertasProx[i]} limpa={limpa} grupo="prox" />;
         })}
+        </div>
       </div>
     </div>
   );
@@ -574,4 +582,18 @@ export function LegendaTipo() {
       </span>
     </span>
   );
+}
+
+/** O que a barra de filtros precisa de cada linha da lista (mesmas linhas e ids da ListaEntregas). */
+export function metasDasEntregas(quadros: QuadroEntrega[], hoje: string, deHoje: QuadroEntrega[]): MetaEntrega[] {
+  const clientes = (q: QuadroEntrega) => [...new Set([...q.colunas[0].linhas, ...q.colunas[1].linhas].map((l) => l.handle).filter(Boolean))];
+  const idx = (q: QuadroEntrega) => {
+    const e = etapaDaTarefa(q.nome);
+    return e ? ORDEM_ETAPAS.indexOf(e) : 99;
+  };
+  return [
+    ...atrasosPorEntrega(quadros, hoje).map((g) => ({ id: `atr-${g.q.id}`, grupo: 'atr' as const, data: g.maisAntigo, nome: g.q.nome, clientes: clientes(g.q), etapaIdx: idx(g.q) })),
+    ...deHoje.map((q) => ({ id: `hoje-${q.id}`, grupo: 'hoje' as const, data: hoje, nome: q.nome, clientes: clientes(q), etapaIdx: idx(q) })),
+    ...entregasProximas(quadros, hoje).map((q) => ({ id: `prox-${q.id}`, grupo: 'prox' as const, data: q.dataAtual!, nome: q.nome, clientes: clientes(q), etapaIdx: idx(q) })),
+  ];
 }

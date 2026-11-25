@@ -5,7 +5,8 @@ import { env } from '@/lib/env';
 import { Cabecalho, Pagina, Vazio } from '../_ui/lud';
 import { carregarQuadro } from './quadro';
 import { entregasDeHoje } from './HojePrimeiro';
-import { Kpis, LegendaTipo, ListaEntregas, Secao, TodasEntregas } from './EntregasVisao';
+import { Kpis, LegendaTipo, ListaEntregas, Secao, TodasEntregas, metasDasEntregas } from './EntregasVisao';
+import { FiltrosEntregas } from './FiltrosEntregas';
 
 export const dynamic = 'force-dynamic';
 // Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
@@ -73,6 +74,7 @@ async function Conteudo() {
         <Secao n={1} titulo="Hoje, em atraso e próximos 7 dias" sub="tudo numa lista só" />
         <LegendaTipo />
       </div>
+      <FiltrosEntregas metas={metasDasEntregas(quadros, hoje, deHoje)} />
       <ListaEntregas quadros={quadros} hoje={hoje} deHoje={deHoje} />
       <Secao n={2} titulo="Todas as entregas" sub={`${quadros.length} entregas. Clique pra abrir.`} />
       <TodasEntregas quadros={quadros} hoje={hoje} deHoje={deHoje} />
