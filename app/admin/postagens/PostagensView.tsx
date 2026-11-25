@@ -113,9 +113,9 @@ export function PostagensView({
   nextSemana: string;
 }) {
   const [aba, setAba] = useState<'postagens' | 'stories'>('postagens');
-  const [filtro, setFiltro] = useState<string | null>(null);
-  const [etapa, setEtapa] = useState<string | null>(null);
-  const [formato, setFormato] = useState<string | null>(null);
+  const [filtro, setFiltro] = useGuardado<string | null>('postagens-cliente', null);
+  const [etapa, setEtapa] = useGuardado<string | null>('postagens-etapa', null);
+  const [formato, setFormato] = useGuardado<string | null>('postagens-formato', null);
   const [ordem, setOrdem] = useGuardado<Ordem>('postagens-ordem', 'status');
   const [aberto, setAberto] = useState<{ id: string; projetoNome: string } | null>(
     null,

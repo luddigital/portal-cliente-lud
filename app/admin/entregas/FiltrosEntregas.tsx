@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { BarraFiltros, Divisor, MenuFiltro, MenuOrdenar, PilulasPeriodo, ordenarPor, useGuardado, type Ordem } from '../_ui/BarraFiltros';
 
 /** Uma linha da lista "Hoje, em atraso e próximos 7 dias", com o que os filtros precisam. */
@@ -18,9 +18,9 @@ export type MetaEntrega = {
  * reordenamos as linhas (data-linha-entrega / data-grupo-entregas) com uma regra de CSS.
  */
 export function FiltrosEntregas({ metas }: { metas: MetaEntrega[] }) {
-  const [periodo, setPeriodo] = useState('tudo');
-  const [cliente, setCliente] = useState<string | null>(null);
-  const [etapa, setEtapa] = useState<string | null>(null);
+  const [periodo, setPeriodo] = useGuardado('entregas-periodo', 'tudo');
+  const [cliente, setCliente] = useGuardado<string | null>('entregas-cliente', null);
+  const [etapa, setEtapa] = useGuardado<string | null>('entregas-etapa', null);
   const [ordem, setOrdem] = useGuardado<Ordem>('entregas-ordem', 'data');
 
   const passa = (m: MetaEntrega) => (!cliente || m.clientes.includes(cliente)) && (!etapa || m.nome === etapa);

@@ -74,11 +74,13 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
   const [feitas, setFeitas] = useState<Record<string, true>>({});
   const [tempoAberto, setTempoAberto] = useState<Record<string, boolean>>({});
   const [paraHoje, setParaHoje] = useState<Record<string, true>>({});
-  const [pessoa, setPessoa] = useState<string>(pessoaInicial || 'todas');
+  const [pessoaGuardada, setPessoa] = useGuardado<string>('tarefas-pessoa', 'todas');
+  // Pessoa vinda do link (?pessoa=) vale nessa visita; senão, a última escolhida.
+  const pessoa = pessoaInicial || pessoaGuardada;
   // Liberadas: só o que dá pra fazer agora; esconde as travadas 🔒 (falta a etapa anterior).
   const [soProntas, setSoProntas] = useGuardado('tarefas-liberadas', false);
-  const [cliente, setCliente] = useState<string | null>(null);
-  const [etapaF, setEtapaF] = useState<string | null>(null);
+  const [cliente, setCliente] = useGuardado<string | null>('tarefas-cliente', null);
+  const [etapaF, setEtapaF] = useGuardado<string | null>('tarefas-etapa', null);
   const [ordem, setOrdem] = useGuardado<Ordem>('tarefas-ordem', 'data');
   const [agrupar, setAgrupar] = useGuardado<Agrupar>('tarefas-agrupar', 'pessoa');
   const [confirmarHoje, setConfirmarHoje] = useState(false);
@@ -114,7 +116,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
     return m;
   }, [visiveis, paraHoje, prazos]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [aba, setAba] = useState<Aba>(() => (porAba.atr.length ? 'atr' : 'hoje'));
+  const [aba, setAba] = useGuardado<Aba>('tarefas-aba', porAba.atr.length ? 'atr' : 'hoje');
   // Abas de um dia só (Hoje, Amanhã): a data já está na aba, não repete na coluna.
   // Status vem antes do nome da tarefa (o que importa primeiro é se dá pra começar).
   // A coluna Data fica sempre: é nela que se muda o prazo (inclusive das travadas).
