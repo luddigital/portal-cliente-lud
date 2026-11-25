@@ -61,6 +61,8 @@ const soma = (iso: string, n: number) => {
 const MESES = /\b(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/gi;
 export const tipoDaTarefa = (titulo: string) =>
   titulo.replace(MESES, '').replace(/\b\d{1,4}\b/g, '').replace(/[\s\-–·|]+$/g, '').replace(/\s{2,}/g, ' ').trim() || titulo;
+/** Coluna → ordenação quando clica no título dela. */
+const ORDEM_DA_COLUNA: Partial<Record<string, Ordem>> = { data: 'data', tarefa: 'tarefa', status: 'status', projeto: 'cliente', pessoa: 'pessoa' };
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 // Botões da coluna Ação: todos do mesmo tamanho, alinhados à direita.
 /** Concluir: verde, pra ficar claro que é o botão de terminar a tarefa. */
@@ -83,6 +85,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
   const [etapaF, setEtapaF] = useGuardado<string | null>('tarefas-etapa', null);
   const [ordem, setOrdem] = useGuardado<Ordem>('tarefas-ordem', 'data');
   const [agrupar, setAgrupar] = useGuardado<Agrupar>('tarefas-agrupar', 'pessoa');
+  const [inverter, setInverter] = useGuardado('tarefas-inverter', false);
   const [confirmarHoje, setConfirmarHoje] = useState(false);
   // Prazos mudados aqui (vale também pras travadas 🔒).
   const [prazos, setPrazos] = useState<Record<string, string>>({});
@@ -132,14 +135,15 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       status: t.etapaIdx ?? null,
       cliente: t.projeto,
       pessoa: t.pessoa,
-    }));
+      tarefa: t.titulo,
+    }), inverter);
     const chave = (t: LinhaTarefa) =>
       agrupar === 'pessoa' ? t.pessoa ?? SEM.pessoa : agrupar === 'cliente' ? t.projeto ?? SEM.cliente : agrupar === 'etapa' ? tipoDaTarefa(t.titulo) || SEM.etapa : SEM.nada;
     const m = new Map<string, LinhaTarefa[]>();
     for (const t of ordenada) m.set(chave(t), [...(m.get(chave(t)) ?? []), t]);
     const sem = SEM[agrupar];
     return [...m.entries()].sort((a, b) => (a[0] === sem ? 1 : b[0] === sem ? -1 : b[1].length - a[1].length));
-  }, [lista, ordem, agrupar, paraHoje, prazos]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lista, ordem, agrupar, paraHoje, prazos, inverter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Opções dos menus (contam o que está nas abas, sem os outros filtros de menu).
   const contar = (f: (t: LinhaTarefa) => string) => {
@@ -325,7 +329,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
               set={(v) => setPessoa(v ?? 'todas')}
               opcoes={pessoas.map(([nome, { n, foto }]) => ({ v: nome, rot: nome, n, icone: <Avatar nome={nome} foto={foto} /> }))}
             />
-            <MenuFiltro rot="Cliente" valor={cliente} set={setCliente} opcoes={opClientes} />
+            <MenuFiltro rot="Projeto" valor={cliente} set={setCliente} opcoes={opClientes} />
             <MenuFiltro rot="Etapa" valor={etapaF} set={setEtapaF} opcoes={opEtapas} todos="Todas" />
             <button
               type="button"
@@ -340,9 +344,12 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         direita={
           <>
             <MenuOrdenar
-              opcoes={['data', 'data-desc', 'status', 'cliente', 'pessoa']}
+              opcoes={['data', 'data-desc', 'status', 'cliente', 'pessoa', 'tarefa']}
               valor={ordem}
-              set={setOrdem}
+              set={(o) => {
+                setOrdem(o);
+                setInverter(false);
+              }}
               agrupar={{ opcoes: ['nada', 'pessoa', 'cliente', 'etapa'], valor: agrupar, set: setAgrupar }}
             />
             <MenuPropriedades disponiveis={['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']} {...props_} />
@@ -412,7 +419,33 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
                       <th className="w-[44px]" />
                       {colunas.map((c) => (
                         <th key={c} className={`whitespace-nowrap px-3 py-2 text-left text-[12px] font-semibold text-[#8A8A90] ${LARG[c] ?? ''}`}>
-                          {c === 'acao' ? '' : NOME_COLUNA[c]}
+                          {c === 'acao' ? '' : ORDEM_DA_COLUNA[c] ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const o = ORDEM_DA_COLUNA[c]!;
+                                const atual = ordem === o || (o === 'data' && ordem === 'data-desc');
+                                if (atual) setInverter(!inverter);
+                                else {
+                                  setOrdem(o);
+                                  setInverter(false);
+                                }
+                              }}
+                              className={`inline-flex items-center gap-1 hover:text-[#111113] ${ordem === ORDEM_DA_COLUNA[c] || (c === 'data' && ordem === 'data-desc') ? 'text-[#111113]' : ''}`}
+                              title="Ordenar por esta coluna (clique de novo pra inverter)"
+                            >
+                              {NOME_COLUNA[c]}
+                              <span className="text-[11px]">
+                                {ordem === ORDEM_DA_COLUNA[c] || (c === 'data' && ordem === 'data-desc')
+                                  ? (ordem === 'data-desc') !== inverter
+                                    ? '↓'
+                                    : '↑'
+                                  : <span className="text-[#C9C9CE]">↕</span>}
+                              </span>
+                            </button>
+                          ) : (
+                            NOME_COLUNA[c]
+                          )}
                         </th>
                       ))}
                     </tr>

@@ -266,7 +266,7 @@ export function PostagensView({
         <BarraFiltros
           esquerda={
             <>
-              <MenuFiltro rot="Cliente" valor={filtro} set={setFiltro} opcoes={contar((p) => p.projetoNome)} />
+              <MenuFiltro rot="Projeto" valor={filtro} set={setFiltro} opcoes={contar((p) => p.projetoNome)} />
               <MenuFiltro rot="Etapa" valor={etapa} set={setEtapa} opcoes={contar((p) => p.tag)} todos="Todas" />
               {aba === 'postagens' && (
                 <MenuFiltro rot="Formato" valor={formato} set={setFormato} opcoes={contar((p) => p.tipo, (v) => NOME_FORMATO[v as Tipo] ?? v)} />

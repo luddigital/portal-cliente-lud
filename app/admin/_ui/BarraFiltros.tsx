@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react';
  * Cada página liga só as peças que fazem sentido nela.
  */
 
-export type Ordem = 'data' | 'data-desc' | 'prazo' | 'status' | 'cliente' | 'pessoa' | 'atualizacao' | 'formato';
+export type Ordem = 'data' | 'data-desc' | 'prazo' | 'status' | 'cliente' | 'pessoa' | 'atualizacao' | 'formato' | 'tarefa';
 export type Agrupar = 'nada' | 'pessoa' | 'cliente' | 'etapa';
 
 export const NOME_ORDEM: Record<Ordem, { rot: string; dica: string }> = {
@@ -16,12 +16,13 @@ export const NOME_ORDEM: Record<Ordem, { rot: string; dica: string }> = {
   'data-desc': { rot: 'Data', dica: 'mais nova primeiro' },
   prazo: { rot: 'Prazo', dica: 'atrasados primeiro' },
   status: { rot: 'Status', dica: 'na ordem das etapas' },
-  cliente: { rot: 'Cliente', dica: 'A a Z' },
+  cliente: { rot: 'Projeto', dica: 'A a Z' },
   pessoa: { rot: 'Pessoa', dica: 'A a Z' },
   atualizacao: { rot: 'Última atualização', dica: 'mais recente primeiro' },
   formato: { rot: 'Formato', dica: 'Reels, Carrossel, Stories' },
+  tarefa: { rot: 'Tarefa', dica: 'A a Z' },
 };
-const NOME_AGRUPAR: Record<Agrupar, string> = { nada: 'Nada', pessoa: 'Pessoa', cliente: 'Cliente', etapa: 'Etapa' };
+const NOME_AGRUPAR: Record<Agrupar, string> = { nada: 'Nada', pessoa: 'Pessoa', cliente: 'Projeto', etapa: 'Etapa' };
 
 /** Estado guardado no navegador (por página), pra a escolha não sumir ao voltar. */
 export function useGuardado<T>(chave: string, padrao: T): [T, (v: T) => void] {
@@ -53,16 +54,18 @@ export type CamposOrdem = {
   pessoa?: string | null;
   atualizacao?: string | null;
   formato?: string | null;
+  tarefa?: string | null;
 };
 
 const vazioNoFim = (a: string | null | undefined, b: string | null | undefined, f: (x: string, y: string) => number) =>
   !a && !b ? 0 : !a ? 1 : !b ? -1 : f(a, b);
 const az = (x: string, y: string) => x.localeCompare(y, 'pt-BR');
 
-export function ordenarPor<T>(lista: T[], ordem: Ordem, campos: (t: T) => CamposOrdem): T[] {
+/** inverter = clicou de novo na setinha da coluna (ordem ao contrário). */
+export function ordenarPor<T>(lista: T[], ordem: Ordem, campos: (t: T) => CamposOrdem, inverter = false): T[] {
   const c = new Map(lista.map((t) => [t, campos(t)] as const));
   const cmpData = (a: CamposOrdem, b: CamposOrdem) => vazioNoFim(a.data, b.data, az);
-  return [...lista].sort((x, y) => {
+  const r = [...lista].sort((x, y) => {
     const a = c.get(x)!;
     const b = c.get(y)!;
     switch (ordem) {
@@ -81,8 +84,11 @@ export function ordenarPor<T>(lista: T[], ordem: Ordem, campos: (t: T) => Campos
         return vazioNoFim(a.atualizacao, b.atualizacao, (p, q) => az(q, p)) || cmpData(a, b);
       case 'formato':
         return vazioNoFim(a.formato, b.formato, az) || cmpData(a, b);
+      case 'tarefa':
+        return vazioNoFim(a.tarefa, b.tarefa, az) || cmpData(a, b);
     }
   });
+  return inverter ? r.reverse() : r;
 }
 
 export type OpcaoMenu = { v: string; rot: string; n?: number; icone?: ReactNode };

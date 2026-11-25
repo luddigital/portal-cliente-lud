@@ -58,7 +58,7 @@ export function FiltrosEntregas({ metas }: { metas: MetaEntrega[] }) {
               ]}
             />
             <Divisor />
-            <MenuFiltro rot="Cliente" valor={cliente} set={setCliente} opcoes={contar((m) => m.clientes)} />
+            <MenuFiltro rot="Projeto" valor={cliente} set={setCliente} opcoes={contar((m) => m.clientes)} />
             <MenuFiltro rot="Etapa" valor={etapa} set={setEtapa} opcoes={contar((m) => [m.nome])} todos="Todas" />
           </>
         }
