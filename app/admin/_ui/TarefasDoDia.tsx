@@ -130,7 +130,7 @@ export function TarefasDoDia({ tarefas, hoje, rotuloHoje }: { tarefas: TarefaDia
           <div className="flex items-center gap-2.5 self-start">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#46464B] text-[11px] font-extrabold text-white">{pessoa ? ini(pessoa) : 'LD'}</span>
             <span className="flex flex-col">
-              <b className="text-[14px]">{pessoa || 'Todo mundo'}</b>
+              <b className="text-[14px]">{pessoa || 'Todos'}</b>
               <span className="text-[12px] text-[#636369]">{rotuloHoje}</span>
             </span>
           </div>

@@ -51,7 +51,7 @@ export function FazerAgora({ itens, hoje, pessoas }: { itens: ItemFazerAgora[]; 
               onClick={() => setPessoa(p)}
               className={`whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] font-bold ${pessoa === p ? 'bg-[#111113] text-white' : 'border border-[#E9E9EB] bg-white text-[#46464B] hover:border-[#B4B4B9]'}`}
             >
-              {p ? p.split(' ')[0] : 'Todo mundo'} <span className="opacity-60">{n}</span>
+              {p ? p.split(' ')[0] : 'Todos'} <span className="opacity-60">{n}</span>
             </button>
           );
         })}

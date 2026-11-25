@@ -256,7 +256,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       {/* Pessoas: escondido num menu */}
       <details className="relative w-fit">
         <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-[#E2E2E5] bg-white px-3 py-1 text-[12.5px] font-semibold text-[#46464B] hover:bg-[#F4F4F5] [&::-webkit-details-marker]:hidden">
-          👤 {pessoa === 'todas' ? 'Todo mundo' : pessoa.split(' ')[0]} <span className="text-[10px] text-[#8A8A90]">▾</span>
+          👤 {pessoa === 'todas' ? 'Todos' : pessoa.split(' ')[0]} <span className="text-[10px] text-[#8A8A90]">▾</span>
         </summary>
         <div className="absolute left-0 top-[calc(100%+6px)] z-30 flex max-h-[320px] w-[220px] flex-col overflow-y-auto rounded-[12px] border border-[#E9E9EB] bg-white p-1 shadow-[0_8px_24px_rgba(17,17,19,0.12)]">
           {[['todas', { n: 0, foto: null }] as const, ...pessoas].map(([nome, { n, foto }]) => (
@@ -270,7 +270,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
               className={`flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] hover:bg-[#F4F4F5] ${pessoa === nome ? 'font-bold' : ''}`}
             >
               {nome === 'todas' ? <span className="w-4 text-center">👥</span> : <Avatar nome={nome} foto={foto} />}
-              <span className="flex-1 truncate">{nome === 'todas' ? 'Todo mundo' : nome}</span>
+              <span className="flex-1 truncate">{nome === 'todas' ? 'Todos' : nome}</span>
               {nome !== 'todas' && <span className="text-[11.5px] text-[#8A8A90]">{n}</span>}
               {pessoa === nome && <span className="text-[12px]">✓</span>}
             </button>
