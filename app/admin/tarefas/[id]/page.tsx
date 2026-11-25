@@ -12,6 +12,8 @@ import { TodasTarefasCard } from '@/app/post/[id]/PostSidebarLud';
 import { AcoesDaTarefa } from './AcoesDaTarefa';
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 function ddmm(iso: string): string {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;

@@ -8,6 +8,8 @@ import { entregasDeHoje } from './HojePrimeiro';
 import { Kpis, LegendaTipo, ListaEntregas, Secao, TodasEntregas } from './EntregasVisao';
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 /**
  * Entregas: hoje e em atraso lado a lado (por cliente ou por pessoa, sem abrir

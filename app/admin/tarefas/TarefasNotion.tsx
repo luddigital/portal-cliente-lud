@@ -197,7 +197,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       });
       return;
     }
-    startTransition(() => router.refresh());
+    // Não recarrega a página: a linha já sumiu aqui e o Notion atualiza na próxima visita.
   }
   async function fazerHoje(t: LinhaTarefa) {
     setParaHoje((f) => ({ ...f, [t.id]: true }));

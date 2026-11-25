@@ -8,6 +8,8 @@ import { Trilha } from '../../_components/Trilha';
 import { ResumoLista } from './ResumoLista';
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 /** Revisão da manhã do resumo que sai às 16h no grupo de cada cliente. */
 export default async function ResumoPage() {

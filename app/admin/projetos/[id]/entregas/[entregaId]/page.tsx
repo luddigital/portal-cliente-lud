@@ -15,6 +15,8 @@ import { ehCriacaoDePauta, montarCliente } from '../../../../entregas/[id]/pauta
 import { carregarQuadro } from '../../../../entregas/quadro';
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 /** Projetos › projeto › entrega: a entrega só desse projeto (visual novo "NovaEntrega", linha do tempo por post). */
 export default function EntregaDoProjetoPage({ params }: { params: { id: string; entregaId: string } }) {

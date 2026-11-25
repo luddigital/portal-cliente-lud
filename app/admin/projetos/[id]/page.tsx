@@ -414,6 +414,8 @@ function Instagram({ a }: { a: IgAnalytics }) {
  * vasculhar uma lista enorme de 200+ tarefas (caso projetos como Ste Travels).
  */
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 function SecTitle({ children }: { children: React.ReactNode }) {
   return (

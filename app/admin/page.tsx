@@ -31,6 +31,8 @@ function linhasAtrasadas(q: { colunas: { linhas: LinhaCliente[] }[] }, hoje: str
 }
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 const semTraco = (s: string) => s.replace(/-/g, '');
 const NOMES_DIA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];

@@ -9,6 +9,8 @@ import { Trilha } from '../_components/Trilha';
 import { TarefasNotion, type LinhaTarefa } from './TarefasNotion';
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 const semTraco = (s: string) => s.replace(/-/g, '');
 

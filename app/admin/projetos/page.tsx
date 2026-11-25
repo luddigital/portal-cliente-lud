@@ -3,6 +3,8 @@ import { SemPiscar as Suspense } from '@/app/_ui/SemPiscar';
 import { listAllProjetos } from '@/lib/notion';
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 async function Lista() {
   const projetos = await listAllProjetos();

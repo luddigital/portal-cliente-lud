@@ -3,6 +3,8 @@ import { listPostsNoIntervalo } from '@/lib/notion';
 import { PostagensView } from './PostagensView';
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 const MESES = [
   'jan', 'fev', 'mar', 'abr', 'mai', 'jun',

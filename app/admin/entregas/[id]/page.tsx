@@ -26,6 +26,8 @@ const MATERIAIS = '2b5d04d23b4a8027b258c0fe766c0928';
 const APROVACAO_MATERIAIS = '2b5d04d23b4a80a6b5b9e47e1ea2ac49';
 
 export const dynamic = 'force-dynamic';
+// Sem a reserva do cache (logo depois de concluir) a leitura do Notion pode passar de 15s.
+export const maxDuration = 60;
 
 /**
  * Entregas › entrega: todos os clientes. Rodada atual, atrasados e próxima
