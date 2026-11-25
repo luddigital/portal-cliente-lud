@@ -23,6 +23,7 @@ import { carregarQuadro, type LinhaCliente, type QuadroEntrega } from './entrega
 import { entregasDeHoje } from './entregas/HojePrimeiro';
 import { ListaEntregas } from './entregas/EntregasVisao';
 import { tipoDaEntrega } from '@/lib/entrega-dados';
+import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
 
 /** Linhas que já venceram: rodadas anteriores + rodada atual com prazo antes de hoje. */
 function linhasAtrasadas(q: { colunas: { linhas: LinhaCliente[] }[] }, hoje: string): LinhaCliente[] {
@@ -53,7 +54,7 @@ export default async function AdminPage({ searchParams }: { searchParams: { sema
     <Pagina>
       <Cabecalho eyebrow={dataPorExtenso(hoje)} titulo={`${saudacao}, Luiza`} acoes={<BotaoAtualizar variante="compacto" />} />
       <Suspense fallback={<div className="grid gap-3.5 md:grid-cols-3">{esqueleto(92)}{esqueleto(92)}{esqueleto(92)}</div>}>
-        <Alertas />
+        <TopoComQuem />
       </Suspense>
       <Bloco titulo="✅ Fazer agora" aberto>
         <Suspense fallback={esqueleto(360)}>
@@ -65,22 +66,157 @@ export default async function AdminPage({ searchParams }: { searchParams: { sema
           <SemanaDosPosts deslocamento={Number(searchParams.semana) || 0} />
         </Suspense>
       </Bloco>
-      <Bloco titulo="📁 Clientes" sub="ordenado por atraso" aberto>
-        <Suspense fallback={esqueleto(220)}>
-          <ClientesCompacto />
+      <Secao titulo="📦 Entregas">
+        <Suspense fallback={<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{esqueleto(110)}{esqueleto(110)}{esqueleto(110)}{esqueleto(110)}</div>}>
+          <EntregasNumeros />
         </Suspense>
-      </Bloco>
-      <Bloco titulo="📦 Entregas" sub="atrasos, hoje e próximos 7 dias" aberto>
-        <Suspense fallback={esqueleto(420)}>
-          <EntregasLista />
+      </Secao>
+      <Secao titulo="🗂 Projetos">
+        <Suspense fallback={<div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">{esqueleto(100)}{esqueleto(100)}{esqueleto(100)}{esqueleto(100)}</div>}>
+          <ProjetosFotos />
         </Suspense>
-      </Bloco>
+      </Secao>
       <Bloco titulo="🔄 Mês da Lud." sub="ciclo do mês e números">
         <Suspense fallback={esqueleto(420)}>
           <MesComNumeros />
         </Suspense>
       </Bloco>
     </Pagina>
+  );
+}
+
+/** Seção sempre aberta da home (título solto, sem caixa). */
+function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2.5">
+      <b className="text-[18px] font-extrabold text-[#111113]">{titulo}</b>
+      {children}
+    </section>
+  );
+}
+
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+
+// ---------------------------------------------------------------- topo: com quem está
+/** Topo da Home: o que está com você, com os clientes e com a equipe (tarefas prontas pra andar). */
+async function TopoComQuem() {
+  const hoje = hojeSP();
+  const { tarefas } = await dados();
+  const prontas = tarefas.filter((t) => t.pronto);
+  const ehLuiza = (p: string | null) => !!p && /luiza/i.test(p);
+  const minhas = prontas.filter((t) => !ehTarefaDoCliente(t.titulo) && ehLuiza(t.pessoa) && t.prazo && t.prazo.slice(0, 10) <= hoje);
+  const minhasAtr = minhas.filter((t) => t.prazo!.slice(0, 10) < hoje).length;
+  const doCliente = prontas.filter((t) => ehTarefaDoCliente(t.titulo));
+  const aprovar = doCliente.filter((t) => /aprova/i.test(t.titulo)).length;
+  const materiais = doCliente.filter((t) => /materia/i.test(t.titulo)).length;
+  const infos = doCliente.length - aprovar - materiais;
+  const equipe = prontas.filter((t) => !ehTarefaDoCliente(t.titulo) && t.pessoa && !ehLuiza(t.pessoa));
+  const equipeAtr = equipe.filter((t) => t.prazo && t.prazo.slice(0, 10) < hoje).length;
+  const cards: { rot: string; n: number; sub: string; href: string }[] = [
+    { rot: 'COM VOCÊ', n: minhas.length, sub: `pra hoje · ${plural(minhasAtr, 'atrasada', 'atrasadas')}`, href: '/admin/tarefas' },
+    {
+      rot: 'COM OS CLIENTES',
+      n: doCliente.length,
+      sub: [aprovar && `${aprovar} aprovar`, materiais && plural(materiais, 'material', 'materiais'), infos && plural(infos, 'informação', 'informações')].filter(Boolean).join(' · ') || 'nada com eles',
+      href: '/admin/aprovacoes/resumo',
+    },
+    { rot: 'COM A EQUIPE', n: equipe.length, sub: equipeAtr ? `tarefas com o time · ${plural(equipeAtr, 'atrasada', 'atrasadas')}` : 'tarefas com o time', href: '/admin/tarefas' },
+  ];
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {cards.map((c) => (
+        <Link key={c.rot} href={c.href} className="flex flex-col gap-1 rounded-[18px] border border-[#E9E9EB] bg-white px-4 py-3.5 hover:border-[#B4B4B9]">
+          <span className="text-[10.5px] font-extrabold tracking-[0.08em] text-[#8A8A90]">{c.rot}</span>
+          <b className="text-[26px] font-extrabold leading-[1.1] tabular-nums text-[#111113]">{c.n}</b>
+          <span className="truncate text-[12px] text-[#636369]">{c.sub}</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- entregas em números
+/** Entregas da Home: hoje, amanhã, chegando (até domingo) e próxima semana. Conta entregas e posts. */
+async function EntregasNumeros() {
+  const { hoje, quadros } = await carregarQuadro().catch(() => ({ hoje: hojeSP(), quadros: [] as QuadroEntrega[] }));
+  const dow = (new Date(hoje + 'T12:00:00Z').getUTCDay() + 6) % 7; // seg = 0
+  const domingo = somaDias(hoje, 6 - dow);
+  const amanha = somaDias(hoje, 1);
+  const faixas = [
+    { rot: 'HOJE', cor: '#C2417E', de: hoje, ate: hoje },
+    { rot: 'AMANHÃ', cor: '#7462D6', de: amanha, ate: amanha },
+    { rot: 'CHEGANDO', cor: '#B4B4B9', de: somaDias(hoje, 2), ate: domingo, sub: 'até domingo' },
+    { rot: 'PRÓXIMA SEMANA', cor: '#E4E4E7', de: somaDias(domingo, 1), ate: somaDias(domingo, 7) },
+  ];
+  const contar = (de: string, ate: string) => {
+    let entregas = 0;
+    let posts = 0;
+    for (const q of quadros) {
+      let n = 0;
+      let tem = false;
+      for (const l of [...q.colunas[1].linhas, ...q.colunas[2].linhas]) {
+        if (l.posts.length) {
+          const k = l.posts.filter((p) => {
+            const d = (p.prazo ?? l.prazoMaisAntigo)?.slice(0, 10);
+            return !!d && d >= de && d <= ate;
+          }).length;
+          n += k;
+          if (k) tem = true;
+        } else {
+          const d = l.prazoMaisAntigo?.slice(0, 10);
+          if (d && d >= de && d <= ate) tem = true;
+        }
+      }
+      if (tem) entregas++;
+      posts += n;
+    }
+    return { entregas, posts };
+  };
+  const atrasadas = quadros.filter((q) => linhasAtrasadas(q, hoje).length > 0).length;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {faixas.map((f, i) => {
+        const { entregas, posts } = f.de > f.ate ? { entregas: 0, posts: 0 } : contar(f.de, f.ate);
+        const partes = [f.sub, plural(posts, 'post', 'posts'), i === 0 && atrasadas ? plural(atrasadas, 'atrasada', 'atrasadas') : null].filter(Boolean);
+        return (
+          <Link key={f.rot} href="/admin/entregas" className="flex flex-col gap-1 rounded-[18px] border border-[#E9E9EB] bg-white px-[18px] py-4 hover:border-[#B4B4B9]">
+            <span className="flex items-center gap-1.5 text-[10.5px] font-extrabold tracking-[0.08em] text-[#8A8A90]">
+              <span className="h-2 w-2 rounded-full" style={{ background: f.cor }} />
+              {f.rot}
+            </span>
+            <b className="text-[34px] font-extrabold leading-[1.1] tabular-nums text-[#111113]">{entregas}</b>
+            <span className={`text-[12px] ${i === 0 && atrasadas ? 'text-[#B42318]' : 'text-[#636369]'}`}>{partes.join(' · ')}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- projetos com foto
+/** Projetos da Home: a foto de cada projeto com o @ por cima. */
+async function ProjetosFotos() {
+  const todos = await carregarProjetos().catch(() => []);
+  const lista = todos.filter((p) => p.atr > 0 || p.p7 > 0).sort((a, b) => b.p7 - a.p7 || a.nome.localeCompare(b.nome, 'pt-BR'));
+  if (!lista.length) return <Vazio>Nenhum projeto com tarefa pros próximos dias.</Vazio>;
+  return (
+    <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+      {lista.map((p) => {
+        const nome = nomeCurtoDoProjeto(p.nome) ?? p.nome;
+        const arroba = nome.startsWith('@') ? nome : `@${nome}`;
+        return (
+          <Link key={p.id} href={rotas.projeto(p.id)} className="relative block aspect-[3/1] overflow-hidden rounded-[16px] bg-[#F0F0F1] hover:brightness-[0.97]">
+            {p.capa ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.capa} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+              <span className="absolute inset-0 flex items-center justify-center text-[22px] font-extrabold text-[#8A8A90]">{arroba.slice(1, 3).toUpperCase()}</span>
+            )}
+            <span className="absolute left-3 top-3 max-w-[calc(100%-24px)] truncate rounded-full bg-white px-3 py-[5px] text-[13px] font-bold text-[#111113]">{arroba}</span>
+          </Link>
+        );
+      })}
+    </div>
   );
 }
 

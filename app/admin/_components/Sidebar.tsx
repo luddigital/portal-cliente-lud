@@ -16,7 +16,7 @@ type Item = {
 // Menu: 5 itens fixos em cima e o resto em grupos recolhíveis ("Mais").
 // Fechado (padrão) fica só com os ícones; » abre, « fecha (a escolha fica salva no navegador).
 const FIXOS: Item[] = [
-  { label: 'Hoje', href: '/admin', icon: 'home' },
+  { label: 'Home', href: '/admin', icon: 'home' },
   { label: 'Tarefas', href: '/admin/tarefas', icon: 'tarefas' },
   { label: 'Entregas', href: '/admin/entregas', icon: 'entregas' },
   { label: 'Calendário', href: '/admin/calendario', icon: 'calendario' },
