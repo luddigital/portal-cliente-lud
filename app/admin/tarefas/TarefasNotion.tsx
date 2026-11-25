@@ -10,7 +10,9 @@ import { BotaoLembreteWpp } from '../aprovacoes/BotaoLembreteWpp';
 import { MenuPropriedades, NOME_COLUNA, usePropriedades, type Coluna } from '../_ui/Propriedades';
 import { AvatarPessoa as AvatarPadrao, AvatarProjeto, Sinal } from '../_ui/Avatares';
 import { PreviaPostModal, prefetchPrevia } from '../aprovacoes/PreviaPostModal';
+import { MudarPrazo } from '../_ui/MudarPrazo';
 import { avisarConcluida, useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
+import { AlternarLiberadas, BarraFiltros, MenuFiltro, MenuOrdenar, ordenarPor, useGuardado, type Agrupar, type Ordem } from '../_ui/BarraFiltros';
 
 /**
  * Tarefas no jeito da "Gestão de Projetos" do Notion: abas Atrasadas, Hoje,
@@ -25,6 +27,7 @@ export type LinhaTarefa = {
   prazo: string | null;
   status: string | null;
   pronto: boolean;
+  etapaIdx?: number;
   postId: string | null;
   postTitulo: string | null;
   projetoId: string | null;
@@ -54,6 +57,10 @@ const soma = (iso: string, n: number) => {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
+/** Tipo da tarefa pra juntar as iguais: o título sem mês, ano e números ("Criação de Calendário Janeiro" = "Criação de Calendário"). */
+const MESES = /\b(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/gi;
+export const tipoDaTarefa = (titulo: string) =>
+  titulo.replace(MESES, '').replace(/\b\d{1,4}\b/g, '').replace(/[\s\-–·|]+$/g, '').replace(/\s{2,}/g, ' ').trim() || titulo;
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 // Botões da coluna Ação: todos do mesmo tamanho, alinhados à direita.
 /** Concluir: verde, pra ficar claro que é o botão de terminar a tarefa. */
@@ -68,14 +75,22 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
   const [tempoAberto, setTempoAberto] = useState<Record<string, boolean>>({});
   const [paraHoje, setParaHoje] = useState<Record<string, true>>({});
   const [pessoa, setPessoa] = useState<string>(pessoaInicial || 'todas');
-  // Só o que dá pra fazer agora: esconde as tarefas com cadeado (falta a etapa anterior).
-  const [soProntas, setSoProntas] = useState(false);
+  // Liberadas: só o que dá pra fazer agora; esconde as travadas 🔒 (falta a etapa anterior).
+  const [soProntas, setSoProntas] = useGuardado('tarefas-liberadas', false);
+  const [cliente, setCliente] = useState<string | null>(null);
+  const [etapaF, setEtapaF] = useState<string | null>(null);
+  const [ordem, setOrdem] = useGuardado<Ordem>('tarefas-ordem', 'data');
+  const [agrupar, setAgrupar] = useGuardado<Agrupar>('tarefas-agrupar', 'pessoa');
+  const [confirmarHoje, setConfirmarHoje] = useState(false);
+  // Prazos mudados aqui (vale também pras travadas 🔒).
+  const [prazos, setPrazos] = useState<Record<string, string>>({});
+  const prazoDe = (t: LinhaTarefa) => prazos[t.id] ?? (paraHoje[t.id] ? hoje : t.prazo);
   const [previa, setPrevia] = useState<{ postId: string; tarefaId: string } | null>(null);
   const props_ = usePropriedades('tarefas-v2', ['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']);
 
   const abaDe = (t: LinhaTarefa): Aba | null => {
-    if (t.status === 'Inbox' || !t.prazo) return 'inbox';
-    const p = paraHoje[t.id] ? hoje : t.prazo;
+    const p = prazoDe(t);
+    if (t.status === 'Inbox' || !p) return 'inbox';
     if (p < hoje) return 'atr';
     if (p === hoje) return 'hoje';
     if (p === amanha) return 'amanha';
@@ -85,7 +100,10 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
 
   const concluidaAgora = useConcluidaAgora();
   const visiveis = tarefas.filter(
-    (t) => !feitas[t.id] && !concluidaAgora(t.id) && (pessoa === 'todas' || (t.pessoa ?? 'Sem responsável') === pessoa) && !(soProntas && t.antes),
+    (t) => !feitas[t.id] && !concluidaAgora(t.id) && (pessoa === 'todas' || (t.pessoa ?? 'Sem responsável') === pessoa) &&
+      !(soProntas && t.antes) &&
+      (!cliente || (t.projeto ?? 'Sem projeto') === cliente) &&
+      (!etapaF || tipoDaTarefa(t.titulo) === etapaF),
   );
   const porAba = useMemo(() => {
     const m: Record<Aba, LinhaTarefa[]> = { atr: [], hoje: [], amanha: [], proximos: [], inbox: [] };
@@ -94,27 +112,68 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
       if (a) m[a].push(t);
     }
     return m;
-  }, [visiveis, paraHoje]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visiveis, paraHoje, prazos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [aba, setAba] = useState<Aba>(() => (porAba.atr.length ? 'atr' : 'hoje'));
   // Abas de um dia só (Hoje, Amanhã): a data já está na aba, não repete na coluna.
   // Status vem antes do nome da tarefa (o que importa primeiro é se dá pra começar).
+  // A coluna Data fica sempre: é nela que se muda o prazo (inclusive das travadas).
   const colunas = props_.colunas
-    .filter((c) => !(c === 'data' && (aba === 'hoje' || aba === 'amanha')))
     .sort((a, b) => (a === 'status' && b === 'tarefa' ? -1 : a === 'tarefa' && b === 'status' ? 1 : 0));
   const lista = porAba[aba];
 
-  // Um bloco por pessoa (Sem responsável no fim).
+  // Blocos pelo "Agrupar" (pessoa, cliente, etapa ou nada); dentro, pela ordem escolhida.
+  const SEM = { pessoa: 'Sem responsável', cliente: 'Sem projeto', etapa: 'Sem etapa', nada: 'Todas' } as const;
   const grupos = useMemo(() => {
+    const ordenada = ordenarPor(lista, ordem, (t) => ({
+      data: prazoDe(t),
+      status: t.etapaIdx ?? null,
+      cliente: t.projeto,
+      pessoa: t.pessoa,
+    }));
+    const chave = (t: LinhaTarefa) =>
+      agrupar === 'pessoa' ? t.pessoa ?? SEM.pessoa : agrupar === 'cliente' ? t.projeto ?? SEM.cliente : agrupar === 'etapa' ? tipoDaTarefa(t.titulo) || SEM.etapa : SEM.nada;
     const m = new Map<string, LinhaTarefa[]>();
-    for (const t of lista) {
-      const k = t.pessoa ?? 'Sem responsável';
-      m.set(k, [...(m.get(k) ?? []), t]);
+    for (const t of ordenada) m.set(chave(t), [...(m.get(chave(t)) ?? []), t]);
+    const sem = SEM[agrupar];
+    return [...m.entries()].sort((a, b) => (a[0] === sem ? 1 : b[0] === sem ? -1 : b[1].length - a[1].length));
+  }, [lista, ordem, agrupar, paraHoje, prazos]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opções dos menus (contam o que está nas abas, sem os outros filtros de menu).
+  const contar = (f: (t: LinhaTarefa) => string) => {
+    const m = new Map<string, number>();
+    for (const t of tarefas) if (!feitas[t.id] && abaDe(t)) m.set(f(t), (m.get(f(t)) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([v, n]) => ({ v, rot: v, n }));
+  };
+  const opClientes = contar((t) => t.projeto ?? 'Sem projeto');
+  const opEtapas = contar((t) => tipoDaTarefa(t.titulo));
+
+  // Atrasadas: passa todas as que dá pra fazer (sem cadeado) pra hoje de uma vez.
+  const atrasadasMovem = porAba.atr.filter((t) => !paraHoje[t.id]);
+  async function passarTudoPraHoje() {
+    setConfirmarHoje(false);
+    const alvo = atrasadasMovem;
+    setParaHoje((f) => ({ ...f, ...Object.fromEntries(alvo.map((t) => [t.id, true as const])) }));
+    // Em levas de 3 pra não estourar o limite do Notion.
+    for (let i = 0; i < alvo.length; i += 3) {
+      await Promise.all(
+        alvo.slice(i, i + 3).map(async (t) => {
+          const r = await fetch(`/api/admin/tarefas/${t.id}/prazo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prazo: hoje }),
+          }).catch(() => null);
+          if (!r?.ok)
+            setParaHoje((f) => {
+              const n = { ...f };
+              delete n[t.id];
+              return n;
+            });
+        }),
+      );
     }
-    return [...m.entries()]
-      .map(([k, ls]) => [k, ls.sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? '') || a.titulo.localeCompare(b.titulo))] as const)
-      .sort((a, b) => (a[0] === 'Sem responsável' ? 1 : b[0] === 'Sem responsável' ? -1 : b[1].length - a[1].length));
-  }, [lista]);
+    router.refresh();
+  }
 
   const pessoas = useMemo(() => {
     const m = new Map<string, { n: number; foto: string | null }>();
@@ -158,15 +217,16 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
   const LARG: Partial<Record<Coluna, string>> = { data: 'w-[76px]', tarefa: 'w-[290px]', status: 'w-[210px]', projeto: 'w-[68px] text-center', pessoa: 'w-[60px] text-center', sinal: 'w-[92px]', acao: 'w-[160px]' };
   const celula = (c: Coluna, t: LinhaTarefa) => {
     switch (c) {
-      case 'data': {
-        if (!t.prazo) return <span className="text-[#A1A1A8]">—</span>;
-        const d = paraHoje[t.id] ? hoje : t.prazo.slice(0, 10);
+      case 'data':
         return (
-          <span className="whitespace-nowrap text-[12.5px] font-semibold tabular-nums" style={{ color: d < hoje ? 'var(--prazo-atrasado)' : d === hoje ? '#8A3B0E' : '#46464B' }}>
-            {d === hoje ? 'hoje' : Date.parse(`${d}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`) === 86_400_000 ? 'amanhã' : ddmm(d)}
-          </span>
+          <MudarPrazo
+            key={`${t.id}-${prazoDe(t) ?? ''}`}
+            tarefaId={t.id}
+            prazo={prazoDe(t)?.slice(0, 10) ?? null}
+            hoje={hoje}
+            onMudou={(novo) => setPrazos((p) => ({ ...p, [t.id]: novo }))}
+          />
         );
-      }
       case 'tarefa':
         // Igual ao Notion: o nome da tarefa em texto. Travada fica em cinza.
         return (
@@ -230,13 +290,13 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         );
       }
       case 'acao':
-        if (t.antes) return null;
-        if (aba === 'atr' && !paraHoje[t.id])
+        if (aba === 'atr' && !paraHoje[t.id] && !prazos[t.id])
           return (
             <button type="button" onClick={() => fazerHoje(t)} className={BOTAO} title="Muda o prazo pra hoje">
               Fazer hoje
             </button>
           );
+        if (t.antes) return null;
         if (t.doCliente)
           return t.postId && /aprova/i.test(t.titulo) ? (
             <span className="inline-flex justify-end">
@@ -253,45 +313,40 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-2">
-      {/* Pessoas: escondido num menu */}
-      <details className="relative w-fit">
-        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full border border-[#E2E2E5] bg-white px-3 py-1 text-[12.5px] font-semibold text-[#46464B] hover:bg-[#F4F4F5] [&::-webkit-details-marker]:hidden">
-          👤 {pessoa === 'todas' ? 'Todos' : pessoa.split(' ')[0]} <span className="text-[10px] text-[#8A8A90]">▾</span>
-        </summary>
-        <div className="absolute left-0 top-[calc(100%+6px)] z-30 flex max-h-[320px] w-[220px] flex-col overflow-y-auto rounded-[12px] border border-[#E9E9EB] bg-white p-1 shadow-[0_8px_24px_rgba(17,17,19,0.12)]">
-          {[['todas', { n: 0, foto: null }] as const, ...pessoas].map(([nome, { n, foto }]) => (
+      <BarraFiltros
+        esquerda={
+          <>
+            <AlternarLiberadas valor={soProntas} set={setSoProntas} />
+            <MenuFiltro
+              rot="Pessoa"
+              valor={pessoa === 'todas' ? null : pessoa}
+              set={(v) => setPessoa(v ?? 'todas')}
+              opcoes={pessoas.map(([nome, { n, foto }]) => ({ v: nome, rot: nome, n, icone: <Avatar nome={nome} foto={foto} /> }))}
+            />
+            <MenuFiltro rot="Cliente" valor={cliente} set={setCliente} opcoes={opClientes} />
+            <MenuFiltro rot="Etapa" valor={etapaF} set={setEtapaF} opcoes={opEtapas} todos="Todas" />
             <button
-              key={nome}
               type="button"
-              onClick={(e) => {
-                setPessoa(nome);
-                (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-              }}
-              className={`flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] hover:bg-[#F4F4F5] ${pessoa === nome ? 'font-bold' : ''}`}
+              onClick={() => setAgrupar(agrupar === 'etapa' ? 'pessoa' : 'etapa')}
+              title="Junta as tarefas do mesmo tipo (ex.: todas as Criações de Pauta) pra fazer tudo de uma vez"
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[12.5px] font-semibold ${agrupar === 'etapa' ? 'border-[#111113] bg-[#111113] text-white' : 'border-[#E2E2E5] bg-white text-[#46464B] hover:bg-[#F4F4F5]'}`}
             >
-              {nome === 'todas' ? <span className="w-4 text-center">👥</span> : <Avatar nome={nome} foto={foto} />}
-              <span className="flex-1 truncate">{nome === 'todas' ? 'Todos' : nome}</span>
-              {nome !== 'todas' && <span className="text-[11.5px] text-[#8A8A90]">{n}</span>}
-              {pessoa === nome && <span className="text-[12px]">✓</span>}
+              ▦ Juntar iguais
             </button>
-          ))}
-        </div>
-      </details>
-
-      <span className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={() => setSoProntas((v) => !v)}
-        title="Esconde as tarefas com cadeado (que ainda dependem de outra etapa)"
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold ${soProntas ? 'border-[#111113] bg-[#111113] text-white' : 'border-[#E2E2E5] bg-white text-[#46464B] hover:bg-[#F4F4F5]'}`}
-      >
-        {soProntas ? '✓ ' : ''}Só prontas
-      </button>
-
-      <MenuPropriedades disponiveis={['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']} {...props_} />
-      </span>
-      </div>
+          </>
+        }
+        direita={
+          <>
+            <MenuOrdenar
+              opcoes={['data', 'data-desc', 'status', 'cliente', 'pessoa']}
+              valor={ordem}
+              set={setOrdem}
+              agrupar={{ opcoes: ['nada', 'pessoa', 'cliente', 'etapa'], valor: agrupar, set: setAgrupar }}
+            />
+            <MenuPropriedades disponiveis={['data', 'tarefa', 'status', 'post', 'projeto', 'pessoa', 'sinal', 'acao']} {...props_} />
+          </>
+        }
+      />
 
       {/* Abas */}
       <div className="flex flex-wrap gap-1 border-b border-[#EDEDEF]">
@@ -313,6 +368,29 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
         })}
       </div>
 
+      {aba === 'atr' && atrasadasMovem.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-[#F3D3D3] bg-[#FDF6F6] px-4 py-2.5">
+          <span className="text-[13px] text-[#46464B]">
+            <b className="text-[#111113]">{atrasadasMovem.length}</b> {atrasadasMovem.length === 1 ? 'tarefa atrasada' : 'tarefas atrasadas'}, contando as travadas 🔒
+          </span>
+          {confirmarHoje ? (
+            <span className="flex items-center gap-1.5">
+              <span className="text-[12.5px] font-semibold text-[#46464B]">Passar {atrasadasMovem.length} pra hoje?</span>
+              <button type="button" onClick={passarTudoPraHoje} className="rounded-full bg-[#111113] px-3 py-1 text-[12.5px] font-bold text-white hover:bg-[#2C2C30]">
+                Sim, passar
+              </button>
+              <button type="button" onClick={() => setConfirmarHoje(false)} className="rounded-full border border-[#D6D6D9] bg-white px-3 py-1 text-[12.5px] font-bold text-[#46464B] hover:bg-[#F4F4F5]">
+                Cancelar
+              </button>
+            </span>
+          ) : (
+            <button type="button" onClick={() => setConfirmarHoje(true)} className="rounded-full bg-[#111113] px-3.5 py-1.5 text-[12.5px] font-bold text-white hover:bg-[#2C2C30]">
+              ☀️ Passar tudo pra hoje
+            </button>
+          )}
+        </div>
+      )}
+
       {grupos.length === 0 ? (
         <div className="rounded-[14px] border border-[#EDEDEF] bg-white px-5 py-10 text-center text-[13px] text-[#8A8A90]">Nada por aqui. 🎉</div>
       ) : (
@@ -321,7 +399,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
             <details key={nome} open className="group">
               <summary className="mb-1.5 flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
                 <span className="text-[10px] text-[#8A8A90] transition-transform group-open:rotate-90">▶</span>
-                <Avatar nome={nome} foto={ls[0].pessoaAvatar} grande />
+                {agrupar === 'pessoa' ? <Avatar nome={nome} foto={ls[0].pessoaAvatar} grande /> : agrupar === 'cliente' && ls[0].projeto ? <AvatarProjeto handle={ls[0].projeto} foto={ls[0].projetoFoto} /> : null}
                 <b className="text-[14.5px]">{nome}</b>
                 <span className="text-[12.5px] text-[#8A8A90]">{ls.length}</span>
               </summary>

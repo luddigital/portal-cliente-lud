@@ -113,6 +113,8 @@ async function Lista({ pessoa, projeto }: { pessoa?: string; projeto?: string })
     prazo: t.prazo,
     status: t.status,
     pronto: !!t.pronto,
+    // Posição no fluxo do post (Ordem → Ordem (1)), pra ordenar por status.
+    etapaIdx: (Number(t.ordem) || 99) * 100 + (Number(t.ordemUm) || 1),
     postId: t.postId,
     postTitulo: t.postTitulo,
     projetoId: t.projetoId,
