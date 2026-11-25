@@ -1358,6 +1358,40 @@ async function findProjetosByEmailUncached(emailNorm: string): Promise<ProjetoCl
 const DEMANDAS_ATIVAS: DemandaTipo[] = ['Informação', 'Produção Material', 'Informação & Produção de Material'];
 const STATUS_EXCLUIR = ['Postado', 'Cancelado', 'Excluída'];
 
+/** Pra cada post, a tarefa aberta mais cedo no fluxo (Ordem → Ordem (1)): a etapa em que o post está. Ids sem traço. */
+async function etapaAtualDosPosts(postIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, { id: string; o: number; u: number }>();
+  for (let i = 0; i < postIds.length; i += 40) {
+    const lote = postIds.slice(i, i + 40);
+    let cursor: string | undefined;
+    do {
+      const r = await notion.databases.query({
+        database_id: env.notion.tarefasDbId,
+        start_cursor: cursor,
+        page_size: 100,
+        filter: {
+          and: [
+            { or: lote.map((id) => ({ property: env.notion.taskProps.post, relation: { contains: id } })) },
+            ...STATUS_TAREFA_FECHADOS.map((st) => ({ property: env.notion.taskProps.status, status: { does_not_equal: st } })),
+          ],
+        },
+      });
+      for (const t of r.results as any[]) {
+        const o = Number(getProp(t, 'Ordem')?.select?.name);
+        if (!Number.isFinite(o) || o <= 0) continue; // sem ordem (tarefa-modelo "Post") não conta
+        const u = Number(getProp(t, 'Ordem (1)')?.select?.name) || 1;
+        for (const rel of getProp(t, env.notion.taskProps.post)?.relation ?? []) {
+          const pid = String(rel.id).replace(/-/g, '');
+          const cur = out.get(pid);
+          if (!cur || o < cur.o || (o === cur.o && u < cur.u)) out.set(pid, { id: String(t.id).replace(/-/g, ''), o, u });
+        }
+      }
+      cursor = r.has_more ? r.next_cursor ?? undefined : undefined;
+    } while (cursor);
+  }
+  return new Map([...out.entries()].map(([k, v]) => [k, v.id]));
+}
+
 export async function listTarefasPendentesDoCliente(projetoIds: string[]): Promise<TarefaPendente[]> {
   if (projetoIds.length === 0) return [];
 
@@ -1418,6 +1452,20 @@ export async function listTarefasPendentesDoCliente(projetoIds: string[]): Promi
 
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
   } while (cursor);
+
+  // A fórmula "Pronto" do Notion às vezes marca a reaprovação do post como pronta enquanto o
+  // post ainda está numa etapa anterior (ex.: Aprovação | Arte aberta). Aí a cliente via o post
+  // em "Aprovar posts" e, ao abrir, dava "Esse post ainda está com a gente".
+  // Regra do portal: a tarefa só vale se for a etapa atual do post (a aberta mais cedo em Ordem → Ordem (1)).
+  const atuais = await etapaAtualDosPosts([...new Set(tarefasFiltradas.map((x) => x.postId as string))]).catch(() => null);
+  if (atuais) {
+    const ok = tarefasFiltradas.filter(({ tarefa, postId }) => {
+      const atual = atuais.get(postId.replace(/-/g, ''));
+      return !atual || atual === tarefa.id.replace(/-/g, '');
+    });
+    tarefasFiltradas.length = 0;
+    tarefasFiltradas.push(...ok);
+  }
 
   // Paraleliza os retrieves dos posts
   const out: TarefaPendente[] = [];
@@ -4475,7 +4523,36 @@ export async function findTarefaClienteProntaDoPost(
   const post = await getPost(postId);
   if (!post) return null;
 
-  for (const tarefaId of post.tarefaIds) {
+  // A relação do post só devolve as 25 primeiras tarefas. Post com muita alteração passa disso
+  // e a tarefa do cliente ficava de fora ("Esse post ainda está com a gente" pra um post pronto).
+  // Então busca direto no banco de tarefas as abertas desse post.
+  let ids = post.tarefaIds;
+  if (ids.length >= 25) {
+    try {
+      const abertas: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const r = await notion.databases.query({
+          database_id: env.notion.tarefasDbId,
+          start_cursor: cursor,
+          page_size: 100,
+          filter: {
+            and: [
+              { property: env.notion.taskProps.post, relation: { contains: postId } },
+              ...STATUS_TAREFA_FECHADOS.map((st) => ({ property: env.notion.taskProps.status, status: { does_not_equal: st } })),
+            ],
+          },
+        });
+        abertas.push(...(r.results as any[]).map((p) => p.id as string));
+        cursor = r.has_more ? r.next_cursor ?? undefined : undefined;
+      } while (cursor);
+      ids = abertas;
+    } catch {
+      /* fica com a relação do post */
+    }
+  }
+
+  for (const tarefaId of ids) {
     try {
       const page = (await notion.pages.retrieve({ page_id: tarefaId })) as any;
       if (page.archived) continue;
