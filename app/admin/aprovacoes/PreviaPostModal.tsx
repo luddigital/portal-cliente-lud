@@ -1129,7 +1129,7 @@ export function PreviaPostModal({
                   ✏️ <span className="hidden sm:inline">Pedir alteração</span> <span className="text-[10px] opacity-60">▾</span>
                 </button>
                 {altAberto && (
-                  <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-[380px] rounded-[16px] border border-[#E9E9EB] bg-white p-4 shadow-[0_14px_36px_rgba(17,17,19,0.16)]">
+                  <div className="absolute right-0 top-[calc(100%+8px)] z-30 max-h-[min(72vh,680px)] w-[400px] overflow-y-auto overscroll-contain rounded-[16px] border border-[#E9E9EB] bg-white p-4 shadow-[0_14px_36px_rgba(17,17,19,0.16)]">
                     <b className="mb-2 flex items-center gap-2 text-[14px]">✏️ Pedir alteração</b>
                     {blocoAlteracao()}
                   </div>

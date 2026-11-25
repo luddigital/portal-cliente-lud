@@ -226,7 +226,7 @@ export function SolicitarAlteracao({
         <p className="mt-2 rounded-md bg-[var(--prazo-atrasado-soft)] px-2 py-1 text-[12px] text-[var(--prazo-atrasado)]">{erro}</p>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="sticky bottom-0 -mx-5 -mb-5 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-b-[inherit] border-t border-[rgba(21,21,33,0.08)] bg-white px-5 py-3">
         <p className="text-[11.5px] text-t3">
           {tipos.length === 0
             ? 'Cria "Alteração | …" + "Aprovação | …" no Notion pra cada escolha.'
