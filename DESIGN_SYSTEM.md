@@ -297,3 +297,43 @@ Só cores da paleta oficial: #151521, #313D65, #082640, #F8F8F8, #F1EBE5, #8485A
 6. Sobre salmão e sálvia o texto é sempre escuro (branco fica ilegível).
 
 As variáveis `--prazo-*` e `--cal-*` do globals.css já seguem essas regras.
+
+---
+
+## 12. Padrões aprovados (nov/2026) — usar sempre assim
+
+Aprovados pela Luiza no canvas "LudHub · mapa do portal". Mudança de layout: **sempre desenhar no canvas primeiro**, com dados reais (o que for só lugar do dado vai como "N" ou "exemplo"), e só depois levar pro portal. Ajuste simples: no mesmo quadro. Sugestão nova de layout: quadro novo logo abaixo do que ele muda.
+
+### Big numbers (quadros de número)
+- Quadro branco, borda `#E9E9EB`, raio 16 a 18px, padding 14 a 18px. Nada de degradê, nada de cor de fundo.
+- Rótulo em cima: 10,5px, peso 800, caixa alta, `letter-spacing .08em`, cor `#8A8A90`; pode ter uma bolinha de 8px com a cor semântica antes.
+- Número: 26 a 34px, peso 800, `tabular-nums`.
+- Linha de baixo: 12px `#636369`, curta ("entregas · 17 posts", "pra hoje · 0 atrasadas"). Atraso em vermelho `#B42318` só quando existir.
+- O quadro inteiro é clicável e leva pra página do assunto. Exemplos: topo da Home (Com você · Com os clientes · Com a equipe) e Entregas da Home (Hoje · Amanhã · Chegando · Próxima semana).
+
+### Projetos com foto
+- Grade de 4 colunas, quadro deitado (`aspect-ratio 3/1`), raio 16px, fundo = foto de capa do projeto (`object-cover`).
+- Só o @ por cima, no canto de cima à esquerda, numa etiqueta branca (raio cheio, 13px, peso 700). Nada de texto extra no quadro.
+
+### Seção da Home
+- Título solto (18px, 800) com emoji, sem caixa em volta; o conteúdo logo abaixo. Blocos que abrem e fecham (Fazer agora, Semana, Mês da Lud.) continuam no `Bloco`.
+
+### Barra de filtros e ordenação (todas as páginas)
+- Componente `app/admin/_ui/BarraFiltros.tsx`. Uma barra só, branca, borda `#EDEDEF`, raio 14px, no topo da lista.
+- Ordem fixa das peças: **Tudo | ● Liberadas** · Período · Pessoa ▾ · Cliente ▾ · Etapa ▾ · Formato ▾ · (atalhos da página, ex.: ▦ Juntar iguais) … à direita **↕ Ordenar: X ▾** e **⚙︎ Propriedades ▾**.
+- Cada página liga só as peças que fazem sentido nela.
+- **Liberadas** (bolinha verde `#2E7D4F`) = só o que dá pra fazer agora. Travado é sempre 🔒 (esperando a etapa anterior). Nunca usar cadeado aberto pra "pronto".
+- Pílula de filtro ativa fica preta (`#111113`, texto branco). Contagem ao lado, em cinza.
+- Ordenar: Data (mais antiga / mais nova), Prazo, Status (ordem das etapas), Cliente, Pessoa, Última atualização, Formato. Embaixo, **Agrupar**: Nada · Pessoa · Cliente · Etapa.
+- A escolha de cada página fica guardada no navegador (`useGuardado`).
+- **Juntar iguais**: agrupa as tarefas do mesmo tipo (título sem mês, ano e números) pra fazer tudo de uma vez.
+
+### Prazo editável
+- Toda linha de tarefa mostra o prazo com `MudarPrazo` (chip com ✎), inclusive as travadas 🔒.
+- Atrasadas: faixa clarinha (`#FDF6F6`, borda `#F3D3D3`) com o total e o botão "☀️ Passar tudo pra hoje", que pede confirmação na própria faixa (Sim, passar · Cancelar).
+
+### Concluir em qualquer tela
+- Toda lista marca a linha com `data-tarefa-id`. Ao concluir, chamar `avisarConcluida(id)`: a linha some na hora em qualquer página e aparece o aviso com Desfazer.
+
+### Copy
+- Curta, sem travessão, em português simples. Botão diz a ação ("Passar tudo pra hoje", "Pedir alteração"), não a explicação.
