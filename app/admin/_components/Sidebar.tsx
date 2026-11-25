@@ -191,14 +191,14 @@ function BlocoGrupo({ grupo, pathname, abrirSempre }: { grupo: Grupo; pathname: 
 
 const CHAVE_MENU = 'ludhub-menu-aberto';
 
-/** Marca da Lud. (logo oficial: "Lud" + "hub digital"; fechado, só o "Lud"). */
+/** Marca da Lud. (logo oficial "Lud®", PNG transparente enviado pela Luiza em nov/2026). */
 function Marca({ so = false }: { so?: boolean }) {
   return so ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src="/logo-lud-marca.png" alt="Lud." className="h-auto w-[40px]" />
+    <img src="/logo-lud-2026.png" alt="Lud." className="h-auto w-[40px]" />
   ) : (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src="/logo-lud.png" alt="Lud. hub digital" className="h-[44px] w-auto" />
+    <img src="/logo-lud-2026.png" alt="Lud." className="h-[30px] w-auto" />
   );
 }
 
