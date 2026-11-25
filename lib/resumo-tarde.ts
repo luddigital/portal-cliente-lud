@@ -1,6 +1,6 @@
 /**
  * Resumo do fim da tarde (16h, seg a sex): uma mensagem por cliente, no GRUPO,
- * com os posts que ainda estão com ele pra aprovar.
+ * com tudo que ainda está com ele: aprovações, materiais, informações…
  *
  *  - entra só post que o cliente já recebeu nessa rodada (houve mensagem depois da última mudança);
  *  - sai o post que já teve mensagem do portal hoje (reaprovação automática, lembrete…);
@@ -8,7 +8,7 @@
  *  - marca "ainda não abriu" quando o cliente não viu a versão atual.
  */
 import { env } from '@/lib/env';
-import { ehAprovacaoDoCliente } from '@/lib/aviso-aprovacao';
+import { ehTarefaDoCliente } from '@/lib/etapas-projeto';
 import { listAllProjetos, listarTarefasAbertasDeTodos, ultimaConclusaoPorPost } from '@/lib/notion';
 import { getGruposWhatsappDoProjeto, lerEnviosRecentesDosPosts, lerVisualizacoesDetalhe, registrarEnvioAvulso, supabaseAdmin } from '@/lib/supabase';
 import { enviarMensagemTexto, zapiConfigured } from '@/lib/zapi';
@@ -20,6 +20,7 @@ export type PostDoResumo = {
   postId: string;
   tarefaId: string;
   titulo: string;
+  etapa: string;
   prazo: string | null;
   abriu: boolean;
   fora: boolean;
@@ -52,17 +53,29 @@ export async function marcarForaDoResumo(postId: string, fora: boolean, dia = ho
   if (error) throw new Error(error.message);
 }
 
+/** Grupo da etapa na mensagem: aprovar, mandar materiais, mandar informações, o resto. */
+export function grupoDaEtapa(etapa: string): string {
+  if (/aprova/i.test(etapa)) return 'Pra aprovar';
+  if (/materia|envio de conte|grava/i.test(etapa)) return 'Materiais pra enviar';
+  if (/informa|direcionamento|briefing/i.test(etapa)) return 'Informações pra mandar';
+  return 'Outras coisas com você';
+}
+const ORDEM_GRUPOS = ['Pra aprovar', 'Materiais pra enviar', 'Informações pra mandar', 'Outras coisas com você'];
+
 function montarMensagem(apelido: string, posts: PostDoResumo[], textos: Record<string, string>, hoje: string): string {
   const saud = (textos['lembrete.saudacao'] ?? 'Oie, {apelido}! Tudo bem? 😊').replace(/\{apelido\}/g, apelido);
   const fech = textos['lembrete.fechamento'] ?? 'Qualquer dúvida, pode me chamar! 💜';
-  const um = posts.length === 1;
-  const abertura = um ? 'Passando pra lembrar do post que ainda está com você pra aprovar:' : 'Passando pra lembrar dos posts que ainda estão com você pra aprovar:';
+  const abertura = 'Passando pra lembrar do que ainda está com você:';
   const linha = (p: PostDoResumo) => {
     const prazo = !p.prazo ? '' : p.prazo.slice(0, 10) < hoje ? `prazo era ${diaCurto(p.prazo.slice(0, 10))}` : p.prazo.slice(0, 10) === hoje ? 'prazo termina hoje' : `prazo até ${diaCurto(p.prazo.slice(0, 10))}`;
     const info = [prazo, p.abriu ? '' : 'você ainda não abriu'].filter(Boolean).join(' · ');
-    return [`*${p.titulo}*`, info, `${env.app.url}/post/${p.postId}?tarefa=${p.tarefaId}`].filter(Boolean).join('\n');
+    return [`▸ ${p.titulo}`, info, `${env.app.url}/post/${p.postId}?tarefa=${p.tarefaId}`].filter(Boolean).join('\n');
   };
-  return [saud, abertura, ...posts.map(linha), fech].join('\n\n');
+  const blocos = ORDEM_GRUPOS.map((g) => {
+    const doGrupo = posts.filter((p) => grupoDaEtapa(p.etapa) === g);
+    return doGrupo.length ? [`*${g}*`, ...doGrupo.map(linha)].join('\n\n') : '';
+  }).filter(Boolean);
+  return [saud, abertura, ...blocos, fech].join('\n\n');
 }
 
 export async function planejarResumo(): Promise<ResumoDoCliente[]> {
@@ -70,7 +83,7 @@ export async function planejarResumo(): Promise<ResumoDoCliente[]> {
   const tarefas = await listarTarefasAbertasDeTodos();
   const porPost = new Map<string, (typeof tarefas)[number]>();
   for (const t of tarefas) {
-    if (!t.pronto || !t.postId || !t.projetoId || !ehAprovacaoDoCliente(t)) continue;
+    if (!t.pronto || !t.postId || !t.projetoId || !ehTarefaDoCliente(t.titulo)) continue;
     if (!porPost.has(t.postId)) porPost.set(t.postId, t);
   }
   const ids = [...porPost.keys()];
@@ -94,8 +107,10 @@ export async function planejarResumo(): Promise<ResumoDoCliente[]> {
       postId,
       tarefaId: t.id,
       titulo: t.postTitulo || t.titulo,
+      etapa: t.titulo,
       prazo: t.prazo ?? null,
-      abriu: (vistas[postId] ?? []).some(daRodada),
+      // "Ainda não abriu" só faz sentido pra aprovação.
+      abriu: !/aprova/i.test(t.titulo) || (vistas[postId] ?? []).some(daRodada),
       fora: false,
     };
     if (msgs.some((m) => diaSp(m.enviadoEm) === hoje)) Object.assign(p, { fora: true, motivoFora: 'já teve mensagem hoje' });

@@ -51,6 +51,7 @@ export function ResumoLista({ clientes }: { clientes: ResumoDoCliente[] }) {
                   <LinkPrevia postId={p.postId} tarefaId={p.tarefaId} className="!w-auto text-[13.5px] font-bold hover:underline">
                     {p.titulo}
                   </LinkPrevia>
+                  <span className="rounded-[8px] bg-[#F4F4F5] px-2 py-0.5 text-[11.5px] font-bold text-[#46464B]">{p.etapa}</span>
                   <Prazo prazo={p.prazo} />
                   {!p.abriu && <span className="rounded-[8px] bg-[#F2D0EA] px-2 py-0.5 text-[11.5px] font-extrabold text-[#6A2B5F]">ainda não abriu</span>}
                   <span className="ml-auto flex items-center gap-2">
