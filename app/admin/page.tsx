@@ -177,7 +177,7 @@ async function EntregasNumeros() {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {faixas.map((f, i) => {
         const { entregas, posts } = f.de > f.ate ? { entregas: 0, posts: 0 } : contar(f.de, f.ate);
-        const partes = [f.sub, plural(posts, 'post', 'posts'), i === 0 && atrasadas ? plural(atrasadas, 'atrasada', 'atrasadas') : null].filter(Boolean);
+        const partes = [entregas === 1 ? 'entrega' : 'entregas', f.sub, plural(posts, 'post', 'posts'), i === 0 && atrasadas ? plural(atrasadas, 'atrasada', 'atrasadas') : null].filter(Boolean);
         return (
           <Link key={f.rot} href="/admin/entregas" className="flex flex-col gap-1 rounded-[18px] border border-[#E9E9EB] bg-white px-[18px] py-4 hover:border-[#B4B4B9]">
             <span className="flex items-center gap-1.5 text-[10.5px] font-extrabold tracking-[0.08em] text-[#8A8A90]">
