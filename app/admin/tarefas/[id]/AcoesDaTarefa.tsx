@@ -1,5 +1,6 @@
 'use client';
 
+import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { PreviaPostModal } from '../../aprovacoes/PreviaPostModal';
@@ -32,6 +33,7 @@ export function AcoesDaTarefa({
     try {
       const r = await fetch(`/api/tarefas/${tarefaId}/concluir`, { method: 'POST' });
       if (!r.ok) throw new Error();
+      avisarConcluida(tarefaId);
       setFeita(true);
       startTransition(() => router.refresh());
     } catch {

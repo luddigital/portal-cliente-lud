@@ -24,16 +24,47 @@ type Aviso = { tarefaId: string; rotulo: string | null };
 const concluidasAgora = new Map<string, number>();
 const semTraco = (id: string) => id.replace(/-/g, '');
 const ouvintes = new Set<() => void>();
+
+/** Com traço (8-4-4-4-12), do jeito que o Notion às vezes manda. */
+const comTraco = (id: string) => {
+  const s = semTraco(id);
+  return s.length === 32 ? `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}` : s;
+};
+
+/**
+ * Esconde na hora, em QUALQUER tela, a linha da tarefa concluída: toda lista marca a linha com
+ * data-tarefa-id; aqui vira uma regra de CSS até a página trazer os dados novos do Notion (3 min).
+ */
+function atualizarEstilo() {
+  if (typeof document === 'undefined') return;
+  let el = document.getElementById('lud-concluidas') as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement('style');
+    el.id = 'lud-concluidas';
+    document.head.appendChild(el);
+  }
+  const agora = Date.now();
+  const ids = Array.from(concluidasAgora.entries())
+    .filter(([, t]) => agora - t < 180_000)
+    .map(([id]) => id);
+  el.textContent = ids.length
+    ? `${ids.flatMap((id) => [`[data-tarefa-id="${id}"]`, `[data-tarefa-id="${comTraco(id)}"]`]).join(',')}{display:none!important}`
+    : '';
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener(EVENTO, (e) => {
     const id = (e as CustomEvent<Aviso>).detail?.tarefaId;
     if (!id) return;
     concluidasAgora.set(semTraco(id), Date.now());
+    atualizarEstilo();
+    setTimeout(atualizarEstilo, 181_000);
     ouvintes.forEach((f) => f());
   });
 }
 function esquecer(tarefaId: string) {
   concluidasAgora.delete(semTraco(tarefaId));
+  atualizarEstilo();
   ouvintes.forEach((f) => f());
 }
 /** Diz se a tarefa acabou de ser concluída aqui (some da lista na hora, em qualquer tela). */

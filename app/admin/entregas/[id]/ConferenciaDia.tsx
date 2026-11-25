@@ -1,5 +1,6 @@
 'use client';
 
+import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { nomeCurtoDoProjeto } from '@/lib/rotas';
@@ -244,7 +245,10 @@ function CardPost({ c, abrir, onConcluido }: { c: Card; abrir: () => void; onCon
     setSalvando(true);
     const r = await fetch(`/api/tarefas/${c.item.atualTarefaId ?? c.item.tarefaId}/concluir`, { method: 'POST' }).catch(() => null);
     setSalvando(false);
-    if (r?.ok) onConcluido();
+    if (r?.ok) {
+      avisarConcluida(c.item.atualTarefaId ?? c.item.tarefaId);
+      onConcluido();
+    }
   }
   return (
     <div className="flex min-h-fit flex-col gap-3 overflow-hidden rounded-[18px] border bg-white p-4" style={{ borderColor: c.situacao === 'erro' ? 'var(--cal-alteracao)' : '#E9E9EB' }}>

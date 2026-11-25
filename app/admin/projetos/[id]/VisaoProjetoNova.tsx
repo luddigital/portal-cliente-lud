@@ -199,7 +199,7 @@ export function VisaoProjetoNova({
   function LinhaTarefa({ t, feita = false }: { t: TarefaDoProjeto; feita?: boolean }) {
     const atr = !feita && t.prazo && t.prazo < hojeIso;
     return (
-      <div className="flex items-center gap-3 border-t border-[#F4F4F5] py-2.5">
+      <div data-tarefa-id={feita ? undefined : t.id} className="flex items-center gap-3 border-t border-[#F4F4F5] py-2.5">
         <button
           type="button"
           aria-label={feita ? 'Feita' : `Concluir ${t.titulo}`}
@@ -307,7 +307,7 @@ export function VisaoProjetoNova({
                 const t = g[0];
                 const st: St = abaHoje === 'hoje' ? 'hoje' : 'atr';
                 return (
-                  <Link key={t.id} href={destino(g.map((x) => ({ tarefaId: x.id, entregaId: x.entregaId })))} className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-[#E9E9EB] p-2.5 hover:border-[#B4B4B9]">
+                  <Link key={t.id} data-tarefa-id={t.id} href={destino(g.map((x) => ({ tarefaId: x.id, entregaId: x.entregaId })))} className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-[#E9E9EB] p-2.5 hover:border-[#B4B4B9]">
                     <span className="flex min-w-0 flex-col items-start gap-1.5">
                       <Tag st={st} className="!min-w-0 !px-2">{abaHoje === 'hoje' ? 'Pra hoje' : `desde ${dm(g.map((x) => x.prazo!).sort()[0])}`}</Tag>
                       <b className="line-clamp-2 text-[13px] leading-tight">{t.titulo}</b>

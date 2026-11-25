@@ -10,7 +10,7 @@ import { BotaoLembreteWpp } from '../aprovacoes/BotaoLembreteWpp';
 import { MenuPropriedades, NOME_COLUNA, usePropriedades, type Coluna } from '../_ui/Propriedades';
 import { AvatarPessoa as AvatarPadrao, AvatarProjeto, Sinal } from '../_ui/Avatares';
 import { PreviaPostModal, prefetchPrevia } from '../aprovacoes/PreviaPostModal';
-import { useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
+import { avisarConcluida, useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
 
 /**
  * Tarefas no jeito da "Gestão de Projetos" do Notion: abas Atrasadas, Hoje,
@@ -129,6 +129,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
   async function concluir(t: LinhaTarefa) {
     setFeitas((f) => ({ ...f, [t.id]: true }));
     const r = await fetch(`/api/tarefas/${t.id}/concluir`, { method: 'POST' }).catch(() => null);
+    if (r?.ok) avisarConcluida(t.id, t.titulo);
     if (!r?.ok) {
       setFeitas((f) => {
         const n = { ...f };

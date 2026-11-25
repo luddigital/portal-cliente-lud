@@ -215,7 +215,7 @@ export function EsteiraNova({ cards: cardsDoServidor, souLuiza }: { cards: CardE
               const ativo = sel?.tarefaId === c.tarefaId;
               return (
                 <div
-                  key={c.tarefaId}
+                  key={c.tarefaId} data-tarefa-id={c.tarefaId}
                   role="button"
                   tabIndex={0}
                   onClick={() => setSelId(c.tarefaId)}

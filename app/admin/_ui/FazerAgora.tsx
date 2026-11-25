@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
+import { avisarConcluida, useConcluidaAgora } from '@/app/_ui/DesfazerConcluir';
 import { corDaEtapa } from '@/lib/corEtapa';
 import { AvatarProjeto } from './Avatares';
 
@@ -28,6 +28,7 @@ export function FazerAgora({ itens, hoje, pessoas }: { itens: ItemFazerAgora[]; 
   async function concluir(id: string) {
     setFeitas((f) => ({ ...f, [id]: true }));
     const r = await fetch(`/api/tarefas/${id}/concluir`, { method: 'POST' }).catch(() => null);
+    if (r?.ok) avisarConcluida(id);
     if (!r?.ok) {
       setFeitas((f) => {
         const n = { ...f };

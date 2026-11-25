@@ -1,6 +1,7 @@
 'use client';
 
 /** "Ações" da página de tráfego: tarefas abertas do projeto, com check que conclui no Notion. */
+import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -25,6 +26,7 @@ export function AcoesProjeto({ acoes, hojeIso }: { acoes: AcaoLite[]; hojeIso: s
     try {
       const r = await fetch(`/api/tarefas/${id}/concluir`, { method: 'POST' });
       if (!r.ok) throw new Error();
+      avisarConcluida(id);
       setFeitas((s) => new Set(s).add(id));
       startTransition(() => router.refresh());
     } catch {

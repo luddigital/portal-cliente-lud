@@ -150,7 +150,7 @@ export function EntregaTarefas({ grupos }: { grupos: Grupo[] }) {
             </div>
             <ul className="mt-3 space-y-1">
               {g.tarefas.map((t) => (
-                <li key={t.tarefaId}>
+                <li key={t.tarefaId} data-tarefa-id={t.tarefaId}>
                   <div
                     role={t.postId ? 'button' : undefined}
                     onClick={() => {

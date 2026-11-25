@@ -1010,7 +1010,7 @@ function BlocoData({
             const [bg, fg, md] = ST[s.st];
             return (
               <button
-                key={i.tarefaId}
+                key={i.tarefaId} data-tarefa-id={i.tarefaId}
                 type="button"
                 title={`${separarTag(i.postTitulo).titulo} · ${s.texto}`}
                 onClick={() => abrir(i)}
@@ -1069,6 +1069,7 @@ function LinhaPost({
   const comentarios = i.mensagens.length;
   return (
     <div
+      data-tarefa-id={acao ? i.tarefaId : undefined}
       role={i.postId ? 'button' : undefined}
       tabIndex={i.postId ? 0 : undefined}
       onClick={() => i.postId && abrir()}

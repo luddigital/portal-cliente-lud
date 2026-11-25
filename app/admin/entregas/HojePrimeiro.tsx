@@ -292,7 +292,7 @@ export async function HojeComCliente({
               {pend.map(({ i, s }, k) => {
                 return (
                   <div
-                    key={i.tarefaId}
+                    key={i.tarefaId} data-tarefa-id={i.tarefaId}
                     className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-1.5 border-t border-[#F0F0F2] px-3.5 py-2.5 md:grid-cols-[minmax(0,1fr)_190px_auto_auto]"
                   >
                     <span className="flex min-w-0 items-center gap-2">
@@ -341,7 +341,7 @@ export async function HojeComCliente({
               <span className="text-[12px] text-[#636369]">o que já passou dessa etapa</span>
             </summary>
             {concluidos.map(({ g, i }) => (
-              <div key={i.tarefaId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[#F0F0F2] px-3.5 py-2 md:grid-cols-[200px_minmax(0,1fr)_auto]">
+              <div key={i.tarefaId} data-tarefa-id={i.tarefaId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[#F0F0F2] px-3.5 py-2 md:grid-cols-[200px_minmax(0,1fr)_auto]">
                 <Selo handle={nomeCurtoDoProjeto(g.projetoNome || g.nome)} href={rotas.projeto(g.projetoId)} />
                 {i.postId ? (
                   <LinkPrevia postId={i.postId} tarefaId={i.tarefaId} className="group/p min-w-0">
@@ -448,7 +448,7 @@ export function HojeInterna({
             </div>
             {ts.map((t) => (
               <div
-                key={t.id}
+                key={t.id} data-tarefa-id={t.id}
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-t border-[#F0F0F2] px-3.5 py-2.5 md:grid-cols-[180px_minmax(0,1fr)_120px_auto_auto_auto]"
               >
                 <span className="min-w-0">

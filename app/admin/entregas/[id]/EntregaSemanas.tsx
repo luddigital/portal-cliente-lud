@@ -1,5 +1,6 @@
 'use client';
 
+import { avisarConcluida } from '@/app/_ui/DesfazerConcluir';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -600,7 +601,7 @@ export function EntregaSemanas({
                   <select value={fCliente} onChange={(e) => setFCliente(e.target.value)} className="rounded-[8px] border border-[#E2E2E5] px-2 py-1.5 text-[13px] text-[#111113]">
                     <option value="">Todos</option>
                     {clientesDaEntrega.map((c) => (
-                      <option key={c.id} value={c.id}>
+                      <option key={c.id} data-tarefa-id={c.id} value={c.id}>
                         {c.nome.startsWith('@') ? c.nome : `@${c.nome}`}
                       </option>
                     ))}
@@ -794,7 +795,7 @@ export function EntregaSemanas({
                 {ordenados.map((i) => {
                   return (
                     <li
-                      key={i.tarefaId}
+                      key={i.tarefaId} data-tarefa-id={i.tarefaId}
                       className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[#F0F0F2] px-4 py-2.5 sm:grid-cols-[72px_minmax(0,1fr)_minmax(360px,560px)_170px]"
                     >
                       <span className="hidden sm:block">{i.prazo && <SeloDL data={i.prazo.slice(0, 10)} hojeIso={hojeIso} />}</span>
@@ -899,7 +900,7 @@ export function EntregaSemanas({
                   </span>
                   <ul className="flex flex-col gap-0.5 pl-1">
                     {fs.map((i) => (
-                      <li key={i.tarefaId} className="flex items-center gap-2 text-[12.5px]">
+                      <li key={i.tarefaId} data-tarefa-id={i.tarefaId} className="flex items-center gap-2 text-[12.5px]">
                         <span className="text-[#2E7D4F]">✓</span>
                         <button
                           type="button"
@@ -979,6 +980,7 @@ function BotaoConcluirTarefa({ tarefaId, nome, classe, onFeito }: { tarefaId: st
     try {
       const r = await fetch(`/api/tarefas/${tarefaId}/concluir`, { method: 'POST' });
       if (!r.ok) throw new Error();
+      avisarConcluida(tarefaId);
       setEstado('feito');
       onFeito();
     } catch {
@@ -1162,7 +1164,7 @@ function TabelaEntrega({
                     const trav = i.relacao === 'antes';
                     const quem = i.responsavel ?? i.pessoa;
                     return (
-                      <tr key={i.tarefaId} className={`border-b border-[#F2F2F4] align-middle last:border-0 ${trav ? 'bg-[#FCFCFC]' : 'hover:bg-[#FAFAFA]'}`}>
+                      <tr key={i.tarefaId} data-tarefa-id={i.tarefaId} className={`border-b border-[#F2F2F4] align-middle last:border-0 ${trav ? 'bg-[#FCFCFC]' : 'hover:bg-[#FAFAFA]'}`}>
                         <td className="whitespace-nowrap px-3 py-2.5 text-[12.5px] font-semibold tabular-nums" style={{ color: data && data < hojeIso ? 'var(--prazo-atrasado)' : data === hojeIso ? '#8A3B0E' : '#46464B' }}>
                           {!data ? '—' : data === hojeIso ? 'hoje' : dias(hojeIso, data) === 1 ? 'amanhã' : ddmm(data)}
                         </td>
