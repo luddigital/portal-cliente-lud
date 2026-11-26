@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { apagarTagsDoDia, listAllClientes, listAllProjetos, listEntregas, listPostsNoIntervalo, listarTarefasAbertasDeTodos } from '@/lib/notion';
 import { carregarEntrega } from '@/lib/entrega-dados';
 import { carregarQuadro } from '@/app/admin/entregas/quadro';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,15 @@ export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'não autorizado' }, { status: 401 });
+  }
+  // Um aquecimento por vez no portal todo: vários ao mesmo tempo (um por mudança, em servidores diferentes)
+  // estouravam o limite do Notion e as páginas abertas caíam por tempo. A trava fica em mensagens_padrao.
+  const sb = await supabaseAdmin().catch(() => null);
+  if (sb) {
+    const { data } = await sb.from('mensagens_padrao').select('texto').eq('chave', 'aquecer_admin_em').maybeSingle();
+    const ultimo = Number(data?.texto ?? 0);
+    if (Date.now() - ultimo < 90_000) return NextResponse.json({ pulou: 'aquecimento recente' });
+    await sb.from('mensagens_padrao').upsert({ chave: 'aquecer_admin_em', texto: String(Date.now()) });
   }
   // Depois de uma mudança: o Notion pode ter respondido a versão velha no primeiro refresh, então apaga e refaz.
   if (new URL(req.url).searchParams.get('invalidar') === '1') apagarTagsDoDia();

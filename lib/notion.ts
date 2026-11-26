@@ -233,9 +233,11 @@ function cacheComReserva<A extends any[], R>(
   const principal = unstable_cache(fn, chave, opcoes);
   const reserva = unstable_cache(fn, [...chave, 'reserva'], { revalidate: 120 });
   return async (...args: A) => {
-    if (acabouDeMudar()) return principal(...args);
+    // Quem acabou de mexer espera um pouco mais pela versão nova (até 8 s), mas nunca a consulta
+    // inteira: esperar o Notion sem limite estourava os 60 s e a página caía ("o portal fica off").
     const p = principal(...args);
-    const rapido = await Promise.race([p.then((v) => ({ v })), new Promise<null>((r) => setTimeout(() => r(null), 1500))]);
+    const espera = acabouDeMudar() ? 8000 : 1500;
+    const rapido = await Promise.race([p.then((v) => ({ v })), new Promise<null>((r) => setTimeout(() => r(null), espera))]);
     if (rapido) return rapido.v;
     try {
       waitUntil(p.catch(() => null));
