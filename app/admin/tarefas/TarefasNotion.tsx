@@ -142,7 +142,14 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
     const m = new Map<string, LinhaTarefa[]>();
     for (const t of ordenada) m.set(chave(t), [...(m.get(chave(t)) ?? []), t]);
     const sem = SEM[agrupar];
-    return [...m.entries()].sort((a, b) => (a[0] === sem ? 1 : b[0] === sem ? -1 : b[1].length - a[1].length));
+    const todos = [...m.entries()].sort((a, b) => (a[0] === sem ? 1 : b[0] === sem ? -1 : b[1].length - a[1].length));
+    // Grupo de 1 tarefa só polui: as soltas vão juntas num bloco "Outras", no fim.
+    if (agrupar === 'nada' || todos.length < 2) return todos;
+    const varios = todos.filter(([, ls]) => ls.length > 1);
+    const soltas = todos.filter(([, ls]) => ls.length === 1).flatMap(([, ls]) => ls);
+    if (!soltas.length) return varios;
+    if (!varios.length) return [[SEM.nada, soltas] as [string, LinhaTarefa[]]];
+    return [...varios, ['Outras', soltas] as [string, LinhaTarefa[]]];
   }, [lista, ordem, agrupar, paraHoje, prazos, inverter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Opções dos menus (contam o que está nas abas, sem os outros filtros de menu).
@@ -408,7 +415,7 @@ export function TarefasNotion({ tarefas, hoje, pessoaInicial }: { tarefas: Linha
             <details key={nome} open className="group">
               <summary className="mb-1.5 flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
                 <span className="text-[10px] text-[#8A8A90] transition-transform group-open:rotate-90">▶</span>
-                {agrupar === 'pessoa' ? <Avatar nome={nome} foto={ls[0].pessoaAvatar} grande /> : agrupar === 'cliente' && ls[0].projeto ? <AvatarProjeto handle={ls[0].projeto} foto={ls[0].projetoFoto} /> : null}
+                {nome === 'Outras' || nome === SEM.nada ? null : agrupar === 'pessoa' ? <Avatar nome={nome} foto={ls[0].pessoaAvatar} grande /> : agrupar === 'cliente' && ls[0].projeto ? <AvatarProjeto handle={ls[0].projeto} foto={ls[0].projetoFoto} /> : null}
                 <b className="text-[14.5px]">{nome}</b>
                 <span className="text-[12.5px] text-[#8A8A90]">{ls.length}</span>
               </summary>
