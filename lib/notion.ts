@@ -1441,13 +1441,12 @@ export async function listTarefasPendentesDoCliente(projetoIds: string[]): Promi
       const prontoProp = getProp(tarefa, env.notion.taskProps.pronto);
       const isPronto =
         prontoProp?.formula?.type === 'boolean' && prontoProp.formula.boolean === true;
-      if (!isPronto) continue;
 
       const postRel = getProp(tarefa, env.notion.taskProps.post)?.relation ?? [];
       const postId = postRel[0]?.id as string | undefined;
       if (!postId) continue;
 
-      tarefasFiltradas.push({ tarefa, postId });
+      tarefasFiltradas.push({ tarefa, postId, isPronto });
     }
 
     cursor = res.has_more ? res.next_cursor ?? undefined : undefined;
@@ -1459,10 +1458,15 @@ export async function listTarefasPendentesDoCliente(projetoIds: string[]): Promi
   // Regra do portal: a tarefa só vale se for a etapa atual do post (a aberta mais cedo em Ordem → Ordem (1)).
   const atuais = await etapaAtualDosPosts([...new Set(tarefasFiltradas.map((x) => x.postId as string))]).catch(() => null);
   if (atuais) {
-    const ok = tarefasFiltradas.filter(({ tarefa, postId }) => {
+    // Etapa atual conhecida: vale ela (a fórmula também erra pro outro lado e esconde reaprovação pronta).
+    const ok = tarefasFiltradas.filter(({ tarefa, postId, isPronto }) => {
       const atual = atuais.get(postId.replace(/-/g, ''));
-      return !atual || atual === tarefa.id.replace(/-/g, '');
+      return atual ? atual === tarefa.id.replace(/-/g, '') : isPronto;
     });
+    tarefasFiltradas.length = 0;
+    tarefasFiltradas.push(...ok);
+  } else {
+    const ok = tarefasFiltradas.filter((x) => x.isPronto);
     tarefasFiltradas.length = 0;
     tarefasFiltradas.push(...ok);
   }
@@ -4552,6 +4556,7 @@ export async function findTarefaClienteProntaDoPost(
     }
   }
 
+  let etapaAtual: string | null | undefined;
   for (const tarefaId of ids) {
     try {
       const page = (await notion.pages.retrieve({ page_id: tarefaId })) as any;
@@ -4561,10 +4566,15 @@ export async function findTarefaClienteProntaDoPost(
       if (status && STATUS_TAREFA_FECHADOS.includes(status)) continue;
 
       if (exigirPronto) {
-        const prontoProp = getProp(page, env.notion.taskProps.pronto);
-        const isPronto =
-          prontoProp?.formula?.type === 'boolean' &&
-          prontoProp.formula.boolean === true;
+        // Regra do portal: liberado = é a etapa atual do post (aberta mais cedo em Ordem → Ordem (1)).
+        // A fórmula "Pronto" do Notion erra na reaprovação (03), então só vale quando não dá pra saber a etapa.
+        const atual = etapaAtual === undefined ? (etapaAtual = (await etapaAtualDosPosts([postId]).catch(() => null))?.get(postId.replace(/-/g, '')) ?? null) : etapaAtual;
+        let isPronto: boolean;
+        if (atual) isPronto = atual === tarefaId.replace(/-/g, '');
+        else {
+          const prontoProp = getProp(page, env.notion.taskProps.pronto);
+          isPronto = prontoProp?.formula?.type === 'boolean' && prontoProp.formula.boolean === true;
+        }
         if (!isPronto) continue;
       }
 
